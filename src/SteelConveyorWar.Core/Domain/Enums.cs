@@ -63,23 +63,6 @@ public enum ItemId
     AntiAirShell
 }
 
-public enum TechnologyId
-{
-    LightBot,
-    ImprovedConveyors,
-    MachineGunTurret,
-    ConcreteWalls,
-    Scout,
-    MediumBot,
-    MediumTank,
-    RocketLauncher,
-    ConstructionDrone,
-    AntiAirTurret,
-    UndergroundConveyors,
-    SteelWalls,
-    AdditionalBastions
-}
-
 public enum ItemRecipeId
 {
     IronGear,

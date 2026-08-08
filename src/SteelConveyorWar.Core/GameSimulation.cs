@@ -5,18 +5,35 @@ public sealed class GameSimulation
     public const int TicksPerSecond = 30;
 
     private readonly List<PlayerState> _players;
+    private readonly ResearchSystem _researchSystem;
     private int _nextEntityId = 1;
 
-    private GameSimulation(GameWorld world, IReadOnlyList<PlayerState> players, int randomSeed)
+    private GameSimulation(
+        GameWorld world,
+        IReadOnlyList<PlayerState> players,
+        int randomSeed,
+        ResearchCatalog catalog,
+        ResearchProfileDefinition profile)
     {
         World = world;
         _players = players.ToList();
         RandomSeed = randomSeed;
+        ResearchCatalog = catalog;
+        ResearchProfile = profile;
+        _researchSystem = new ResearchSystem(catalog, profile);
+        foreach (var player in _players)
+        {
+            _researchSystem.InitializePlayer(player.Research);
+        }
     }
 
     public GameWorld World { get; }
 
     public int RandomSeed { get; }
+
+    public ResearchCatalog ResearchCatalog { get; }
+
+    public ResearchProfileDefinition ResearchProfile { get; }
 
     public long Tick { get; private set; }
 
@@ -28,6 +45,16 @@ public sealed class GameSimulation
 
     public static GameSimulation CreateNewGame(int randomSeed = 1)
     {
+        return CreateNewGame(GameCreationOptions.Default with { RandomSeed = randomSeed });
+    }
+
+    public static GameSimulation CreateNewGame(GameCreationOptions options)
+    {
+        if (!options.Catalog.Profiles.TryGetValue(options.ProfileId, out var profile))
+        {
+            throw new InvalidOperationException($"Unknown research profile '{options.ProfileId}'.");
+        }
+
         var size = new WorldSize(48, 28);
         var terrain = CreateStartingTerrain(size);
         var players = new[]
@@ -43,7 +70,12 @@ public sealed class GameSimulation
             player.Inventory.Add(ItemId.Coal, 40);
         }
 
-        var simulation = new GameSimulation(new GameWorld(size, terrain, Array.Empty<WorldEntity>()), players, randomSeed);
+        var simulation = new GameSimulation(
+            new GameWorld(size, terrain, Array.Empty<WorldEntity>()),
+            players,
+            options.RandomSeed,
+            options.Catalog,
+            profile);
         simulation.CreateStartingEntities();
         simulation.UpdatePower();
         simulation.UpdateFogOfWar();
@@ -94,7 +126,13 @@ public sealed class GameSimulation
 
         var ghost = CreateEntity(EntityKind.GhostBuild, position, commander.OwnerId);
         ghost.BuildTargetKind = targetKind;
-        ghost.ConstructionTicksRemaining = MvpDefinitions.BuildTicks.GetValueOrDefault(targetKind, TicksPerSecond);
+        var buildTicks = MvpDefinitions.BuildTicks.GetValueOrDefault(targetKind, TicksPerSecond);
+        if (commander.OwnerId is not null)
+        {
+            buildTicks = ResolveStat(commander.OwnerId.Value, ResearchStatIds.ConstructionTicks, buildTicks);
+        }
+
+        ghost.ConstructionTicksRemaining = buildTicks;
         ghostId = ghost.Id;
         World.AddEntity(ghost);
         commander.QueuedBuildOrder = null;
@@ -155,15 +193,45 @@ public sealed class GameSimulation
 
     public bool TryStartResearch(PlayerId playerId, TechnologyId technology)
     {
-        var player = GetPlayer(playerId);
-        if (player.ResearchedTechnologies.Contains(technology) || !MvpDefinitions.ResearchDefinitions.ContainsKey(technology))
-        {
-            return false;
-        }
+        return TrySelectResearch(playerId, technology) == ResearchCommandResult.Ok;
+    }
 
-        player.ActiveResearch = technology;
-        player.ResearchProgressPacks = 0;
-        return true;
+    public ResearchCommandResult TrySelectResearch(
+        PlayerId playerId,
+        TechnologyId technology,
+        bool confirmExclusive = false,
+        string? preferredTrackId = null)
+    {
+        return _researchSystem.TrySelectResearch(GetPlayer(playerId).Research, technology, confirmExclusive, preferredTrackId);
+    }
+
+    public ResearchCommandResult TryConfirmExclusive(PlayerId playerId, string exclusiveGroupId)
+    {
+        return _researchSystem.TryConfirmExclusive(GetPlayer(playerId).Research, exclusiveGroupId);
+    }
+
+    public ResearchCommandResult TrySetTrackAllocation(PlayerId playerId, IReadOnlyDictionary<string, int> allocations)
+    {
+        return _researchSystem.TrySetTrackAllocation(GetPlayer(playerId).Research, allocations);
+    }
+
+    public ResearchCommandResult TrySetProjectWeight(
+        PlayerId playerId,
+        string trackId,
+        TechnologyId technologyId,
+        int weight)
+    {
+        return _researchSystem.TrySetProjectWeight(GetPlayer(playerId).Research, trackId, technologyId, weight);
+    }
+
+    public ResearchSnapshot GetResearchSnapshot(PlayerId playerId)
+    {
+        return _researchSystem.GetSnapshot(GetPlayer(playerId).Research);
+    }
+
+    public int ResolveStat(PlayerId playerId, string statId, int baseValue, string? selector = null, int? minValue = 1)
+    {
+        return ModifierResolver.Resolve(baseValue, GetPlayer(playerId).Research.AppliedModifiers, statId, selector, minValue);
     }
 
     public bool TrySetFactoryProduction(int factoryId, EntityKind outputKind, int? bastionId = null)
@@ -260,7 +328,7 @@ public sealed class GameSimulation
 
         if (entity.Kind == EntityKind.Hub)
         {
-            return entity.Inventory.TryAddWithinTotalStackLimit(item, amount, MvpDefinitions.HubStorageStacks);
+            return entity.Inventory.TryAddWithinTotalStackLimit(item, amount, GetHubStorageStacks(entity.OwnerId));
         }
 
         if (IsBuildingWithBuffers(entity.Kind))
@@ -281,7 +349,7 @@ public sealed class GameSimulation
         }
 
         return entity.Kind == EntityKind.Hub
-            ? entity.Inventory.TryAddWithinTotalStackLimit(item, amount, MvpDefinitions.HubStorageStacks)
+            ? entity.Inventory.TryAddWithinTotalStackLimit(item, amount, GetHubStorageStacks(entity.OwnerId))
             : TryAddToBuffer(entity.OutputBuffer, item, amount);
     }
 
@@ -350,6 +418,7 @@ public sealed class GameSimulation
         ProcessBastions();
         ProcessMovement();
         ProcessCombat();
+        ProcessRepairOutOfCombat();
         CheckVictory();
         World.RemoveDead();
         UpdateFogOfWar();
@@ -553,12 +622,42 @@ public sealed class GameSimulation
         var player = GetPlayer(playerId);
         if (kind == EntityKind.Bastion && World.Entities.Any(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion))
         {
-            return player.ResearchedTechnologies.Contains(TechnologyId.AdditionalBastions);
+            return CapabilityResolver.HasCapability(player.Research, ResearchCapabilityIds.AdditionalBastions);
         }
 
-        return MvpDefinitions.BuildRequirements.TryGetValue(kind, out var requiredTechnology)
-            ? player.ResearchedTechnologies.Contains(requiredTechnology)
-            : true;
+        if (CapabilityResolver.IsEntityUnlocked(player.Research, kind, ResearchCatalog, ResearchProfile))
+        {
+            return true;
+        }
+
+        if (MvpDefinitions.BuildRequirements.TryGetValue(kind, out var requiredTechnology))
+        {
+            return player.ResearchedTechnologies.Contains(requiredTechnology);
+        }
+
+        // T2-gated entities require tier unlock / capability.
+        if (IsTier2Gated(kind))
+        {
+            return CapabilityResolver.HasCapability(player.Research, ResearchCapabilityIds.Tier2Content)
+                || player.Research.UnlockedEntityKinds.Contains(kind.ToString());
+        }
+
+        return player.Research.UnlockedEntityKinds.Contains(kind.ToString());
+    }
+
+    private static bool IsTier2Gated(EntityKind kind)
+    {
+        return kind is EntityKind.CoalMine
+            or EntityKind.OilWell
+            or EntityKind.Refinery
+            or EntityKind.CoalPlant
+            or EntityKind.SteelWall
+            or EntityKind.MediumBot
+            or EntityKind.MediumTank
+            or EntityKind.AntiAirBot
+            or EntityKind.RocketLauncher
+            or EntityKind.UndergroundConveyor
+            or EntityKind.AntiAirTurret;
     }
 
     private static bool BlocksPlacement(EntityKind kind)
@@ -669,7 +768,13 @@ public sealed class GameSimulation
                     {
                         building.InputBuffer.TryRemove(ItemId.IronPlate, 2);
                         building.PendingOutputItem = ItemId.Steel;
-                        building.WorkTicksRemaining = 30;
+                        var steelTicks = 30;
+                        if (building.OwnerId is not null)
+                        {
+                            steelTicks = ResolveStat(building.OwnerId.Value, ResearchStatIds.SmelterWorkTicks, steelTicks);
+                            steelTicks = ApplyEnergyShortage(building.OwnerId.Value, steelTicks);
+                        }
+                        building.WorkTicksRemaining = steelTicks;
                     }
 
                     break;
@@ -683,11 +788,20 @@ public sealed class GameSimulation
         }
     }
 
-    private static void StartItemRecipe(WorldEntity building, ItemId input, ItemId output, int workTicks)
+    private void StartItemRecipe(WorldEntity building, ItemId input, ItemId output, int workTicks)
     {
         if (building.PendingOutputItem is not null || !building.InputBuffer.TryRemove(input, 1))
         {
             return;
+        }
+
+        if (building.OwnerId is not null)
+        {
+            var statId = building.Kind == EntityKind.Smelter || building.Kind == EntityKind.Refinery
+                ? ResearchStatIds.SmelterWorkTicks
+                : ResearchStatIds.FactoryWorkTicks;
+            workTicks = ResolveStat(building.OwnerId.Value, statId, workTicks);
+            workTicks = ApplyEnergyShortage(building.OwnerId.Value, workTicks);
         }
 
         building.PendingOutputItem = output;
@@ -695,9 +809,15 @@ public sealed class GameSimulation
         building.WorkTicksRemaining = workTicks;
     }
 
-    private static void StartAssemblerRecipe(WorldEntity assembler)
+    private void StartAssemblerRecipe(WorldEntity assembler)
     {
         if (assembler.SelectedItemRecipe is null || !MvpDefinitions.ItemRecipes.TryGetValue(assembler.SelectedItemRecipe.Value, out var recipe))
+        {
+            return;
+        }
+
+        if (assembler.OwnerId is not null
+            && !CapabilityResolver.IsItemRecipeUnlocked(GetPlayer(assembler.OwnerId.Value).Research, recipe.Id))
         {
             return;
         }
@@ -707,9 +827,16 @@ public sealed class GameSimulation
             return;
         }
 
+        var workTicks = recipe.WorkTicks;
+        if (assembler.OwnerId is not null)
+        {
+            workTicks = ResolveStat(assembler.OwnerId.Value, ResearchStatIds.FactoryWorkTicks, workTicks);
+            workTicks = ApplyEnergyShortage(assembler.OwnerId.Value, workTicks);
+        }
+
         assembler.PendingOutputItem = recipe.OutputItem;
         assembler.PendingOutputAmount = recipe.OutputAmount;
-        assembler.WorkTicksRemaining = recipe.WorkTicks;
+        assembler.WorkTicksRemaining = workTicks;
     }
 
     private static bool TryCompletePendingOutput(WorldEntity building)
@@ -767,7 +894,13 @@ public sealed class GameSimulation
             foreach (var conveyorItem in conveyor.ConveyorItems.ToList())
             {
                 conveyorItem.ProgressTicks++;
-                if (conveyorItem.ProgressTicks < MvpDefinitions.ConveyorMoveTicks)
+                var moveTicks = MvpDefinitions.ConveyorMoveTicks;
+                if (conveyor.OwnerId is not null)
+                {
+                    moveTicks = ResolveStat(conveyor.OwnerId.Value, ResearchStatIds.ConveyorMoveTicks, moveTicks);
+                }
+
+                if (conveyorItem.ProgressTicks < moveTicks)
                 {
                     continue;
                 }
@@ -821,7 +954,7 @@ public sealed class GameSimulation
         return source.Inventory.TryTakeFirst(filter is null ? null : candidate => candidate == filter.Value, out item);
     }
 
-    private static bool TryInsertItem(WorldEntity target, ItemId item)
+    private bool TryInsertItem(WorldEntity target, ItemId item)
     {
         if (target.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor)
         {
@@ -830,7 +963,7 @@ public sealed class GameSimulation
 
         if (target.Kind == EntityKind.Hub)
         {
-            return target.Inventory.TryAddWithinTotalStackLimit(item, 1, MvpDefinitions.HubStorageStacks);
+            return target.Inventory.TryAddWithinTotalStackLimit(item, 1, GetHubStorageStacks(target.OwnerId));
         }
 
         return IsBuildingWithBuffers(target.Kind)
@@ -875,27 +1008,66 @@ public sealed class GameSimulation
 
     private void ProcessResearch()
     {
-        foreach (var player in _players.Where(player => player.ActiveResearch is not null))
-        {
-            var research = MvpDefinitions.ResearchDefinitions[player.ActiveResearch!.Value];
-            foreach (var lab in World.Entities.Where(entity => entity.IsAlive && entity.OwnerId == player.Id && entity.Kind == EntityKind.Laboratory))
-            {
-                if (player.ResearchProgressPacks >= research.RequiredPacks)
-                {
-                    break;
-                }
+        _researchSystem.ProcessResearch(this, Tick);
+    }
 
-                if (Tick % 30 == 0 && lab.InputBuffer.TryRemove(research.RequiredPack, 1))
-                {
-                    player.ResearchProgressPacks++;
-                }
+    private int ApplyEnergyShortage(PlayerId playerId, int workTicks)
+    {
+        var player = GetPlayer(playerId);
+        // No generators yet: treat as pre-power economy (no shortage slowdown).
+        if (player.PowerProduced <= 0 || player.PowerDemand <= player.PowerProduced || player.PowerDemand <= 0)
+        {
+            return workTicks;
+        }
+
+        var shortageBasisPoints = Math.Min(
+            ModifierResolver.BasisPointsScale,
+            (player.PowerDemand - player.PowerProduced) * ModifierResolver.BasisPointsScale / player.PowerDemand);
+        var penalty = ResolveStat(playerId, ResearchStatIds.EnergyShortagePenalty, shortageBasisPoints, minValue: 0);
+        var slowed = workTicks + (int)((long)workTicks * penalty / ModifierResolver.BasisPointsScale);
+        return Math.Max(workTicks, slowed);
+    }
+
+    private int GetHubStorageStacks(PlayerId? ownerId)
+    {
+        if (ownerId is null)
+        {
+            return MvpDefinitions.HubStorageStacks;
+        }
+
+        return ResolveStat(ownerId.Value, ResearchStatIds.HubStorageStacks, MvpDefinitions.HubStorageStacks, minValue: 1);
+    }
+
+    private void ProcessRepairOutOfCombat()
+    {
+        if (Tick % 30 != 0)
+        {
+            return;
+        }
+
+        foreach (var player in _players.OrderBy(player => player.Id.Value))
+        {
+            if (!CapabilityResolver.HasCapability(player.Research, ResearchCapabilityIds.RepairOutOfCombat))
+            {
+                continue;
             }
 
-            if (player.ResearchProgressPacks >= research.RequiredPacks)
+            foreach (var bastion in World.Entities
+                .Where(entity => entity.IsAlive && entity.OwnerId == player.Id && entity.Kind == EntityKind.Bastion)
+                .OrderBy(entity => entity.Id))
             {
-                player.ResearchedTechnologies.Add(research.Technology);
-                player.ActiveResearch = null;
-                player.ResearchProgressPacks = 0;
+                foreach (var unit in World.Entities
+                    .Where(entity =>
+                        entity.IsAlive
+                        && entity.OwnerId == player.Id
+                        && MvpDefinitions.UnitKinds.Contains(entity.Kind)
+                        && entity.Health < entity.MaxHealth
+                        && entity.AttackCooldownRemaining <= 0
+                        && entity.Position.ManhattanDistance(bastion.Position) <= 4)
+                    .OrderBy(entity => entity.Id))
+                {
+                    unit.Health = Math.Min(unit.MaxHealth, unit.Health + 1);
+                }
             }
         }
     }
@@ -926,9 +1098,16 @@ public sealed class GameSimulation
                 continue;
             }
 
-            if (factory.OwnerId is not null && recipe.RequiredTechnology is not null && !GetPlayer(factory.OwnerId.Value).ResearchedTechnologies.Contains(recipe.RequiredTechnology.Value))
+            if (factory.OwnerId is not null && recipe.RequiredTechnology is not null)
             {
-                continue;
+                var owner = GetPlayer(factory.OwnerId.Value);
+                var unlocked = owner.ResearchedTechnologies.Contains(recipe.RequiredTechnology.Value)
+                    || CapabilityResolver.IsRecipeUnlocked(owner.Research, recipe.OutputKind.ToString())
+                    || owner.Research.UnlockedEntityKinds.Contains(recipe.OutputKind.ToString());
+                if (!unlocked)
+                {
+                    continue;
+                }
             }
 
             if (!CanFactoryProduce(factory.Kind, recipe.OutputKind) || !factory.InputBuffer.TryRemoveAll(recipe.Inputs))
@@ -936,7 +1115,14 @@ public sealed class GameSimulation
                 continue;
             }
 
-            factory.WorkTicksRemaining = recipe.WorkTicks;
+            var workTicks = recipe.WorkTicks;
+            if (factory.OwnerId is not null)
+            {
+                workTicks = ResolveStat(factory.OwnerId.Value, ResearchStatIds.FactoryWorkTicks, workTicks, recipe.OutputKind.ToString());
+                workTicks = ApplyEnergyShortage(factory.OwnerId.Value, workTicks);
+            }
+
+            factory.WorkTicksRemaining = workTicks;
         }
     }
 
@@ -1402,6 +1588,10 @@ public sealed class GameSimulation
             foreach (var entity in World.Entities.Where(entity => entity.IsAlive && entity.OwnerId == player.Id))
             {
                 var radius = MvpDefinitions.GetStats(entity.Kind).VisionRadius;
+                if (entity.OwnerId is not null)
+                {
+                    radius = ResolveStat(entity.OwnerId.Value, ResearchStatIds.VisionRadius, radius, minValue: 0);
+                }
                 for (var y = entity.Position.Y - radius; y <= entity.Position.Y + radius; y++)
                 {
                     for (var x = entity.Position.X - radius; x <= entity.Position.X + radius; x++)

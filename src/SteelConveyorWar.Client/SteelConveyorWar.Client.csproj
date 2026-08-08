@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -7,6 +7,10 @@
   <ItemGroup>
     <ProjectReference Include="..\SteelConveyorWar.Core\SteelConveyorWar.Core.csproj" />
     <ProjectReference Include="..\SteelConveyorWar.Sfml\SteelConveyorWar.Sfml.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\config\*.json" Link="config\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

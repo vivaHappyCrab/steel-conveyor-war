@@ -145,6 +145,7 @@ public class GameSimulationTests
     public void RefineryAndSmelter_ProduceT2Products()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        UnlockTier2ForTests(simulation, new PlayerId(1));
         Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, new TilePosition(5, 12), out var smelterId));
         Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Refinery, new TilePosition(8, 12), out var refineryId));
         AdvanceTicks(simulation, 30);
@@ -190,6 +191,7 @@ public class GameSimulationTests
     public void TryQueueCommanderBuild_MovesCommanderUntilTargetIsInBuildRadius()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        UnlockTier2ForTests(simulation, new PlayerId(1));
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
 
         Assert.True(simulation.TryQueueCommanderBuild(commander.Id, EntityKind.CoalMine, new TilePosition(20, 8)));
@@ -456,6 +458,7 @@ public class GameSimulationTests
         ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT1, (ItemId.IronGear, 1), (ItemId.CopperPlate, 1));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.SciencePackT1));
 
+        UnlockTier2ForTests(simulation, new PlayerId(1));
         ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT2, (ItemId.Circuit, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.SciencePackT2));
     }
@@ -514,5 +517,18 @@ public class GameSimulationTests
 
         Assert.True(simulation.TrySetAssemblerRecipe(assemblerId, recipeId));
         AdvanceTicks(simulation, MvpDefinitions.ItemRecipes[recipeId].WorkTicks + 1);
+    }
+
+    private static void UnlockTier2ForTests(GameSimulation simulation, PlayerId playerId)
+    {
+        foreach (var technology in new[] { TechnologyId.ProductionI, TechnologyId.EnergyI, TechnologyId.CommandI })
+        {
+            Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(playerId, technology));
+            simulation.GetPlayer(playerId).Research.ProgressWorkUnits[technology] =
+                simulation.ResearchCatalog.Technologies[technology].Cost.EffortUnits;
+            simulation.AdvanceTick();
+        }
+
+        Assert.Equal(ResearchTierIds.T2, simulation.GetPlayer(playerId).Research.CurrentTierId);
     }
 }

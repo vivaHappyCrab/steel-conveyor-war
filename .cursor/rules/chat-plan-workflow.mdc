@@ -1,0 +1,35 @@
+---
+description: Chat/plan work must enter the issue→branch→draft-PR workflow before coding
+alwaysApply: true
+---
+
+# Chat and plan workflow gate
+
+Chat-originated product/code work follows the same path as `ai-ready` issues. Do **not** implement an accepted plan directly on an untracked local session.
+
+## Before plan acceptance (DoR gate)
+
+When drafting or refining a plan that will change code, config, or product docs:
+
+1. Ensure a GitHub issue exists (create one if the user agrees) with problem, acceptance criteria, non-goals, risks, and verification commands.
+2. Put the issue number and acceptance criteria **in the plan**.
+3. If DoR fields are missing, ask/stop with `needs-human` rather than treating the chat plan as ready to code.
+4. Planning may stay read-only; do **not** require a feature branch before Accept.
+
+## After plan acceptance (implementation gate)
+
+Before the first implementation edit:
+
+1. Read and follow `.cursor/skills/task-to-pr/SKILL.md`.
+2. Branch from latest `develop` as `ai/<issue-number>-short-slug` (or ask the user to create/link the issue first).
+3. Implement the smallest change that meets the issue acceptance criteria.
+4. Run `pwsh eng/verify.ps1` (or scoped build/test/smoke) and fix failures.
+5. Open/update a **draft** PR into `develop` with required artifacts; hand off to a human. Never merge.
+
+## Exceptions (no PR path required)
+
+- Pure Q&A / exploration with no repo edits
+- Trivial doc-only clarifications the user explicitly wants local-only
+- User explicitly waives the issue/PR path for a throwaway experiment
+
+If waived, state that waiver in the reply and still avoid pushing to `develop`/`main`.

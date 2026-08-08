@@ -1,10 +1,14 @@
-{
+﻿{
   "schemaVersion": 1,
   "gameId": "steel-conveyor-war",
   "displayName": "Steel Conveyor War",
   "simulation": {
     "ticksPerSecond": 30,
     "defaultRandomSeed": 42
+  },
+  "research": {
+    "content": "research.json",
+    "profile": "mvp-b"
   },
   "window": {
     "width": 1280,
