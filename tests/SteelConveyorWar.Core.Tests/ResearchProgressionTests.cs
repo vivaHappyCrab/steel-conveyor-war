@@ -144,15 +144,8 @@ public sealed class ResearchProgressionTests
 
     private static void CompleteTech(GameSimulation simulation, PlayerId playerId, TechnologyId technologyId)
     {
-        var research = simulation.GetPlayer(playerId).Research;
-        if (!research.CompletedTechnologies.Contains(technologyId))
-        {
-            Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(playerId, technologyId, confirmExclusive: true));
-        }
-
-        var definition = simulation.ResearchCatalog.Technologies[technologyId];
-        research.ProgressWorkUnits[technologyId] = definition.Cost.EffortUnits;
+        Assert.True(simulation.TryForceCompleteResearch(playerId, technologyId, confirmExclusive: true));
         simulation.AdvanceTick();
-        Assert.Contains(technologyId, research.CompletedTechnologies);
+        Assert.Contains(technologyId, simulation.GetPlayer(playerId).Research.CompletedTechnologies);
     }
 }

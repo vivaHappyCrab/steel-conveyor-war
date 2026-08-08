@@ -244,10 +244,32 @@ public sealed class GameSimulation
         return ModifierResolver.Resolve(baseValue, GetPlayer(playerId).Research.AppliedModifiers, statId, selector, minValue);
     }
 
-    public bool TrySetFactoryProduction(int factoryId, EntityKind outputKind, int? bastionId = null)
+    public bool TrySetFactoryProduction(int factoryId, EntityKind? outputKind, int? bastionId = null)
     {
         var factory = World.GetEntity(factoryId);
-        if (factory is null || !MvpDefinitions.FactoryKinds.Contains(factory.Kind) || !MvpDefinitions.ProductionRecipes.ContainsKey(outputKind))
+        if (factory is null || !MvpDefinitions.FactoryKinds.Contains(factory.Kind))
+        {
+            return false;
+        }
+
+        if (factory.WorkTicksRemaining > 0 && outputKind != factory.ProductionTargetKind)
+        {
+            return false;
+        }
+
+        if (outputKind is null)
+        {
+            factory.ProductionTargetKind = null;
+            if (bastionId is not null)
+            {
+                factory.AssignedBastionId = bastionId;
+            }
+
+            return true;
+        }
+
+        if (!MvpDefinitions.ProductionRecipes.ContainsKey(outputKind.Value)
+            || !CanFactoryProduce(factory.Kind, outputKind.Value))
         {
             return false;
         }
@@ -255,6 +277,29 @@ public sealed class GameSimulation
         factory.ProductionTargetKind = outputKind;
         factory.AssignedBastionId = bastionId;
         return true;
+    }
+
+    public bool TryForceCompleteResearch(PlayerId playerId, TechnologyId technologyId, bool confirmExclusive = true)
+    {
+        var research = GetPlayer(playerId).Research;
+        if (research.CompletedTechnologies.Contains(technologyId))
+        {
+            return true;
+        }
+
+        if (TrySelectResearch(playerId, technologyId, confirmExclusive) != ResearchCommandResult.Ok)
+        {
+            return false;
+        }
+
+        if (!ResearchCatalog.Technologies.TryGetValue(technologyId, out var definition))
+        {
+            return false;
+        }
+
+        research.ProgressWorkUnitsMutable[technologyId] = definition.Cost.EffortUnits;
+        _researchSystem.EvaluatePendingCompletions(research);
+        return research.CompletedTechnologies.Contains(technologyId);
     }
 
     public bool TrySetBastionTemplate(int bastionId, EntityKind unitKind, int count)
@@ -267,11 +312,11 @@ public sealed class GameSimulation
 
         if (count == 0)
         {
-            bastion.BastionTemplate.Remove(unitKind);
+            bastion.BastionTemplateMutable.Remove(unitKind);
         }
         else
         {
-            bastion.BastionTemplate[unitKind] = count;
+            bastion.BastionTemplateMutable[unitKind] = count;
         }
 
         return true;
@@ -961,7 +1006,7 @@ public sealed class GameSimulation
                 var target = World.GetTopEntityAt(conveyor.Position.Offset(conveyor.Direction));
                 if (target is not null && TryInsertItem(target, conveyorItem.Item))
                 {
-                    conveyor.ConveyorItems.Remove(conveyorItem);
+                    conveyor.ConveyorItemsMutable.Remove(conveyorItem);
                 }
             }
         }
@@ -989,7 +1034,7 @@ public sealed class GameSimulation
             if (conveyorItem is not null)
             {
                 item = conveyorItem.Item;
-                source.ConveyorItems.Remove(conveyorItem);
+                source.ConveyorItemsMutable.Remove(conveyorItem);
                 return true;
             }
         }
@@ -1036,7 +1081,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        conveyor.ConveyorItems.Add(new ConveyorItem(item, progressTicks));
+        conveyor.ConveyorItemsMutable.Add(new ConveyorItem(item, progressTicks));
         return true;
     }
 
@@ -1328,11 +1373,11 @@ public sealed class GameSimulation
                     return !IsGroundPassable(entity, target);
                 }
 
-                entity.MovementPath.AddRange(path);
+                entity.MovementPathMutable.AddRange(path);
             }
 
             entity.CurrentWaypoint = entity.MovementPath[0];
-            entity.MovementPath.RemoveAt(0);
+            entity.MovementPathMutable.RemoveAt(0);
         }
 
         var waypointPosition = WorldPosition.FromTileCenter(entity.CurrentWaypoint.Value);
@@ -1586,7 +1631,7 @@ public sealed class GameSimulation
 
     private static void ResetMovementPath(WorldEntity entity)
     {
-        entity.MovementPath.Clear();
+        entity.MovementPathMutable.Clear();
         entity.CurrentWaypoint = null;
     }
 

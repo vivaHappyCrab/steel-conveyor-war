@@ -4,7 +4,7 @@ public sealed class Inventory
 {
     private readonly Dictionary<ItemId, int> _items = new();
 
-    public IReadOnlyDictionary<ItemId, int> Items => _items;
+    public IReadOnlyDictionary<ItemId, int> Items => _items.AsReadOnly();
 
     public int TotalStacks
     {
@@ -19,7 +19,7 @@ public sealed class Inventory
         return _items.GetValueOrDefault(item);
     }
 
-    public void Add(ItemId item, int amount)
+    internal void Add(ItemId item, int amount)
     {
         if (amount < 0)
         {
@@ -125,7 +125,7 @@ public sealed class Inventory
         return true;
     }
 
-    public void Clear()
+    internal void Clear()
     {
         _items.Clear();
     }
