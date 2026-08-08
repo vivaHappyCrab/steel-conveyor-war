@@ -1,21 +1,38 @@
-using System.Text.Json;
 using SteelConveyorWar.Core;
 using SteelConveyorWar.Sfml;
 
 var smokeTest = args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
 
 var configDirectory = ResolveConfigDirectory();
-var gameConfigPath = Path.Combine(configDirectory, "game.json");
-var gameConfig = LoadGameConfig(gameConfigPath);
+if (!Directory.Exists(configDirectory))
+{
+    throw new InvalidOperationException($"Config directory not found. Looked under '{configDirectory}'.");
+}
 
-var catalog = LoadResearchCatalog(configDirectory, gameConfig.Research?.Content);
+var gameConfigPath = Path.Combine(configDirectory, "game.json");
+if (!File.Exists(gameConfigPath))
+{
+    throw new FileNotFoundException("Required game settings file is missing.", gameConfigPath);
+}
+
+var gameSettings = GameSettingsLoader.Parse(File.ReadAllText(gameConfigPath));
+var catalog = LoadRequiredJson(configDirectory, gameSettings.ResearchContentFile, ResearchContentLoader.Parse, "research catalog");
+var tiles = LoadRequiredJson(configDirectory, "tiles.json", TileContentLoader.Parse, "tile catalog");
+var entities = LoadRequiredJson(configDirectory, "entities.json", EntityContentLoader.Parse, "entity catalog");
+
 var options = new GameCreationOptions(
-    gameConfig.Simulation?.DefaultRandomSeed ?? 42,
-    gameConfig.Research?.Profile ?? ResearchProfileIds.MvpB,
-    catalog);
+    gameSettings.DefaultRandomSeed,
+    gameSettings.ResearchProfileId,
+    catalog,
+    tiles,
+    entities);
 
 var simulation = GameSimulation.CreateNewGame(options);
-new SfmlGameRunner().Run(simulation, smokeTest ? 3 : null);
+var display = new SfmlDisplayOptions(
+    gameSettings.Window.Width,
+    gameSettings.Window.Height,
+    gameSettings.Window.Title);
+new SfmlGameRunner().Run(simulation, smokeTest ? 3 : null, display);
 
 static string ResolveConfigDirectory()
 {
@@ -37,54 +54,13 @@ static string ResolveConfigDirectory()
     return Path.Combine(AppContext.BaseDirectory, "config");
 }
 
-static GameConfigDto LoadGameConfig(string path)
+static T LoadRequiredJson<T>(string configDirectory, string fileName, Func<string, T> parse, string label)
 {
+    var path = Path.Combine(configDirectory, fileName);
     if (!File.Exists(path))
     {
-        return new GameConfigDto();
+        throw new FileNotFoundException($"Required {label} file is missing.", path);
     }
 
-    var json = File.ReadAllText(path);
-    return JsonSerializer.Deserialize<GameConfigDto>(json, new JsonSerializerOptions
-    {
-        PropertyNameCaseInsensitive = true
-    }) ?? new GameConfigDto();
-}
-
-static ResearchCatalog LoadResearchCatalog(string configDirectory, string? contentFile)
-{
-    var embedded = MvpResearchCatalog.CreateEmbedded();
-    if (string.IsNullOrWhiteSpace(contentFile))
-    {
-        return embedded;
-    }
-
-    var path = Path.Combine(configDirectory, contentFile);
-    if (!File.Exists(path))
-    {
-        return embedded;
-    }
-
-    var fromFile = ResearchContentLoader.Parse(File.ReadAllText(path));
-    return fromFile.Technologies.Count >= embedded.Technologies.Count
-        && fromFile.Profiles.Count >= embedded.Profiles.Count
-            ? fromFile
-            : embedded;
-}
-
-sealed class GameConfigDto
-{
-    public SimulationConfigDto? Simulation { get; set; }
-    public ResearchConfigDto? Research { get; set; }
-}
-
-sealed class SimulationConfigDto
-{
-    public int DefaultRandomSeed { get; set; } = 42;
-}
-
-sealed class ResearchConfigDto
-{
-    public string Content { get; set; } = "research.json";
-    public string Profile { get; set; } = ResearchProfileIds.MvpB;
+    return parse(File.ReadAllText(path));
 }
