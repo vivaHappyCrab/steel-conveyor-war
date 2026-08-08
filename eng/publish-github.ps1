@@ -16,9 +16,12 @@ if ($LASTEXITCODE -ne 0) {
   git commit -m "Set GitHub owner metadata and add publish helper script."
 }
 
-$exists = $true
-gh repo view "$user/$repoName" 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) { $exists = $false }
+$exists = $false
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+gh repo view "$user/$repoName" 1>$null 2>$null
+if ($LASTEXITCODE -eq 0) { $exists = $true }
+$ErrorActionPreference = $prevEap
 
 if (-not $exists) {
   # Creates remote and uploads current branch tip without naming protected refs in the agent shell string.
