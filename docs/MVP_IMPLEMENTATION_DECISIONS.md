@@ -6,6 +6,7 @@ This document records architecture and game-design decisions made while implemen
 
 - Gameplay rules live in `SteelConveyorWar.Core`; SFML remains a rendering and input adapter.
 - The core simulation advances only through fixed ticks and explicit public APIs.
+- Authoritative Core state is encapsulated for adapters/tests: mutable entity/player fields use `{ get; internal set; }`, inventories expose public `Try*` with `internal` `Add`/`Clear`, and research collections are public `IReadOnly*` with assembly-internal mutable storage. External code mutates via `GameSimulation` APIs (including test helpers such as `TryForceCompleteResearch`).
 - MVP data for entities/items remains compact enums in Core; research technologies use stable string ids and JSON profiles. Broader migration of all balance to `config/` remains a follow-up.
 - `GameSimulation.CreateNewGame(seed)` creates a deterministic local 1v1 match with mirrored starts and the default research profile (`mvp-b`).
 - `GameSimulation.CreateNewGame(GameCreationOptions)` accepts an explicit research catalog/profile for tests and composition roots.

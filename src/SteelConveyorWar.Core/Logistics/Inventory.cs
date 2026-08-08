@@ -19,7 +19,7 @@ public sealed class Inventory
         return _items.GetValueOrDefault(item);
     }
 
-    public void Add(ItemId item, int amount)
+    internal void Add(ItemId item, int amount)
     {
         if (amount < 0)
         {
@@ -125,7 +125,7 @@ public sealed class Inventory
         return true;
     }
 
-    public void Clear()
+    internal void Clear()
     {
         _items.Clear();
     }

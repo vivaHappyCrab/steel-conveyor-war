@@ -63,11 +63,8 @@ public sealed class ResearchEffectsTests
 
     private static void ForceComplete(GameSimulation simulation, PlayerId playerId, TechnologyId technologyId)
     {
-        Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(playerId, technologyId, confirmExclusive: true));
-        var definition = simulation.ResearchCatalog.Technologies[technologyId];
-        var research = simulation.GetPlayer(playerId).Research;
-        research.ProgressWorkUnits[technologyId] = definition.Cost.EffortUnits;
+        Assert.True(simulation.TryForceCompleteResearch(playerId, technologyId, confirmExclusive: true));
         simulation.AdvanceTick();
-        Assert.Contains(technologyId, research.CompletedTechnologies);
+        Assert.Contains(technologyId, simulation.GetPlayer(playerId).Research.CompletedTechnologies);
     }
 }

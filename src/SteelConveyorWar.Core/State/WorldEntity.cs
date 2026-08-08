@@ -2,6 +2,10 @@ namespace SteelConveyorWar.Core;
 
 public sealed class WorldEntity
 {
+    private readonly List<ConveyorItem> _conveyorItems = new();
+    private readonly List<TilePosition> _movementPath = new();
+    private readonly Dictionary<EntityKind, int> _bastionTemplate = new();
+
     public WorldEntity(int id, EntityKind kind, TilePosition position, PlayerId? ownerId = null)
     {
         Id = id;
@@ -16,19 +20,19 @@ public sealed class WorldEntity
 
     public int Id { get; }
 
-    public EntityKind Kind { get; set; }
+    public EntityKind Kind { get; internal set; }
 
-    public PlayerId? OwnerId { get; set; }
+    public PlayerId? OwnerId { get; internal set; }
 
-    public TilePosition Position { get; set; }
+    public TilePosition Position { get; internal set; }
 
-    public WorldPosition WorldPosition { get; set; }
+    public WorldPosition WorldPosition { get; internal set; }
 
-    public Direction Direction { get; set; } = Direction.East;
+    public Direction Direction { get; internal set; } = Direction.East;
 
-    public int MaxHealth { get; set; }
+    public int MaxHealth { get; internal set; }
 
-    public int Health { get; set; }
+    public int Health { get; internal set; }
 
     public bool IsAlive => Health > 0;
 
@@ -38,43 +42,49 @@ public sealed class WorldEntity
 
     public Inventory OutputBuffer { get; } = new();
 
-    public List<ConveyorItem> ConveyorItems { get; } = new();
+    public IReadOnlyList<ConveyorItem> ConveyorItems => _conveyorItems;
 
-    public ItemId? HeldItem { get; set; }
+    internal List<ConveyorItem> ConveyorItemsMutable => _conveyorItems;
 
-    public int HeldTransferTicksRemaining { get; set; }
+    public ItemId? HeldItem { get; internal set; }
 
-    public EntityKind? BuildTargetKind { get; set; }
+    public int HeldTransferTicksRemaining { get; internal set; }
 
-    public int ConstructionTicksRemaining { get; set; }
+    public EntityKind? BuildTargetKind { get; internal set; }
 
-    public EntityKind? ProductionTargetKind { get; set; }
+    public int ConstructionTicksRemaining { get; internal set; }
 
-    public ItemId? PendingOutputItem { get; set; }
+    public EntityKind? ProductionTargetKind { get; internal set; }
 
-    public int PendingOutputAmount { get; set; } = 1;
+    public ItemId? PendingOutputItem { get; internal set; }
 
-    public int WorkTicksRemaining { get; set; }
+    public int PendingOutputAmount { get; internal set; } = 1;
 
-    public int AttackCooldownRemaining { get; set; }
+    public int WorkTicksRemaining { get; internal set; }
 
-    public ItemId? FilterItem { get; set; }
+    public int AttackCooldownRemaining { get; internal set; }
 
-    public int? AssignedBastionId { get; set; }
+    public ItemId? FilterItem { get; internal set; }
 
-    public bool IsGarrisoned { get; set; }
+    public int? AssignedBastionId { get; internal set; }
 
-    public CommanderBuildOrder? QueuedBuildOrder { get; set; }
+    public bool IsGarrisoned { get; internal set; }
 
-    public TilePosition? MoveTarget { get; set; }
+    public CommanderBuildOrder? QueuedBuildOrder { get; internal set; }
 
-    public List<TilePosition> MovementPath { get; } = new();
+    public TilePosition? MoveTarget { get; internal set; }
 
-    public TilePosition? CurrentWaypoint { get; set; }
+    public IReadOnlyList<TilePosition> MovementPath => _movementPath;
 
-    public ItemRecipeId? SelectedItemRecipe { get; set; }
+    internal List<TilePosition> MovementPathMutable => _movementPath;
 
-    public Dictionary<EntityKind, int> BastionTemplate { get; } = new();
+    public TilePosition? CurrentWaypoint { get; internal set; }
 
-    public BastionOrder Order { get; set; } = new(BastionOrderKind.Defend);
+    public ItemRecipeId? SelectedItemRecipe { get; internal set; }
+
+    public IReadOnlyDictionary<EntityKind, int> BastionTemplate => _bastionTemplate;
+
+    internal Dictionary<EntityKind, int> BastionTemplateMutable => _bastionTemplate;
+
+    public BastionOrder Order { get; internal set; } = new(BastionOrderKind.Defend);
 }

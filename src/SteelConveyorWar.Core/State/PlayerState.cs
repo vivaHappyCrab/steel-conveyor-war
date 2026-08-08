@@ -20,13 +20,13 @@ public sealed class PlayerState
 
     public PlayerResearchState Research { get; } = new();
 
-    public HashSet<TechnologyId> ResearchedTechnologies => Research.CompletedTechnologies;
+    public IReadOnlySet<TechnologyId> ResearchedTechnologies => Research.CompletedTechnologies;
 
-    public bool IsDefeated { get; set; }
+    public bool IsDefeated { get; internal set; }
 
-    public int PowerProduced { get; set; }
+    public int PowerProduced { get; internal set; }
 
-    public int PowerDemand { get; set; }
+    public int PowerDemand { get; internal set; }
 
     public IReadOnlyList<TechSignatureHotspot> TechSignatures => _techSignatures;
 
