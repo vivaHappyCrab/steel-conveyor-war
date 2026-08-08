@@ -306,6 +306,41 @@ public sealed class GameSimulation
         return research.CompletedTechnologies.Contains(technologyId);
     }
 
+    /// <summary>
+    /// Test helper: snaps an entity to a tile and clears movement/garrison/cooldown so combat setups stay deterministic.
+    /// </summary>
+    public bool TryTeleportEntityForTests(int entityId, TilePosition position)
+    {
+        var entity = World.GetEntity(entityId);
+        if (entity is null || !entity.IsAlive)
+        {
+            return false;
+        }
+
+        entity.Position = position;
+        entity.WorldPosition = WorldPosition.FromTileCenter(position);
+        entity.MoveTarget = null;
+        ResetMovementPath(entity);
+        entity.IsGarrisoned = false;
+        entity.AttackCooldownRemaining = 0;
+        return true;
+    }
+
+    /// <summary>
+    /// Test helper: sets entity health within [0, MaxHealth] for combat/victory scenarios.
+    /// </summary>
+    public bool TrySetEntityHealthForTests(int entityId, int health)
+    {
+        var entity = World.GetEntity(entityId);
+        if (entity is null || health < 0 || health > entity.MaxHealth)
+        {
+            return false;
+        }
+
+        entity.Health = health;
+        return true;
+    }
+
     public bool TrySetBastionTemplate(int bastionId, EntityKind unitKind, int count)
     {
         var bastion = World.GetEntity(bastionId);
