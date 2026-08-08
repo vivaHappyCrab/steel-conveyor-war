@@ -531,6 +531,8 @@ public sealed class ResearchSystem
         return false;
     }
 
+    internal void EvaluatePendingCompletions(PlayerResearchState research) => EvaluateCompletions(research);
+
     private void EvaluateCompletions(PlayerResearchState research)
     {
         foreach (var technologyId in research.ProgressWorkUnits.Keys.OrderBy(id => id.Value, StringComparer.Ordinal).ToList())

@@ -8,7 +8,7 @@ public sealed class TrackResearchState
 
     public TechnologyId? ActiveSerialTarget { get; internal set; }
 
-    public IReadOnlyDictionary<TechnologyId, int> ProjectWeights => _projectWeights;
+    public IReadOnlyDictionary<TechnologyId, int> ProjectWeights => _projectWeights.AsReadOnly();
 
     internal Dictionary<TechnologyId, int> ProjectWeightsMutable => _projectWeights;
 
@@ -36,57 +36,57 @@ public sealed class PlayerResearchState
     private readonly HashSet<string> _unlockedItemRecipes = new();
     private readonly List<AddModifierEffect> _appliedModifiers = new();
 
-    public IReadOnlySet<TechnologyId> CompletedTechnologies => _completedTechnologies;
+    public IReadOnlySet<TechnologyId> CompletedTechnologies => _completedTechnologies.AsReadOnly();
 
     internal HashSet<TechnologyId> CompletedTechnologiesMutable => _completedTechnologies;
 
-    public IReadOnlyDictionary<TechnologyId, int> ProgressWorkUnits => _progressWorkUnits;
+    public IReadOnlyDictionary<TechnologyId, int> ProgressWorkUnits => _progressWorkUnits.AsReadOnly();
 
     internal Dictionary<TechnologyId, int> ProgressWorkUnitsMutable => _progressWorkUnits;
 
-    public IReadOnlyDictionary<string, TrackResearchState> Tracks => _tracks;
+    public IReadOnlyDictionary<string, TrackResearchState> Tracks => _tracks.AsReadOnly();
 
     internal Dictionary<string, TrackResearchState> TracksMutable => _tracks;
 
-    public IReadOnlySet<TechnologyId> LockedTechnologies => _lockedTechnologies;
+    public IReadOnlySet<TechnologyId> LockedTechnologies => _lockedTechnologies.AsReadOnly();
 
     internal HashSet<TechnologyId> LockedTechnologiesMutable => _lockedTechnologies;
 
-    public IReadOnlySet<string> ConfirmedExclusiveGroups => _confirmedExclusiveGroups;
+    public IReadOnlySet<string> ConfirmedExclusiveGroups => _confirmedExclusiveGroups.AsReadOnly();
 
     internal HashSet<string> ConfirmedExclusiveGroupsMutable => _confirmedExclusiveGroups;
 
     public string CurrentTierId { get; internal set; } = ResearchTierIds.T1;
 
-    public IReadOnlySet<string> CompletedGateIds => _completedGateIds;
+    public IReadOnlySet<string> CompletedGateIds => _completedGateIds.AsReadOnly();
 
     internal HashSet<string> CompletedGateIdsMutable => _completedGateIds;
 
-    public IReadOnlySet<string> Milestones => _milestones;
+    public IReadOnlySet<string> Milestones => _milestones.AsReadOnly();
 
     internal HashSet<string> MilestonesMutable => _milestones;
 
-    public IReadOnlySet<string> AppliedCapabilities => _appliedCapabilities;
+    public IReadOnlySet<string> AppliedCapabilities => _appliedCapabilities.AsReadOnly();
 
     internal HashSet<string> AppliedCapabilitiesMutable => _appliedCapabilities;
 
-    public IReadOnlySet<string> UnlockedEntityKinds => _unlockedEntityKinds;
+    public IReadOnlySet<string> UnlockedEntityKinds => _unlockedEntityKinds.AsReadOnly();
 
     internal HashSet<string> UnlockedEntityKindsMutable => _unlockedEntityKinds;
 
-    public IReadOnlySet<string> UnlockedRecipes => _unlockedRecipes;
+    public IReadOnlySet<string> UnlockedRecipes => _unlockedRecipes.AsReadOnly();
 
     internal HashSet<string> UnlockedRecipesMutable => _unlockedRecipes;
 
-    public IReadOnlySet<string> UnlockedItemRecipes => _unlockedItemRecipes;
+    public IReadOnlySet<string> UnlockedItemRecipes => _unlockedItemRecipes.AsReadOnly();
 
     internal HashSet<string> UnlockedItemRecipesMutable => _unlockedItemRecipes;
 
-    public IReadOnlyList<AddModifierEffect> AppliedModifiers => _appliedModifiers;
+    public IReadOnlyList<AddModifierEffect> AppliedModifiers => _appliedModifiers.AsReadOnly();
 
     internal List<AddModifierEffect> AppliedModifiersMutable => _appliedModifiers;
 
-    public void EnsureTracks(ResearchProfileDefinition profile)
+    internal void EnsureTracks(ResearchProfileDefinition profile)
     {
         foreach (var track in profile.Schedule.Tracks)
         {

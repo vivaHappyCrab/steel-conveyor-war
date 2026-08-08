@@ -126,6 +126,48 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void TrySetFactoryProduction_RejectsFactoryUnitMismatch()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        AdvanceTicks(simulation, 30);
+
+        Assert.False(simulation.TrySetFactoryProduction(factoryId, EntityKind.Scout));
+        Assert.Null(simulation.World.GetEntity(factoryId)!.ProductionTargetKind);
+    }
+
+    [Fact]
+    public void TrySetFactoryProduction_RejectsOutputChangeWhileWorkInProgress()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        AdvanceTicks(simulation, 30);
+
+        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
+        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
+        AdvanceTicks(simulation, 1);
+
+        var factory = simulation.World.GetEntity(factoryId)!;
+        Assert.True(factory.WorkTicksRemaining > 0);
+        Assert.False(simulation.TrySetFactoryProduction(factoryId, null));
+        Assert.Equal(EntityKind.BasicTank, factory.ProductionTargetKind);
+    }
+
+    [Fact]
+    public void TryForceCompleteResearch_CompletesImmediatelyAndIsIdempotent()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.LightBot, confirmExclusive: true));
+        Assert.Contains(TechnologyId.LightBot, simulation.GetPlayer(playerId).Research.CompletedTechnologies);
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.LightBot, confirmExclusive: true));
+        Assert.DoesNotContain(TechnologyId.LightBot, simulation.GetPlayer(playerId).Research.ProgressWorkUnits.Keys);
+    }
+
+    [Fact]
     public void Laboratory_ConsumesSciencePacksAndUnlocksResearch()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);

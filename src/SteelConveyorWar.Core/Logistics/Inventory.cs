@@ -4,7 +4,7 @@ public sealed class Inventory
 {
     private readonly Dictionary<ItemId, int> _items = new();
 
-    public IReadOnlyDictionary<ItemId, int> Items => _items;
+    public IReadOnlyDictionary<ItemId, int> Items => _items.AsReadOnly();
 
     public int TotalStacks
     {

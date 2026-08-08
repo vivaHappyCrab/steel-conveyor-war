@@ -42,7 +42,7 @@ public sealed class WorldEntity
 
     public Inventory OutputBuffer { get; } = new();
 
-    public IReadOnlyList<ConveyorItem> ConveyorItems => _conveyorItems;
+    public IReadOnlyList<ConveyorItem> ConveyorItems => _conveyorItems.AsReadOnly();
 
     internal List<ConveyorItem> ConveyorItemsMutable => _conveyorItems;
 
@@ -74,7 +74,7 @@ public sealed class WorldEntity
 
     public TilePosition? MoveTarget { get; internal set; }
 
-    public IReadOnlyList<TilePosition> MovementPath => _movementPath;
+    public IReadOnlyList<TilePosition> MovementPath => _movementPath.AsReadOnly();
 
     internal List<TilePosition> MovementPathMutable => _movementPath;
 
@@ -82,7 +82,7 @@ public sealed class WorldEntity
 
     public ItemRecipeId? SelectedItemRecipe { get; internal set; }
 
-    public IReadOnlyDictionary<EntityKind, int> BastionTemplate => _bastionTemplate;
+    public IReadOnlyDictionary<EntityKind, int> BastionTemplate => _bastionTemplate.AsReadOnly();
 
     internal Dictionary<EntityKind, int> BastionTemplateMutable => _bastionTemplate;
 

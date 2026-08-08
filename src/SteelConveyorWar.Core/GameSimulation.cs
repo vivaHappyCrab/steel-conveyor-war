@@ -242,6 +242,11 @@ public sealed class GameSimulation
             return false;
         }
 
+        if (factory.WorkTicksRemaining > 0 && outputKind != factory.ProductionTargetKind)
+        {
+            return false;
+        }
+
         if (outputKind is null)
         {
             factory.ProductionTargetKind = null;
@@ -253,7 +258,8 @@ public sealed class GameSimulation
             return true;
         }
 
-        if (!MvpDefinitions.ProductionRecipes.ContainsKey(outputKind.Value))
+        if (!MvpDefinitions.ProductionRecipes.ContainsKey(outputKind.Value)
+            || !CanFactoryProduce(factory.Kind, outputKind.Value))
         {
             return false;
         }
@@ -266,12 +272,14 @@ public sealed class GameSimulation
     public bool TryForceCompleteResearch(PlayerId playerId, TechnologyId technologyId, bool confirmExclusive = true)
     {
         var research = GetPlayer(playerId).Research;
-        if (!research.CompletedTechnologies.Contains(technologyId))
+        if (research.CompletedTechnologies.Contains(technologyId))
         {
-            if (TrySelectResearch(playerId, technologyId, confirmExclusive) != ResearchCommandResult.Ok)
-            {
-                return false;
-            }
+            return true;
+        }
+
+        if (TrySelectResearch(playerId, technologyId, confirmExclusive) != ResearchCommandResult.Ok)
+        {
+            return false;
         }
 
         if (!ResearchCatalog.Technologies.TryGetValue(technologyId, out var definition))
@@ -280,7 +288,8 @@ public sealed class GameSimulation
         }
 
         research.ProgressWorkUnitsMutable[technologyId] = definition.Cost.EffortUnits;
-        return true;
+        _researchSystem.EvaluatePendingCompletions(research);
+        return research.CompletedTechnologies.Contains(technologyId);
     }
 
     public bool TrySetBastionTemplate(int bastionId, EntityKind unitKind, int count)

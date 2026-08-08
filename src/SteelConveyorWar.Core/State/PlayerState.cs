@@ -28,7 +28,7 @@ public sealed class PlayerState
 
     public int PowerDemand { get; internal set; }
 
-    public IReadOnlyList<TechSignatureHotspot> TechSignatures => _techSignatures;
+    public IReadOnlyList<TechSignatureHotspot> TechSignatures => _techSignatures.AsReadOnly();
 
     public VisibilityState GetVisibility(TilePosition position)
     {
