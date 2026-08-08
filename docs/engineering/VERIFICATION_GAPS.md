@@ -4,7 +4,8 @@ Known gaps that CI/agents should not pretend are covered.
 
 | Gap | Impact | Notes |
 |-----|--------|-------|
-| Map `RandomSeed` does not yet alter terrain layout | Determinism/multiplayer readiness | Static mirrored layout today |
+| Map `RandomSeed` does not yet alter terrain layout | Determinism/multiplayer readiness | Static mirrored layout today; seed stored but unused |
+| No on-disk map/seed-map persistence | Session resume / opaque map blobs | **Documented MVP non-goal** (GDD §17; regenerate from seed+params later). See `MVP_IMPLEMENTATION_DECISIONS.md` § Map And Session Lifetime |
 | `config/*.json` not loaded at runtime | Modding/data-driven claims | Balance in `MvpDefinitions.cs` |
 | Authoritative state fields are broadly mutable | Encapsulation / adapter safety | Prefer new public APIs |
 | No golden same-seed/same-commands state hash test | Multiplayer readiness | Add when tick systems stabilize |
