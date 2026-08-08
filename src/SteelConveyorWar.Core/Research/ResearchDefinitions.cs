@@ -73,10 +73,19 @@ public sealed record ResearchCatalog(
 public sealed record GameCreationOptions(
     int RandomSeed,
     string ProfileId,
-    ResearchCatalog Catalog)
+    ResearchCatalog Catalog,
+    TileCatalog Tiles,
+    EntityCatalog Entities)
 {
+    public GameCreationOptions(int randomSeed, string profileId, ResearchCatalog catalog)
+        : this(randomSeed, profileId, catalog, TileCatalog.Empty, EntityCatalog.Empty)
+    {
+    }
+
     public static GameCreationOptions Default => new(
         RandomSeed: 1,
         ProfileId: ResearchProfileIds.MvpB,
-        Catalog: MvpResearchCatalog.CreateEmbedded());
+        Catalog: MvpResearchCatalog.CreateEmbedded(),
+        Tiles: TileCatalog.Empty,
+        Entities: EntityCatalog.Empty);
 }

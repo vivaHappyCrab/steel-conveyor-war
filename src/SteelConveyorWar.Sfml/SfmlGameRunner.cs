@@ -7,19 +7,22 @@ namespace SteelConveyorWar.Sfml;
 
 public sealed class SfmlGameRunner
 {
-    private const uint WindowWidth = 1392;
-    private const uint WindowHeight = 720;
     private const float TileSize = 24f;
-    private const float PanelX = 1152f;
+    private const float SidePanelWidth = 240f;
     private const int MaxHudLines = 34;
     private const int RecipeLinesPerPage = 8;
     private const int HudWrapCharacters = 32;
 
-    public void Run(GameSimulation simulation, int? maxFrames = null)
+    public void Run(GameSimulation simulation, int? maxFrames = null, SfmlDisplayOptions? display = null)
     {
+        display ??= SfmlDisplayOptions.Default;
+        var windowWidth = display.Width;
+        var windowHeight = display.Height;
+        var panelX = Math.Max(0f, windowWidth - SidePanelWidth);
+
         using var window = new RenderWindow(
-            new VideoMode(new Vector2u(WindowWidth, WindowHeight)),
-            "Steel Conveyor War",
+            new VideoMode(new Vector2u(windowWidth, windowHeight)),
+            display.Title,
             Styles.Close,
             State.Windowed);
         window.Closed += (_, _) => window.Close();
@@ -190,7 +193,7 @@ public sealed class SfmlGameRunner
             var hoverPosition = Mouse.GetPosition(window);
             var hoverTile = new TilePosition((int)(hoverPosition.X / TileSize), (int)(hoverPosition.Y / TileSize));
             DrawWorld(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen ? pendingBuildKind : null, hoverTile);
-            DrawHud(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen, pendingBuildKind, recipePage, font);
+            DrawHud(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen, pendingBuildKind, recipePage, font, windowWidth, windowHeight, panelX);
             window.Display();
 
             renderedFrames++;
@@ -433,9 +436,20 @@ public sealed class SfmlGameRunner
         target.Draw(marker);
     }
 
-    private static void DrawHud(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer, int? selectedEntityId, bool isBuildMenuOpen, EntityKind? pendingBuildKind, int recipePage, Font? font)
+    private static void DrawHud(
+        IRenderTarget target,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        int? selectedEntityId,
+        bool isBuildMenuOpen,
+        EntityKind? pendingBuildKind,
+        int recipePage,
+        Font? font,
+        uint windowWidth,
+        uint windowHeight,
+        float panelX)
     {
-        DrawPanel(target);
+        DrawPanel(target, windowWidth, windowHeight, panelX);
         if (font is null)
         {
             return;
@@ -541,14 +555,14 @@ public sealed class SfmlGameRunner
             lines.Add("LMB: place/queue build");
         }
 
-        DrawTextLines(target, font, lines);
+        DrawTextLines(target, font, lines, panelX);
     }
 
-    private static void DrawPanel(IRenderTarget target)
+    private static void DrawPanel(IRenderTarget target, uint windowWidth, uint windowHeight, float panelX)
     {
-        using var panel = new RectangleShape(new Vector2f((float)WindowWidth - PanelX, WindowHeight))
+        using var panel = new RectangleShape(new Vector2f(windowWidth - panelX, windowHeight))
         {
-            Position = new Vector2f(PanelX, 0),
+            Position = new Vector2f(panelX, 0),
             FillColor = new Color(12, 16, 22, 230),
             OutlineColor = new Color(80, 95, 120),
             OutlineThickness = 1f
@@ -674,14 +688,14 @@ public sealed class SfmlGameRunner
         return string.Join(", ", cost.Select(pair => $"{pair.Value} {pair.Key}"));
     }
 
-    private static void DrawTextLines(IRenderTarget target, Font font, IReadOnlyList<string> lines)
+    private static void DrawTextLines(IRenderTarget target, Font font, IReadOnlyList<string> lines, float panelX)
     {
         for (var i = 0; i < lines.Count && i < MaxHudLines; i++)
         {
             using var text = new Text(font, lines[i], 12)
             {
                 FillColor = Color.White,
-                Position = new Vector2f(PanelX + 8f, 10f + i * 18f)
+                Position = new Vector2f(panelX + 8f, 10f + i * 18f)
             };
             target.Draw(text);
         }

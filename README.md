@@ -22,7 +22,7 @@ The current milestone provides the engineering foundation: .NET 10 solution, hea
 - `src/SteelConveyorWar.Client` — executable game client composition
 - `tests/SteelConveyorWar.Core.Tests` — core unit tests without graphics
 - `tests/SteelConveyorWar.Sfml.Tests` — SFML adapter tests
-- `config/` — data-driven content scaffold (not loaded by runtime yet)
+- `config/` — runtime-loaded content (`game.json`, `research.json`, `tiles.json`, `entities.json`); remaining balance in `MvpDefinitions.cs`
 - `resources/` — textures, fonts, audio, and other presentation assets
 - `docs/` — GDD, decisions, engineering workflow, agent roles
 - `AGENTS.md` + `.cursor/` — Cursor project instructions, rules, agents, and skills

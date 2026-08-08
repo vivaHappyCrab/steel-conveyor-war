@@ -1,0 +1,75 @@
+using System.Text.Json;
+
+namespace SteelConveyorWar.Core;
+
+public static class GameSettingsLoader
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true
+    };
+
+    public static GameSettings Parse(string json)
+    {
+        var dto = JsonSerializer.Deserialize<GameConfigDto>(json, JsonOptions)
+            ?? throw new InvalidOperationException("Game settings JSON deserialized to null.");
+
+        if (dto.SchemaVersion < 1)
+        {
+            throw new InvalidOperationException($"Unsupported game schemaVersion '{dto.SchemaVersion}'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(dto.GameId))
+        {
+            throw new InvalidOperationException("game.json is missing gameId.");
+        }
+
+        var window = dto.Window;
+        var width = window?.Width is > 0 ? (uint)window.Width : WindowSettings.Default.Width;
+        var height = window?.Height is > 0 ? (uint)window.Height : WindowSettings.Default.Height;
+        var title = string.IsNullOrWhiteSpace(window?.Title)
+            ? (string.IsNullOrWhiteSpace(dto.DisplayName) ? WindowSettings.Default.Title : dto.DisplayName)
+            : window!.Title;
+
+        return new GameSettings(
+            dto.SchemaVersion,
+            dto.GameId,
+            string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.GameId : dto.DisplayName,
+            dto.Simulation?.TicksPerSecond is > 0 ? dto.Simulation.TicksPerSecond : GameSettings.Default.TicksPerSecond,
+            dto.Simulation?.DefaultRandomSeed ?? GameSettings.Default.DefaultRandomSeed,
+            string.IsNullOrWhiteSpace(dto.Research?.Content) ? GameSettings.Default.ResearchContentFile : dto.Research.Content,
+            string.IsNullOrWhiteSpace(dto.Research?.Profile) ? GameSettings.Default.ResearchProfileId : dto.Research.Profile,
+            new WindowSettings(width, height, title));
+    }
+
+    private sealed class GameConfigDto
+    {
+        public int SchemaVersion { get; set; }
+        public string GameId { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public SimulationConfigDto? Simulation { get; set; }
+        public ResearchConfigDto? Research { get; set; }
+        public WindowConfigDto? Window { get; set; }
+    }
+
+    private sealed class SimulationConfigDto
+    {
+        public int TicksPerSecond { get; set; }
+        public int DefaultRandomSeed { get; set; } = 42;
+    }
+
+    private sealed class ResearchConfigDto
+    {
+        public string Content { get; set; } = "research.json";
+        public string Profile { get; set; } = ResearchProfileIds.MvpB;
+    }
+
+    private sealed class WindowConfigDto
+    {
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public string Title { get; set; } = "";
+    }
+}

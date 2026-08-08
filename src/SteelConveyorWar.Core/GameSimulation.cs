@@ -13,13 +13,17 @@ public sealed class GameSimulation
         IReadOnlyList<PlayerState> players,
         int randomSeed,
         ResearchCatalog catalog,
-        ResearchProfileDefinition profile)
+        ResearchProfileDefinition profile,
+        TileCatalog tiles,
+        EntityCatalog entities)
     {
         World = world;
         _players = players.ToList();
         RandomSeed = randomSeed;
         ResearchCatalog = catalog;
         ResearchProfile = profile;
+        TileCatalog = tiles;
+        EntityCatalog = entities;
         _researchSystem = new ResearchSystem(catalog, profile);
         foreach (var player in _players)
         {
@@ -34,6 +38,10 @@ public sealed class GameSimulation
     public ResearchCatalog ResearchCatalog { get; }
 
     public ResearchProfileDefinition ResearchProfile { get; }
+
+    public TileCatalog TileCatalog { get; }
+
+    public EntityCatalog EntityCatalog { get; }
 
     public long Tick { get; private set; }
 
@@ -75,7 +83,9 @@ public sealed class GameSimulation
             players,
             options.RandomSeed,
             options.Catalog,
-            profile);
+            profile,
+            options.Tiles,
+            options.Entities);
         simulation.CreateStartingEntities();
         simulation.UpdatePower();
         simulation.UpdateFogOfWar();
