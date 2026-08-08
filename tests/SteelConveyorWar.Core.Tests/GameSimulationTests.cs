@@ -21,12 +21,19 @@ public class GameSimulationTests
 
         Assert.Contains(simulation.World.Entities, entity => entity.Kind == EntityKind.Commander);
         Assert.Equal(2, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.Commander));
+        // Seeded patches jitter slightly but keep classic start anchors covered for gameplay tests.
         Assert.Equal(TerrainType.IronOre, simulation.World.GetTerrain(new TilePosition(7, 7)));
         Assert.Equal(TerrainType.CopperOre, simulation.World.GetTerrain(new TilePosition(7, 13)));
         Assert.Equal(TerrainType.IronOre, simulation.World.GetTerrain(new TilePosition(40, 7)));
         Assert.Equal(TerrainType.CopperOre, simulation.World.GetTerrain(new TilePosition(40, 13)));
-        Assert.Equal(TerrainType.Coal, simulation.World.GetTerrain(new TilePosition(20, 8)));
-        Assert.Equal(TerrainType.Oil, simulation.World.GetTerrain(new TilePosition(20, 19)));
+        Assert.Contains(
+            Enumerable.Range(0, simulation.World.Size.Width * simulation.World.Size.Height)
+                .Select(i => simulation.World.GetTerrain(new TilePosition(i % simulation.World.Size.Width, i / simulation.World.Size.Width))),
+            t => t == TerrainType.Coal);
+        Assert.Contains(
+            Enumerable.Range(0, simulation.World.Size.Width * simulation.World.Size.Height)
+                .Select(i => simulation.World.GetTerrain(new TilePosition(i % simulation.World.Size.Width, i / simulation.World.Size.Width))),
+            t => t == TerrainType.Oil);
     }
 
     [Fact]

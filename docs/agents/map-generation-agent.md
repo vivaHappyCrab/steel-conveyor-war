@@ -22,18 +22,18 @@ Terrain generation, start positions, ore/oil/coal patches, symmetry rules, and m
 
 ## Must preserve
 
-- Generation must stay deterministic and reproducible across machines (today via static mirrored layout; later via explicit seeds once generation consumes them)
-- PvP starts remain symmetrical unless design docs change
+- Generation must stay deterministic and reproducible across machines via `CreateStartingTerrain(size, randomSeed)` (local `System.Random` from seed; not retained across ticks)
+- PvP starts remain left-right mirror symmetrical unless design docs change
 - Map data stays independent from presentation assets
 
 ## Current gap
 
-- `RandomSeed` is stored but the current static `CreateStartingTerrain` layout does not yet vary by seed — fix or document before claiming seed-driven maps
-- Persisting terrain/seed-map blobs to disk is an **MVP non-goal** (see `docs/MVP_IMPLEMENTATION_DECISIONS.md` § Map And Session Lifetime). Prefer future seed+params regeneration over map files
+- Seeded starting patches are in place; full procedural biomes remain out of scope
+- Persisting terrain/seed-map blobs to disk is an **MVP non-goal** (see `docs/MVP_IMPLEMENTATION_DECISIONS.md` § Map And Session Lifetime). Prefer seed+params regeneration over map files
 
 ## Verification
 
-- Determinism/symmetry tests in Core.Tests
+- Determinism/symmetry tests in `MapGenerationTests` (Core.Tests)
 - `dotnet test tests/SteelConveyorWar.Core.Tests -c Release`
 
 ## Escalation / git

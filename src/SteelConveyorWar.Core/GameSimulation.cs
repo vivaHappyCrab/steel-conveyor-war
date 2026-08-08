@@ -64,7 +64,7 @@ public sealed class GameSimulation
         }
 
         var size = new WorldSize(48, 28);
-        var terrain = CreateStartingTerrain(size);
+        var terrain = CreateStartingTerrain(size, options.RandomSeed);
         var players = new[]
         {
             new PlayerState(new PlayerId(1), "Blue", size),
@@ -567,32 +567,75 @@ public sealed class GameSimulation
         }
     }
 
-    private static TerrainType[,] CreateStartingTerrain(WorldSize size)
+    private static TerrainType[,] CreateStartingTerrain(WorldSize size, int randomSeed)
     {
+        // Local RNG only — not retained for later ticks (determinism stays seed → layout).
+        var rng = new Random(randomSeed);
         var terrain = new TerrainType[size.Width, size.Height];
+        var halfWidth = size.Width / 2;
 
-        FillOrePatch(terrain, new TilePosition(7, 7), TerrainType.IronOre);
-        FillOrePatch(terrain, new TilePosition(7, 13), TerrainType.CopperOre);
-        FillOrePatch(terrain, new TilePosition(size.Width - 8, 7), TerrainType.IronOre);
-        FillOrePatch(terrain, new TilePosition(size.Width - 8, 13), TerrainType.CopperOre);
-        FillOrePatch(terrain, new TilePosition(size.Width / 2 - 4, 8), TerrainType.Coal);
-        FillOrePatch(terrain, new TilePosition(size.Width / 2 + 4, size.Height - 9), TerrainType.Coal);
-        FillOrePatch(terrain, new TilePosition(size.Width / 2 - 4, size.Height - 9), TerrainType.Oil);
-        FillOrePatch(terrain, new TilePosition(size.Width / 2 + 4, 8), TerrainType.Oil);
+        // Left-half start ores near Blue; right half is mirrored for PvP fairness.
+        var ironCenter = JitterTile(rng, baseX: 7, baseY: 7, maxOffset: 1, minX: 5, maxX: halfWidth - 1, minY: 4, maxY: size.Height - 5);
+        var copperCenter = JitterTile(rng, baseX: 7, baseY: 13, maxOffset: 1, minX: 5, maxX: halfWidth - 1, minY: 4, maxY: size.Height - 5);
+        FillOrePatchLeftHalf(terrain, ironCenter, TerrainType.IronOre, maxDistance: 2 + rng.Next(0, 2), halfWidth);
+        FillOrePatchLeftHalf(terrain, copperCenter, TerrainType.CopperOre, maxDistance: 2 + rng.Next(0, 2), halfWidth);
 
+        // Neutral coal/oil near center on the left half, then mirrored.
+        var coalCenter = JitterTile(rng, baseX: halfWidth - 4, baseY: 8, maxOffset: 1, minX: halfWidth - 6, maxX: halfWidth - 1, minY: 4, maxY: size.Height / 2);
+        var oilCenter = JitterTile(rng, baseX: halfWidth - 4, baseY: size.Height - 9, maxOffset: 1, minX: halfWidth - 6, maxX: halfWidth - 1, minY: size.Height / 2, maxY: size.Height - 5);
+        FillOrePatchLeftHalf(terrain, coalCenter, TerrainType.Coal, maxDistance: 2 + rng.Next(0, 2), halfWidth);
+        FillOrePatchLeftHalf(terrain, oilCenter, TerrainType.Oil, maxDistance: 2 + rng.Next(0, 2), halfWidth);
+
+        MirrorResourceTilesLeftToRight(terrain, halfWidth);
         return terrain;
     }
 
-    private static void FillOrePatch(TerrainType[,] terrain, TilePosition center, TerrainType type)
+    private static TilePosition JitterTile(
+        Random rng,
+        int baseX,
+        int baseY,
+        int maxOffset,
+        int minX,
+        int maxX,
+        int minY,
+        int maxY)
     {
-        for (var y = center.Y - 2; y <= center.Y + 2; y++)
+        var x = Math.Clamp(baseX + rng.Next(-maxOffset, maxOffset + 1), minX, maxX);
+        var y = Math.Clamp(baseY + rng.Next(-maxOffset, maxOffset + 1), minY, maxY);
+        return new TilePosition(x, y);
+    }
+
+    private static void FillOrePatchLeftHalf(TerrainType[,] terrain, TilePosition center, TerrainType type, int maxDistance, int halfWidth)
+    {
+        for (var y = center.Y - maxDistance; y <= center.Y + maxDistance; y++)
         {
-            for (var x = center.X - 2; x <= center.X + 2; x++)
+            for (var x = center.X - maxDistance; x <= center.X + maxDistance; x++)
             {
                 var distance = Math.Abs(center.X - x) + Math.Abs(center.Y - y);
-                if (distance <= 3 && x >= 0 && y >= 0 && x < terrain.GetLength(0) && y < terrain.GetLength(1))
+                if (distance <= maxDistance
+                    && x >= 0
+                    && y >= 0
+                    && x < halfWidth
+                    && y < terrain.GetLength(1))
                 {
                     terrain[x, y] = type;
+                }
+            }
+        }
+    }
+
+    private static void MirrorResourceTilesLeftToRight(TerrainType[,] terrain, int halfWidth)
+    {
+        var width = terrain.GetLength(0);
+        var height = terrain.GetLength(1);
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < halfWidth; x++)
+            {
+                var tile = terrain[x, y];
+                if (tile != TerrainType.Grass)
+                {
+                    terrain[width - 1 - x, y] = tile;
                 }
             }
         }

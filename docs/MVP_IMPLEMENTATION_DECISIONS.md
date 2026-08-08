@@ -81,11 +81,12 @@ This document records architecture and game-design decisions made while implemen
 
 ## Map And Session Lifetime
 
-- `GameSimulation.CreateNewGame` builds a fixed mirrored terrain in memory via `CreateStartingTerrain` and stores `RandomSeed` on the simulation.
-- Terrain and entity layout currently live only for the process lifetime of one match. Exiting the client discards the in-memory grid; the next session regenerates the same static layout from code.
-- `RandomSeed` is accepted from `GameCreationOptions` / `config/game.json` (`simulation.defaultRandomSeed`) but is **not** consumed by terrain generation yet. Session-to-session reproducibility today comes from the hardcoded mirrored layout, not from seed or disk.
+- `GameSimulation.CreateNewGame` builds mirrored starting terrain in memory via `CreateStartingTerrain(size, options.RandomSeed)` and stores `RandomSeed` on the simulation.
+- Terrain generation uses a local `System.Random` seeded with `RandomSeed` to jitter patch centers/radii on the left half, then mirrors resource tiles to the right for PvP fairness. Grass remains the default fill. The RNG is not kept for later ticks.
+- Terrain and entity layout currently live only for the process lifetime of one match. Exiting the client discards the in-memory grid; the next session regenerates from the same seed + generation parameters.
+- `RandomSeed` is accepted from `GameCreationOptions` / `config/game.json` (`simulation.defaultRandomSeed`) and consumed by starting terrain generation (reproducibility covered by `MapGenerationTests`).
 - Desired post-MVP reproducibility prefers **seed + generation parameters → regenerate** over opaque map blobs (better for lockstep / fairness than shipping terrain files).
-- **MVP non-goal:** no on-disk map/seed-map blob format, and no save/load path for world terrain. Aligns with GDD §17 (saves are out of MVP). Seed-driven generation remains a separate follow-up (see `docs/engineering/VERIFICATION_GAPS.md`).
+- **MVP non-goal:** no on-disk map/seed-map blob format, and no save/load path for world terrain. Aligns with GDD §17 (saves are out of MVP). Full procedural biomes remain out of scope.
 
 ## Open Follow-Ups
 
@@ -94,4 +95,3 @@ This document records architecture and game-design decisions made while implemen
 - Expand SFML research controls from prototype paging/hotkeys to a dedicated full tree panel.
 - Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.
 - Add tick-stamped command queue / state hash for multiplayer research lockstep.
-- Teach map generation to consume `RandomSeed` before any claim of seed-driven layouts (no MVP map-disk format).
