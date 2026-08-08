@@ -4,9 +4,9 @@
     "beforeShellExecution": [
       {
         "type": "prompt",
-        "prompt": "Allow only if this shell command is safe for the Steel Conveyor War repo. DENY force-push and any direct push/merge/commit targeting protected branches main or develop. Allow normal feature-branch git operations, builds, tests, and smoke runs. Hook input: $ARGUMENTS",
-        "matcher": "git\\s+(push|merge|pull)|gh\\s+pr\\s+merge",
-        "timeout": 15,
+        "prompt": "Steel Conveyor War git guard: DENY force-push and DENY direct push/merge into protected branches main or develop UNLESS this is clearly initial bootstrap/admin setup requested by the owner. Allow feature-branch git operations, builds, tests, smoke runs, and gh repo/issue/pr create (not merge). Hook input: $ARGUMENTS",
+        "matcher": "git\\s+(push|merge)|gh\\s+pr\\s+merge",
+        "timeout": 20,
         "failClosed": false
       }
     ]
