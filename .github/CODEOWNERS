@@ -2,14 +2,14 @@
 
 # Protect workflow and agent policy files. Replace OWNER with the GitHub username
 # after the repository is created if different from the authenticated publisher.
-/.github/ @HC
-/.cursor/ @HC
-/AGENTS.md @HC
-/CONTRIBUTING.md @HC
-/SECURITY.md @HC
-/eng/ @HC
+/.github/ @vivaHappyCrab
+/.cursor/ @vivaHappyCrab
+/AGENTS.md @vivaHappyCrab
+/CONTRIBUTING.md @vivaHappyCrab
+/SECURITY.md @vivaHappyCrab
+/eng/ @vivaHappyCrab
 
-/src/SteelConveyorWar.Core/ @HC
-/src/SteelConveyorWar.Sfml/ @HC
-/src/SteelConveyorWar.Client/ @HC
-/tests/ @HC
+/src/SteelConveyorWar.Core/ @vivaHappyCrab
+/src/SteelConveyorWar.Sfml/ @vivaHappyCrab
+/src/SteelConveyorWar.Client/ @vivaHappyCrab
+/tests/ @vivaHappyCrab
