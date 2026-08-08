@@ -10,5 +10,5 @@ public sealed class ConveyorItem
 
     public ItemId Item { get; }
 
-    public int ProgressTicks { get; set; }
+    public int ProgressTicks { get; internal set; }
 }

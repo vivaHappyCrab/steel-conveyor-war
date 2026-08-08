@@ -24,7 +24,7 @@ public sealed class ResearchSystem
         research.EnsureTracks(_profile);
         foreach (var capability in _catalog.BaselineCapabilities)
         {
-            research.AppliedCapabilities.Add(capability);
+            research.AppliedCapabilitiesMutable.Add(capability);
         }
 
         ApplyTierBaselineUnlocks(research, ResearchTierIds.T1);
@@ -85,7 +85,7 @@ public sealed class ResearchSystem
                     return ResearchCommandResult.NotAvailable;
                 }
 
-                track.ProjectWeights[technologyId] = trackDefinition.DefaultWeight;
+                track.ProjectWeightsMutable[technologyId] = trackDefinition.DefaultWeight;
             }
         }
 
@@ -96,7 +96,7 @@ public sealed class ResearchSystem
 
         if (exclusiveGroup is not null && confirmExclusive)
         {
-            research.ConfirmedExclusiveGroups.Add(exclusiveGroup.Id);
+            research.ConfirmedExclusiveGroupsMutable.Add(exclusiveGroup.Id);
         }
 
         return ResearchCommandResult.Ok;
@@ -109,7 +109,7 @@ public sealed class ResearchSystem
             return ResearchCommandResult.NotAvailable;
         }
 
-        research.ConfirmedExclusiveGroups.Add(exclusiveGroupId);
+        research.ConfirmedExclusiveGroupsMutable.Add(exclusiveGroupId);
         return ResearchCommandResult.Ok;
     }
 
@@ -187,11 +187,11 @@ public sealed class ResearchSystem
 
         if (weight == 0)
         {
-            track.ProjectWeights.Remove(technologyId);
+            track.ProjectWeightsMutable.Remove(technologyId);
         }
         else
         {
-            track.ProjectWeights[technologyId] = weight;
+            track.ProjectWeightsMutable[technologyId] = weight;
         }
 
         return ResearchCommandResult.Ok;
@@ -336,7 +336,7 @@ public sealed class ResearchSystem
                 {
                     if (!IsActiveCandidate(research, technologyId) || track.ProjectWeights[technologyId] <= 0)
                     {
-                        track.ProjectWeights.Remove(technologyId);
+                        track.ProjectWeightsMutable.Remove(technologyId);
                         continue;
                     }
 
@@ -484,7 +484,7 @@ public sealed class ResearchSystem
         }
 
         research.ProgressWorkUnits.TryGetValue(technologyId, out var current);
-        research.ProgressWorkUnits[technologyId] = current + awarded;
+        research.ProgressWorkUnitsMutable[technologyId] = current + awarded;
     }
 
     private int BasisPointsForTechnology(PlayerResearchState research, TechnologyDefinition definition)
@@ -531,6 +531,8 @@ public sealed class ResearchSystem
         return false;
     }
 
+    internal void EvaluatePendingCompletions(PlayerResearchState research) => EvaluateCompletions(research);
+
     private void EvaluateCompletions(PlayerResearchState research)
     {
         foreach (var technologyId in research.ProgressWorkUnits.Keys.OrderBy(id => id.Value, StringComparer.Ordinal).ToList())
@@ -554,8 +556,8 @@ public sealed class ResearchSystem
 
     private void CompleteTechnology(PlayerResearchState research, TechnologyDefinition definition)
     {
-        research.CompletedTechnologies.Add(definition.Id);
-        research.ProgressWorkUnits.Remove(definition.Id);
+        research.CompletedTechnologiesMutable.Add(definition.Id);
+        research.ProgressWorkUnitsMutable.Remove(definition.Id);
 
         foreach (var track in research.Tracks.Values)
         {
@@ -564,7 +566,7 @@ public sealed class ResearchSystem
                 track.ActiveSerialTarget = null;
             }
 
-            track.ProjectWeights.Remove(definition.Id);
+            track.ProjectWeightsMutable.Remove(definition.Id);
         }
 
         var exclusiveGroup = FindExclusiveGroup(definition.Id);
@@ -595,7 +597,7 @@ public sealed class ResearchSystem
             return;
         }
 
-        research.CompletedGateIds.Add(gate.Id);
+        research.CompletedGateIdsMutable.Add(gate.Id);
         ApplyEffects(research, gate.CompletionEffects);
 
         if (gate.TargetTierId is not null)
@@ -628,7 +630,7 @@ public sealed class ResearchSystem
                 continue;
             }
 
-            research.LockedTechnologies.Add(member);
+            research.LockedTechnologiesMutable.Add(member);
             foreach (var track in research.Tracks.Values)
             {
                 if (track.ActiveSerialTarget == member)
@@ -636,7 +638,7 @@ public sealed class ResearchSystem
                     track.ActiveSerialTarget = null;
                 }
 
-                track.ProjectWeights.Remove(member);
+                track.ProjectWeightsMutable.Remove(member);
             }
         }
     }
@@ -651,25 +653,25 @@ public sealed class ResearchSystem
                     switch (unlock.ContentKind)
                     {
                         case "entity":
-                            research.UnlockedEntityKinds.Add(unlock.ContentId);
+                            research.UnlockedEntityKindsMutable.Add(unlock.ContentId);
                             break;
                         case "recipe":
-                            research.UnlockedRecipes.Add(unlock.ContentId);
+                            research.UnlockedRecipesMutable.Add(unlock.ContentId);
                             break;
                         case "item-recipe":
-                            research.UnlockedItemRecipes.Add(unlock.ContentId);
+                            research.UnlockedItemRecipesMutable.Add(unlock.ContentId);
                             break;
                     }
 
                     break;
                 case GrantCapabilityEffect grant:
-                    research.AppliedCapabilities.Add(grant.CapabilityId);
+                    research.AppliedCapabilitiesMutable.Add(grant.CapabilityId);
                     break;
                 case AddModifierEffect modifier:
-                    research.AppliedModifiers.Add(modifier);
+                    research.AppliedModifiersMutable.Add(modifier);
                     break;
                 case CompleteMilestoneEffect milestone:
-                    research.Milestones.Add(milestone.MilestoneId);
+                    research.MilestonesMutable.Add(milestone.MilestoneId);
                     break;
             }
         }
