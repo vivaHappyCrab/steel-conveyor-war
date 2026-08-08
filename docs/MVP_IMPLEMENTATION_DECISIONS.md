@@ -6,8 +6,9 @@ This document records architecture and game-design decisions made while implemen
 
 - Gameplay rules live in `SteelConveyorWar.Core`; SFML remains a rendering and input adapter.
 - The core simulation advances only through fixed ticks and explicit public APIs.
-- MVP data is represented by stable enums for resources, entities and technologies. This keeps the first implementation compact; moving the same definitions to `config/` remains a post-foundation task.
-- `GameSimulation.CreateNewGame(seed)` creates a deterministic local 1v1 match with mirrored starts.
+- MVP data for entities/items remains compact enums in Core; research technologies use stable string ids and JSON profiles. Broader migration of all balance to `config/` remains a follow-up.
+- `GameSimulation.CreateNewGame(seed)` creates a deterministic local 1v1 match with mirrored starts and the default research profile (`mvp-b`).
+- `GameSimulation.CreateNewGame(GameCreationOptions)` accepts an explicit research catalog/profile for tests and composition roots.
 
 ## Scope Strategy
 
@@ -45,9 +46,15 @@ This document records architecture and game-design decisions made while implemen
 
 ## Research
 
-- Laboratories consume science packs from their own inventories.
-- T1 and T2 technologies unlock recipes or buildings according to `docs/MVP_GDD.md`.
-- Science recipes are represented as items and balance placeholders rather than a final economy.
+- Laboratories consume science packs from their own input buffers on a fixed lab cycle.
+- Research is data-driven through `ResearchCatalog` / `config/research.json` with composable profiles (`mvp-a`, `mvp-b`, `mvp-c`, `hybrid-a-c`).
+- Default match profile is `mvp-b` from `config/game.json`; `GameSimulation.CreateNewGame(GameCreationOptions)` can override the profile for tests and future hosts.
+- Profiles combine orthogonal rules: tier gates (fixed set or 1-of-N qualifications), tracks (serial or weighted-parallel), exclusive doctrine groups, optional expansion pools, and typed effects.
+- There is no runtime `switch(variant)` — gameplay systems query capabilities and modifiers, not profile ids.
+- Progress is stored per technology and is not reset when switching projects.
+- Completing a gate automatically unlocks the next tier (or records the T3 milestone without opening T3 content).
+- Effects use integer basis-point modifiers (`AddModifier`) plus `UnlockContent` / `GrantCapability` / `CompleteMilestone`.
+- Embedded `MvpResearchCatalog` remains the parity fallback; `eng/ExportResearchCatalog` regenerates `config/research.json` from it.
 
 ## Bastions And Combat
 
@@ -64,7 +71,8 @@ This document records architecture and game-design decisions made while implemen
 
 ## Open Follow-Ups
 
-- Move balance definitions from code to `config/` once the shape stabilizes.
+- Expand remaining non-research balance definitions from code to `config/` once the shape stabilizes.
 - Add stricter energy throttling once production loops are tuned.
-- Expand SFML input from smoke-test-friendly interactions to full RTS controls.
+- Expand SFML research controls from prototype paging/hotkeys to a dedicated full tree panel.
 - Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.
+- Add tick-stamped command queue / state hash for multiplayer research lockstep.

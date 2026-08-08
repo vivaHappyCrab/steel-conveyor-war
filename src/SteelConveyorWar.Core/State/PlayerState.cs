@@ -18,11 +18,9 @@ public sealed class PlayerState
 
     public Inventory Inventory { get; } = new();
 
-    public HashSet<TechnologyId> ResearchedTechnologies { get; } = new();
+    public PlayerResearchState Research { get; } = new();
 
-    public TechnologyId? ActiveResearch { get; set; }
-
-    public int ResearchProgressPacks { get; set; }
+    public HashSet<TechnologyId> ResearchedTechnologies => Research.CompletedTechnologies;
 
     public bool IsDefeated { get; set; }
 

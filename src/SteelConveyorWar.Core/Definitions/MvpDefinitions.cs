@@ -170,23 +170,8 @@ public static class MvpDefinitions
             [ItemRecipeId.SciencePackT2] = new(ItemRecipeId.SciencePackT2, Cost((ItemId.Circuit, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1)), ItemId.SciencePackT2, 1, 45)
         };
 
-    public static readonly IReadOnlyDictionary<TechnologyId, ResearchDefinition> ResearchDefinitions =
-        new Dictionary<TechnologyId, ResearchDefinition>
-        {
-            [TechnologyId.LightBot] = new(TechnologyId.LightBot, ItemId.SciencePackT1, 3),
-            [TechnologyId.ImprovedConveyors] = new(TechnologyId.ImprovedConveyors, ItemId.SciencePackT1, 3),
-            [TechnologyId.MachineGunTurret] = new(TechnologyId.MachineGunTurret, ItemId.SciencePackT1, 3),
-            [TechnologyId.ConcreteWalls] = new(TechnologyId.ConcreteWalls, ItemId.SciencePackT1, 2),
-            [TechnologyId.Scout] = new(TechnologyId.Scout, ItemId.SciencePackT1, 3),
-            [TechnologyId.MediumBot] = new(TechnologyId.MediumBot, ItemId.SciencePackT2, 4),
-            [TechnologyId.MediumTank] = new(TechnologyId.MediumTank, ItemId.SciencePackT2, 4),
-            [TechnologyId.RocketLauncher] = new(TechnologyId.RocketLauncher, ItemId.SciencePackT2, 4),
-            [TechnologyId.ConstructionDrone] = new(TechnologyId.ConstructionDrone, ItemId.SciencePackT2, 3),
-            [TechnologyId.AntiAirTurret] = new(TechnologyId.AntiAirTurret, ItemId.SciencePackT2, 3),
-            [TechnologyId.UndergroundConveyors] = new(TechnologyId.UndergroundConveyors, ItemId.SciencePackT2, 3),
-            [TechnologyId.SteelWalls] = new(TechnologyId.SteelWalls, ItemId.SciencePackT2, 3),
-            [TechnologyId.AdditionalBastions] = new(TechnologyId.AdditionalBastions, ItemId.SciencePackT2, 4)
-        };
+    // Research catalog moved to Research/MvpResearchCatalog.cs
+
 
     public static readonly IReadOnlyDictionary<EntityKind, int> TechSignatureIntensity =
         new Dictionary<EntityKind, int>

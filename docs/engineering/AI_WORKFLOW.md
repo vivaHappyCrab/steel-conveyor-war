@@ -12,6 +12,18 @@ End-to-end path from issue to a human-merged PR on `develop`.
 6. Cursor Cloud Automation `Keep AI PR merge-ready` fixes clear in-scope CI/review failures and reports readiness.
 7. A human reviews artifacts and merges. Automations must not approve or merge.
 
+## Chat / Cursor plan path
+
+Local Cursor chats use the same destination as Cloud Automation. Timing:
+
+| Moment | Required |
+|--------|----------|
+| Before Accept on an implementation plan | Linked GitHub issue with DoR fields; criteria copied into the plan |
+| After Accept, before first code edit | Follow `.cursor/skills/task-to-pr` — branch from `develop`, implement, verify, draft PR |
+| Exceptions | Explicit user waiver for throwaway experiments only |
+
+Do not treat an accepted Cursor plan as a substitute for an issue + draft PR.
+
 ## Required PR artifacts
 
 | Artifact | Required |

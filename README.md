@@ -76,6 +76,6 @@ dotnet test SteelConveyorWar.sln -c Release
 dotnet run --project src/SteelConveyorWar.Client -c Release -- --smoke-test
 ```
 
-Expected local baseline: build 0 warnings / 0 errors; **33** tests (32 Core + 1 Sfml); client smoke exits successfully.
+Expected local baseline: build 0 warnings / 0 errors; **53** tests (49 Core + 4 Sfml); client smoke exits successfully.
 
 See `docs/MVP_IMPLEMENTATION_DECISIONS.md` and `docs/engineering/VERIFICATION_GAPS.md`.

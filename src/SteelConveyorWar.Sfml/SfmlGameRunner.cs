@@ -15,7 +15,7 @@ public sealed class SfmlGameRunner
     private const int RecipeLinesPerPage = 8;
     private const int HudWrapCharacters = 32;
 
-    public void Run(int? maxFrames = null)
+    public void Run(GameSimulation simulation, int? maxFrames = null)
     {
         using var window = new RenderWindow(
             new VideoMode(new Vector2u(WindowWidth, WindowHeight)),
@@ -24,8 +24,6 @@ public sealed class SfmlGameRunner
             State.Windowed);
         window.Closed += (_, _) => window.Close();
         window.SetFramerateLimit(60);
-
-        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var localPlayer = new PlayerId(1);
         int? selectedEntityId = simulation.World.Entities.First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander).Id;
         var isBuildMenuOpen = false;
@@ -69,6 +67,43 @@ public sealed class SfmlGameRunner
             {
                 simulation.TrySetAssemblerRecipe(selectedEntity.Id, recipeId);
                 recipePage = 0;
+                return;
+            }
+
+            if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Laboratory && TryGetNumberShortcut(key, out var researchIndex))
+            {
+                var ownerId = selectedEntity.OwnerId ?? localPlayer;
+                var panel = ResearchPanelModel.FromSnapshot(simulation.GetResearchSnapshot(ownerId), recipePage);
+                if (researchIndex < panel.PageEntries.Count)
+                {
+                    var entry = panel.PageEntries[researchIndex];
+                    simulation.TrySelectResearch(
+                        ownerId,
+                        entry.Id,
+                        confirmExclusive: entry.RequiresExclusiveConfirmation,
+                        preferredTrackId: entry.TrackId);
+                }
+
+                return;
+            }
+
+            if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Laboratory && key == "T")
+            {
+                var ownerId = selectedEntity.OwnerId ?? localPlayer;
+                var snapshot = simulation.GetResearchSnapshot(ownerId);
+                var panel = ResearchPanelModel.FromSnapshot(snapshot, recipePage);
+                if (panel.SupportsAllocationToggle)
+                {
+                    var cycle = snapshot.Tracks.FirstOrDefault(track => track.Id.Contains("cycle", StringComparison.OrdinalIgnoreCase)) ?? snapshot.Tracks[0];
+                    var tactical = snapshot.Tracks.FirstOrDefault(track => track.Id != cycle.Id) ?? snapshot.Tracks[^1];
+                    var fullCycle = cycle.AllocationBasisPoints >= 10_000;
+                    simulation.TrySetTrackAllocation(ownerId, new Dictionary<string, int>
+                    {
+                        [cycle.Id] = fullCycle ? 7_000 : 10_000,
+                        [tactical.Id] = fullCycle ? 3_000 : 0
+                    });
+                }
+
                 return;
             }
 
@@ -460,7 +495,7 @@ public sealed class SfmlGameRunner
                 lines.Add("1-5: set assembler recipe");
             }
 
-            AddRecipeLines(lines, GetRecipeLines(selected, simulation, localPlayer), recipePage);
+            AddRecipeLines(lines, GetRecipeLines(selected, simulation, localPlayer, recipePage), recipePage: 0);
 
             lines.Add("Inventory:");
             AddInventoryLines(lines, selected.Inventory);
@@ -597,7 +632,7 @@ public sealed class SfmlGameRunner
             or EntityKind.AntiAirTurret;
     }
 
-    private static IEnumerable<string> GetRecipeLines(WorldEntity selected, GameSimulation simulation, PlayerId localPlayer)
+    private static IEnumerable<string> GetRecipeLines(WorldEntity selected, GameSimulation simulation, PlayerId localPlayer, int researchPage)
     {
         if (MvpDefinitions.FactoryKinds.Contains(selected.Kind))
         {
@@ -609,11 +644,11 @@ public sealed class SfmlGameRunner
         }
         else if (selected.Kind == EntityKind.Laboratory)
         {
-            var player = selected.OwnerId is null ? simulation.GetPlayer(localPlayer) : simulation.GetPlayer(selected.OwnerId.Value);
-            yield return $"Research: {player.ActiveResearch?.ToString() ?? "-"}";
-            foreach (var research in MvpDefinitions.ResearchDefinitions.Values.Where(research => !player.ResearchedTechnologies.Contains(research.Technology)).Take(4))
+            var playerId = selected.OwnerId ?? localPlayer;
+            var panel = ResearchPanelModel.FromSnapshot(simulation.GetResearchSnapshot(playerId), researchPage);
+            foreach (var line in panel.ToHudLines())
             {
-                yield return $"  {research.Technology}: {research.RequiredPacks}x {research.RequiredPack}";
+                yield return line;
             }
         }
         else if (selected.Kind == EntityKind.Smelter)

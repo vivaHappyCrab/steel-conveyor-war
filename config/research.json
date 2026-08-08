@@ -1,0 +1,2452 @@
+{
+  "technologies": [
+    {
+      "id": "technology.t1.automated-base",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t1.command-i",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t1.concrete-walls",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Wall",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.conveyor-telemetry",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.conveyor.move-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8500
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.defensive-engineering",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 7500
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "field",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.distant-expedition",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t1.distributed-energy",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.energy.shortage-penalty",
+          "operation": "Multiply",
+          "valueBasisPoints": 7500
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "infrastructure",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.doctrine.fortification",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 7500
+        }
+      ],
+      "tags": [
+        "doctrine",
+        "tactical",
+        "optional"
+      ]
+    },
+    {
+      "id": "technology.t1.doctrine.fortified-line",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8000
+        }
+      ],
+      "tags": [
+        "doctrine",
+        "tactical",
+        "optional"
+      ]
+    },
+    {
+      "id": "technology.t1.doctrine.mobile-groups",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000,
+          "selector": "LightBot"
+        }
+      ],
+      "tags": [
+        "doctrine",
+        "tactical",
+        "optional"
+      ]
+    },
+    {
+      "id": "technology.t1.doctrine.observation",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.vision.radius",
+          "operation": "Add",
+          "valueBasisPoints": 20000
+        }
+      ],
+      "tags": [
+        "doctrine",
+        "tactical",
+        "optional"
+      ]
+    },
+    {
+      "id": "technology.t1.doctrine.swarm",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8500,
+          "selector": "LightBot"
+        }
+      ],
+      "tags": [
+        "doctrine",
+        "tactical",
+        "optional"
+      ]
+    },
+    {
+      "id": "technology.t1.energy-i",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.energy.shortage-penalty",
+          "operation": "Multiply",
+          "valueBasisPoints": 8000
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t1.energy-reserve",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.energy.shortage-penalty",
+          "operation": "Multiply",
+          "valueBasisPoints": 7500
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.expedition-logistics",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8000
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "field",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.fast-regroup",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.field-repair",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "grantCapability",
+          "capabilityId": "capability.repair-out-of-combat",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.forward-observer",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.vision.radius",
+          "operation": "Add",
+          "valueBasisPoints": 10000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.hub-buffering",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.hub.storage-stacks",
+          "operation": "Add",
+          "valueBasisPoints": 30000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.improved-conveyors",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.conveyor.move-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 7000
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "production",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.light-bot",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "LightBot",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.machine-gun-turret",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "MachineGunTurret",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.mass-production",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8500
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "production",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.modular-tooling",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.new-resource-mastery",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "grantCapability",
+          "capabilityId": "capability.tier2-content",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t1.power-reserve",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.energy.shortage-penalty",
+          "operation": "Multiply",
+          "valueBasisPoints": 7000
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "infrastructure",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.prefab-fortifications",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.production-i",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t1.production-reserve",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.hub.storage-stacks",
+          "operation": "Add",
+          "valueBasisPoints": 20000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.recon-archive",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.vision.radius",
+          "operation": "Add",
+          "valueBasisPoints": 5000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.return-protocol",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.scout",
+      "tierId": "tier.t1",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Scout",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "recipe",
+          "contentId": "Scout",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.additional-bastions",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "grantCapability",
+          "capabilityId": "capability.additional-bastions",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "command",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.ammo-priority",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 2,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9500
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.anti-air-turret",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "AntiAirTurret",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "AntiAirBot",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "recipe",
+          "contentId": "AntiAirBot",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.auto-resupply",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8500
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "command",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.command-ii",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t2.construction-drone",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 7500
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "logistics",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.doctrine.armor-breakthrough",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8500,
+          "selector": "MediumTank"
+        }
+      ],
+      "tags": [
+        "doctrine",
+        "tactical",
+        "optional"
+      ]
+    },
+    {
+      "id": "technology.t2.doctrine.armor-fist",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8000,
+          "selector": "MediumTank"
+        }
+      ],
+      "tags": [
+        "doctrine",
+        "tactical",
+        "optional"
+      ]
+    },
+    {
+      "id": "technology.t2.doctrine.maneuver-net",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "grantCapability",
+          "capabilityId": "capability.additional-bastions",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "doctrine",
+        "tactical",
+        "optional"
+      ]
+    },
+    {
+      "id": "technology.t2.doctrine.ranged-pressure",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8500,
+          "selector": "RocketLauncher"
+        }
+      ],
+      "tags": [
+        "doctrine",
+        "tactical",
+        "optional"
+      ]
+    },
+    {
+      "id": "technology.t2.doctrine.siege-control",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8000,
+          "selector": "RocketLauncher"
+        }
+      ],
+      "tags": [
+        "doctrine",
+        "tactical",
+        "optional"
+      ]
+    },
+    {
+      "id": "technology.t2.drone-coordination",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.field-bastion-network",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "grantCapability",
+          "capabilityId": "capability.additional-bastions",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle",
+        "qualification",
+        "command"
+      ]
+    },
+    {
+      "id": "technology.t2.fuel-intensification",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8500
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "industry",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.fuel-logistics",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.factory.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t2.medium-bot",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "MediumBot",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "recipe",
+          "contentId": "MediumBot",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.medium-tank",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "MediumTank",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "recipe",
+          "contentId": "MediumTank",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.metallurgy-ii",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.smelter.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t2.mobile-repair",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "grantCapability",
+          "capabilityId": "capability.repair-out-of-combat",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.predictive-aa",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.vision.radius",
+          "operation": "Add",
+          "valueBasisPoints": 10000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.reinforced-hubs",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.hub.storage-stacks",
+          "operation": "Add",
+          "valueBasisPoints": 40000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.rocket-launcher",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "RocketLauncher",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "recipe",
+          "contentId": "RocketLauncher",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.steel-standardization",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.smelter.work-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8500
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle",
+        "qualification",
+        "industry"
+      ]
+    },
+    {
+      "id": "technology.t2.steel-walls",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "SteelWall",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t2.supply-ii",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 4,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.conveyor.move-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 8500
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t2.underground-conveyors",
+      "tierId": "tier.t2",
+      "cost": {
+        "effortUnits": 3,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT2",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "UndergroundConveyor",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "qualification",
+        "logistics",
+        "tactical"
+      ]
+    }
+  ],
+  "tiers": [
+    {
+      "id": "tier.t1",
+      "sciencePackItem": "SciencePackT1",
+      "unlockContent": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Mine",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Smelter",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "SolarPanel",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Assembler",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Conveyor",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Inserter",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Hub",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Laboratory",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "TankFactory",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "DroneCenter",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Bastion",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "BasicTank",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "CannonTurret",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "recipe",
+          "contentId": "BasicTank",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "item-recipe",
+          "contentId": "IronGear",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "item-recipe",
+          "contentId": "CopperWire",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "item-recipe",
+          "contentId": "Circuit",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "item-recipe",
+          "contentId": "SciencePackT1",
+          "valueBasisPoints": 0
+        }
+      ]
+    },
+    {
+      "id": "tier.t2",
+      "sciencePackItem": "SciencePackT2",
+      "unlockContent": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "CoalMine",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "OilWell",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Refinery",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "CoalPlant",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "SteelWall",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "item-recipe",
+          "contentId": "SciencePackT2",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "grantCapability",
+          "capabilityId": "capability.tier2-content",
+          "valueBasisPoints": 0
+        }
+      ]
+    },
+    {
+      "id": "tier.t3-boundary",
+      "sciencePackItem": "SciencePackT2",
+      "unlockContent": []
+    }
+  ],
+  "profiles": [
+    {
+      "id": "hybrid-a-c",
+      "schedule": {
+        "tracks": [
+          {
+            "id": "track.cycle",
+            "mode": "WeightedParallel",
+            "maximumActiveProjects": 3,
+            "sourceKinds": [
+              "mandatory",
+              "cycle"
+            ],
+            "defaultWeight": 100
+          },
+          {
+            "id": "track.tactical",
+            "mode": "Serial",
+            "maximumActiveProjects": 1,
+            "sourceKinds": [
+              "optional",
+              "tactical",
+              "doctrine",
+              "qualification"
+            ],
+            "defaultWeight": 100
+          }
+        ],
+        "budget": {
+          "scale": 10000,
+          "defaultAllocations": {
+            "track.cycle": 7000,
+            "track.tactical": 3000
+          },
+          "playerAdjustable": true
+        }
+      },
+      "gates": [
+        {
+          "id": "gate.a.t1-to-t2",
+          "fromTierId": "tier.t1",
+          "targetTierId": "tier.t2",
+          "requirements": [
+            {
+              "id": "req.production",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.improved-conveyors",
+                "technology.t1.mass-production"
+              ]
+            },
+            {
+              "id": "req.infrastructure",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.distributed-energy",
+                "technology.t1.power-reserve"
+              ]
+            },
+            {
+              "id": "req.field",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.defensive-engineering",
+                "technology.t1.expedition-logistics"
+              ]
+            }
+          ],
+          "completionEffects": [
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "CoalMine",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "OilWell",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "Refinery",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "CoalPlant",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "item-recipe",
+              "contentId": "SciencePackT2",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "grantCapability",
+              "capabilityId": "capability.tier2-content",
+              "valueBasisPoints": 0
+            }
+          ]
+        },
+        {
+          "id": "gate.a.t2-to-t3",
+          "fromTierId": "tier.t2",
+          "requirements": [
+            {
+              "id": "req.industry",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.fuel-intensification",
+                "technology.t2.steel-standardization"
+              ]
+            },
+            {
+              "id": "req.logistics",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.construction-drone",
+                "technology.t2.underground-conveyors"
+              ]
+            },
+            {
+              "id": "req.command",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.additional-bastions",
+                "technology.t2.auto-resupply"
+              ]
+            }
+          ],
+          "completionEffects": [
+            {
+              "type": "completeMilestone",
+              "valueBasisPoints": 0,
+              "milestoneId": "milestone.t3-qualified"
+            }
+          ]
+        }
+      ],
+      "exclusiveGroups": [
+        {
+          "id": "exclusive.c.t1-doctrine",
+          "memberTechnologyIds": [
+            "technology.t1.doctrine.swarm",
+            "technology.t1.doctrine.observation",
+            "technology.t1.doctrine.fortification"
+          ],
+          "maximumSelections": 1,
+          "lockOn": "Start",
+          "confirmationRequired": true
+        },
+        {
+          "id": "exclusive.c.t2-doctrine",
+          "memberTechnologyIds": [
+            "technology.t2.doctrine.armor-fist",
+            "technology.t2.doctrine.maneuver-net",
+            "technology.t2.doctrine.siege-control"
+          ],
+          "maximumSelections": 1,
+          "lockOn": "Start",
+          "confirmationRequired": true
+        }
+      ],
+      "optionalPools": [
+        {
+          "id": "pool.c.t1",
+          "technologyIds": [
+            "technology.t1.conveyor-telemetry",
+            "technology.t1.energy-reserve",
+            "technology.t1.modular-tooling",
+            "technology.t1.field-repair",
+            "technology.t1.recon-archive",
+            "technology.t1.prefab-fortifications",
+            "technology.t1.hub-buffering",
+            "technology.t1.return-protocol",
+            "technology.t1.light-bot",
+            "technology.t1.scout",
+            "technology.t1.machine-gun-turret",
+            "technology.t1.concrete-walls",
+            "technology.t1.doctrine.swarm",
+            "technology.t1.doctrine.observation",
+            "technology.t1.doctrine.fortification"
+          ]
+        },
+        {
+          "id": "pool.c.t2",
+          "technologyIds": [
+            "technology.t2.underground-conveyors",
+            "technology.t2.construction-drone",
+            "technology.t2.anti-air-turret",
+            "technology.t2.steel-walls",
+            "technology.t2.medium-bot",
+            "technology.t2.medium-tank",
+            "technology.t2.rocket-launcher",
+            "technology.t2.predictive-aa",
+            "technology.t2.reinforced-hubs",
+            "technology.t2.ammo-priority",
+            "technology.t2.doctrine.armor-fist",
+            "technology.t2.doctrine.maneuver-net",
+            "technology.t2.doctrine.siege-control"
+          ]
+        }
+      ],
+      "catchUpMultiplierBasisPoints": 15000
+    },
+    {
+      "id": "mvp-a",
+      "schedule": {
+        "tracks": [
+          {
+            "id": "track.primary",
+            "mode": "Serial",
+            "maximumActiveProjects": 1,
+            "sourceKinds": [],
+            "defaultWeight": 100
+          }
+        ],
+        "budget": {
+          "scale": 10000,
+          "defaultAllocations": {
+            "track.primary": 10000
+          },
+          "playerAdjustable": false
+        }
+      },
+      "gates": [
+        {
+          "id": "gate.a.t1-to-t2",
+          "fromTierId": "tier.t1",
+          "targetTierId": "tier.t2",
+          "requirements": [
+            {
+              "id": "req.production",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.improved-conveyors",
+                "technology.t1.mass-production"
+              ]
+            },
+            {
+              "id": "req.infrastructure",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.distributed-energy",
+                "technology.t1.power-reserve"
+              ]
+            },
+            {
+              "id": "req.field",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.defensive-engineering",
+                "technology.t1.expedition-logistics"
+              ]
+            }
+          ],
+          "completionEffects": [
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "CoalMine",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "OilWell",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "Refinery",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "CoalPlant",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "item-recipe",
+              "contentId": "SciencePackT2",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "grantCapability",
+              "capabilityId": "capability.tier2-content",
+              "valueBasisPoints": 0
+            }
+          ]
+        },
+        {
+          "id": "gate.a.t2-to-t3",
+          "fromTierId": "tier.t2",
+          "requirements": [
+            {
+              "id": "req.industry",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.fuel-intensification",
+                "technology.t2.steel-standardization"
+              ]
+            },
+            {
+              "id": "req.logistics",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.construction-drone",
+                "technology.t2.underground-conveyors"
+              ]
+            },
+            {
+              "id": "req.command",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.additional-bastions",
+                "technology.t2.auto-resupply"
+              ]
+            }
+          ],
+          "completionEffects": [
+            {
+              "type": "completeMilestone",
+              "valueBasisPoints": 0,
+              "milestoneId": "milestone.t3-qualified"
+            }
+          ]
+        }
+      ],
+      "exclusiveGroups": [],
+      "optionalPools": [
+        {
+          "id": "pool.a.t1",
+          "technologyIds": [
+            "technology.t1.light-bot",
+            "technology.t1.scout",
+            "technology.t1.machine-gun-turret",
+            "technology.t1.concrete-walls",
+            "technology.t1.field-repair",
+            "technology.t1.modular-tooling",
+            "technology.t1.hub-buffering",
+            "technology.t1.fast-regroup"
+          ]
+        },
+        {
+          "id": "pool.a.t2",
+          "technologyIds": [
+            "technology.t2.medium-bot",
+            "technology.t2.medium-tank",
+            "technology.t2.rocket-launcher",
+            "technology.t2.anti-air-turret",
+            "technology.t2.steel-walls",
+            "technology.t2.predictive-aa",
+            "technology.t2.mobile-repair",
+            "technology.t2.reinforced-hubs"
+          ]
+        }
+      ],
+      "catchUpMultiplierBasisPoints": 15000
+    },
+    {
+      "id": "mvp-b",
+      "schedule": {
+        "tracks": [
+          {
+            "id": "track.primary",
+            "mode": "Serial",
+            "maximumActiveProjects": 1,
+            "sourceKinds": [],
+            "defaultWeight": 100
+          }
+        ],
+        "budget": {
+          "scale": 10000,
+          "defaultAllocations": {
+            "track.primary": 10000
+          },
+          "playerAdjustable": false
+        }
+      },
+      "gates": [
+        {
+          "id": "gate.b.t1-to-t2",
+          "fromTierId": "tier.t1",
+          "targetTierId": "tier.t2",
+          "requirements": [
+            {
+              "id": "req.production",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.production-i"
+              ]
+            },
+            {
+              "id": "req.energy",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.energy-i"
+              ]
+            },
+            {
+              "id": "req.command",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.command-i"
+              ]
+            }
+          ],
+          "completionEffects": [
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "CoalMine",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "OilWell",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "Refinery",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "CoalPlant",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "item-recipe",
+              "contentId": "SciencePackT2",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "grantCapability",
+              "capabilityId": "capability.tier2-content",
+              "valueBasisPoints": 0
+            }
+          ]
+        },
+        {
+          "id": "gate.b.t2-to-t3",
+          "fromTierId": "tier.t2",
+          "requirements": [
+            {
+              "id": "req.metallurgy",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.metallurgy-ii"
+              ]
+            },
+            {
+              "id": "req.supply",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.supply-ii"
+              ]
+            },
+            {
+              "id": "req.command-ii",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.command-ii"
+              ]
+            }
+          ],
+          "completionEffects": [
+            {
+              "type": "completeMilestone",
+              "valueBasisPoints": 0,
+              "milestoneId": "milestone.t3-qualified"
+            }
+          ]
+        }
+      ],
+      "exclusiveGroups": [
+        {
+          "id": "exclusive.b.t1-doctrine",
+          "memberTechnologyIds": [
+            "technology.t1.doctrine.mobile-groups",
+            "technology.t1.doctrine.fortified-line"
+          ],
+          "maximumSelections": 1,
+          "lockOn": "Complete",
+          "confirmationRequired": true
+        },
+        {
+          "id": "exclusive.b.t2-doctrine",
+          "memberTechnologyIds": [
+            "technology.t2.doctrine.armor-breakthrough",
+            "technology.t2.doctrine.ranged-pressure"
+          ],
+          "maximumSelections": 1,
+          "lockOn": "Complete",
+          "confirmationRequired": true
+        }
+      ],
+      "optionalPools": [
+        {
+          "id": "pool.b.t1",
+          "technologyIds": [
+            "technology.t1.improved-conveyors",
+            "technology.t1.power-reserve",
+            "technology.t1.forward-observer",
+            "technology.t1.light-bot",
+            "technology.t1.field-repair",
+            "technology.t1.prefab-fortifications",
+            "technology.t1.production-reserve",
+            "technology.t1.fast-regroup",
+            "technology.t1.scout",
+            "technology.t1.machine-gun-turret",
+            "technology.t1.concrete-walls",
+            "technology.t1.doctrine.mobile-groups",
+            "technology.t1.doctrine.fortified-line"
+          ]
+        },
+        {
+          "id": "pool.b.t2",
+          "technologyIds": [
+            "technology.t2.steel-walls",
+            "technology.t2.underground-conveyors",
+            "technology.t2.additional-bastions",
+            "technology.t2.construction-drone",
+            "technology.t2.anti-air-turret",
+            "technology.t2.medium-bot",
+            "technology.t2.medium-tank",
+            "technology.t2.rocket-launcher",
+            "technology.t2.predictive-aa",
+            "technology.t2.reinforced-hubs",
+            "technology.t2.mobile-repair",
+            "technology.t2.drone-coordination",
+            "technology.t2.ammo-priority",
+            "technology.t2.doctrine.armor-breakthrough",
+            "technology.t2.doctrine.ranged-pressure"
+          ]
+        }
+      ],
+      "catchUpMultiplierBasisPoints": 15000
+    },
+    {
+      "id": "mvp-c",
+      "schedule": {
+        "tracks": [
+          {
+            "id": "track.cycle",
+            "mode": "WeightedParallel",
+            "maximumActiveProjects": 3,
+            "sourceKinds": [
+              "mandatory",
+              "cycle"
+            ],
+            "defaultWeight": 100
+          },
+          {
+            "id": "track.tactical",
+            "mode": "Serial",
+            "maximumActiveProjects": 1,
+            "sourceKinds": [
+              "optional",
+              "tactical",
+              "doctrine",
+              "qualification"
+            ],
+            "defaultWeight": 100
+          }
+        ],
+        "budget": {
+          "scale": 10000,
+          "defaultAllocations": {
+            "track.cycle": 7000,
+            "track.tactical": 3000
+          },
+          "playerAdjustable": true
+        }
+      },
+      "gates": [
+        {
+          "id": "gate.c.t1-to-t2",
+          "fromTierId": "tier.t1",
+          "targetTierId": "tier.t2",
+          "requirements": [
+            {
+              "id": "req.auto",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.automated-base"
+              ]
+            },
+            {
+              "id": "req.expedition",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.distant-expedition"
+              ]
+            },
+            {
+              "id": "req.resources",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t1.new-resource-mastery"
+              ]
+            }
+          ],
+          "completionEffects": [
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "CoalMine",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "OilWell",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "Refinery",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "entity",
+              "contentId": "CoalPlant",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "unlockContent",
+              "contentKind": "item-recipe",
+              "contentId": "SciencePackT2",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "grantCapability",
+              "capabilityId": "capability.tier2-content",
+              "valueBasisPoints": 0
+            }
+          ]
+        },
+        {
+          "id": "gate.c.t2-to-t3",
+          "fromTierId": "tier.t2",
+          "requirements": [
+            {
+              "id": "req.steel",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.steel-standardization"
+              ]
+            },
+            {
+              "id": "req.fuel",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.fuel-logistics"
+              ]
+            },
+            {
+              "id": "req.bastion",
+              "minimumCompleted": 1,
+              "candidateTechnologyIds": [
+                "technology.t2.field-bastion-network"
+              ]
+            }
+          ],
+          "completionEffects": [
+            {
+              "type": "completeMilestone",
+              "valueBasisPoints": 0,
+              "milestoneId": "milestone.t3-qualified"
+            }
+          ]
+        }
+      ],
+      "exclusiveGroups": [
+        {
+          "id": "exclusive.c.t1-doctrine",
+          "memberTechnologyIds": [
+            "technology.t1.doctrine.swarm",
+            "technology.t1.doctrine.observation",
+            "technology.t1.doctrine.fortification"
+          ],
+          "maximumSelections": 1,
+          "lockOn": "Start",
+          "confirmationRequired": true
+        },
+        {
+          "id": "exclusive.c.t2-doctrine",
+          "memberTechnologyIds": [
+            "technology.t2.doctrine.armor-fist",
+            "technology.t2.doctrine.maneuver-net",
+            "technology.t2.doctrine.siege-control"
+          ],
+          "maximumSelections": 1,
+          "lockOn": "Start",
+          "confirmationRequired": true
+        }
+      ],
+      "optionalPools": [
+        {
+          "id": "pool.c.t1",
+          "technologyIds": [
+            "technology.t1.conveyor-telemetry",
+            "technology.t1.energy-reserve",
+            "technology.t1.modular-tooling",
+            "technology.t1.field-repair",
+            "technology.t1.recon-archive",
+            "technology.t1.prefab-fortifications",
+            "technology.t1.hub-buffering",
+            "technology.t1.return-protocol",
+            "technology.t1.light-bot",
+            "technology.t1.scout",
+            "technology.t1.machine-gun-turret",
+            "technology.t1.concrete-walls",
+            "technology.t1.doctrine.swarm",
+            "technology.t1.doctrine.observation",
+            "technology.t1.doctrine.fortification"
+          ]
+        },
+        {
+          "id": "pool.c.t2",
+          "technologyIds": [
+            "technology.t2.underground-conveyors",
+            "technology.t2.construction-drone",
+            "technology.t2.anti-air-turret",
+            "technology.t2.steel-walls",
+            "technology.t2.medium-bot",
+            "technology.t2.medium-tank",
+            "technology.t2.rocket-launcher",
+            "technology.t2.predictive-aa",
+            "technology.t2.reinforced-hubs",
+            "technology.t2.ammo-priority",
+            "technology.t2.doctrine.armor-fist",
+            "technology.t2.doctrine.maneuver-net",
+            "technology.t2.doctrine.siege-control"
+          ]
+        }
+      ],
+      "catchUpMultiplierBasisPoints": 15000
+    }
+  ],
+  "baselineCapabilities": []
+}

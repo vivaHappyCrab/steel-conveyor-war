@@ -56,6 +56,4 @@ public sealed record EntityStats(int MaxHealth, int AttackDamage = 0, int Attack
 
 public sealed record ProductionRecipe(IReadOnlyDictionary<ItemId, int> Inputs, EntityKind OutputKind, int WorkTicks, TechnologyId? RequiredTechnology = null);
 
-public sealed record ResearchDefinition(TechnologyId Technology, ItemId RequiredPack, int RequiredPacks);
-
 public sealed record ItemRecipeDefinition(ItemRecipeId Id, IReadOnlyDictionary<ItemId, int> Inputs, ItemId OutputItem, int OutputAmount, int WorkTicks);
