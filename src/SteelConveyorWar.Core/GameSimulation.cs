@@ -51,6 +51,10 @@ public sealed class GameSimulation
 
     public PlayerId? WinnerId { get; private set; }
 
+    internal int NextEntityId => _nextEntityId;
+
+    public string ComputeStateHash() => SimulationStateHasher.Compute(this);
+
     public static GameSimulation CreateNewGame(int randomSeed = 1)
     {
         return CreateNewGame(GameCreationOptions.Default with { RandomSeed = randomSeed });

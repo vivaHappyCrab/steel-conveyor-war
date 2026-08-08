@@ -95,3 +95,11 @@ This document records architecture and game-design decisions made while implemen
 - Expand SFML research controls from prototype paging/hotkeys to a dedicated full tree panel.
 - Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.
 - Add tick-stamped command queue / state hash for multiplayer research lockstep.
+
+## Simulation State Hash
+
+- `SimulationStateHasher.AlgorithmVersion` (currently `1`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (inventory/visibility/research), ordered entities (buffers, paths, combat/build fields).
+- Doubles use IEEE bit patterns (`DoubleToInt64Bits`). Unordered collections are sorted before hashing.
+- Primary quality gate: dual independent runs with the same seed/commands must match (`DeterminismHashTests`). A checked-in golden hex is optional; when adding/updating one, bump `AlgorithmVersion` if the surface changed, re-run the fixture, and commit the new constant intentionally.
+- Out of surface: SFML/UI, wall-clock, tick-stamped command logs.
+- Teach map generation to consume `RandomSeed` before any claim of seed-driven layouts (no MVP map-disk format).
