@@ -1,0 +1,15 @@
+﻿.env
+.env.*
+!.env.example
+**/*.pfx
+**/*.pem
+**/*.key
+**/secrets/**
+bin/
+obj/
+artifacts/
+TestResults/
+coverage/
+.vs/
+**/*.user
+**/*.suo

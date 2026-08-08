@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "gameId": "steel-conveyor-war",
+  "displayName": "Steel Conveyor War",
+  "simulation": {
+    "ticksPerSecond": 30,
+    "defaultRandomSeed": 42
+  },
+  "window": {
+    "width": 1280,
+    "height": 720,
+    "title": "Steel Conveyor War"
+  }
+}

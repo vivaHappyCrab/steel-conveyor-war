@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a defect with reproduction and expected behavior
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Severity / risk
+      options:
+        - low
+        - medium
+        - high
+        - critical
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification after fix
+      value: |
+        ```powershell
+        pwsh eng/verify.ps1
+        ```
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        After DoR is complete, an owner may add the `ai-ready` label.

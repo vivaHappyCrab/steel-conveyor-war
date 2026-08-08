@@ -1,0 +1,70 @@
+# MVP Implementation Decisions
+
+This document records architecture and game-design decisions made while implementing `docs/MVP_GDD.md`.
+
+## Architecture
+
+- Gameplay rules live in `SteelConveyorWar.Core`; SFML remains a rendering and input adapter.
+- The core simulation advances only through fixed ticks and explicit public APIs.
+- MVP data is represented by stable enums for resources, entities and technologies. This keeps the first implementation compact; moving the same definitions to `config/` remains a post-foundation task.
+- `GameSimulation.CreateNewGame(seed)` creates a deterministic local 1v1 match with mirrored starts.
+
+## Scope Strategy
+
+- The first code pass implements the full MVP surface as a deterministic simulation model, not final production-quality UI.
+- Systems that are expensive to simulate in detail are represented by simplified deterministic rules first: oil, construction drones, ammo chains and tech signatures.
+- T3-T4, nuclear weapons, aircraft, trains, full pipes, transport drones, matchmaker, replays and analytics remain outside the implemented MVP.
+
+## Construction
+
+- БМК is the only builder-facing entity. Commander build APIs spend resources from the БМК inventory and create or queue ghost builds.
+- T1 construction completes after a fixed number of ticks. T2 construction drones are represented by the same ghost-build model and can be expanded later without changing placement commands.
+- Costs are paid from the player's shared inventory for now. Hubs exist as world entities and logistics buffers, but they are not yet the only source of construction materials.
+- Player inventory is kept as broader faction state for later logistics/network rules.
+- If a build target is outside the БМК build radius, the core stores a queued build order and moves the БМК toward the target until placement becomes legal.
+- Building footprint is part of core placement rules: mines, laboratories and resource extractors are `2x2`; Bastions and military factories are `3x3`; other entities default to `1x1`.
+
+## Economy And Logistics
+
+- Mines and wells produce items into local building inventories on deterministic tick intervals.
+- Buildings now expose separate input and output buffers. Recipes consume from input buffers and put completed products into output buffers.
+- Input and output buffers are limited by per-item stack size definitions in `MvpDefinitions.ItemStackSizes`.
+- Inserters move items between adjacent output/input buffers and conveyor slots. An inserter hand can hold only one item with amount `1`.
+- Conveyor tiles hold at most two item slots and move items in their direction only after `MvpDefinitions.ConveyorMoveTicks`.
+- Inserters transfer held items only after `MvpDefinitions.InserterTransferTicks`.
+- Conveyor and inserter direction is core state and can be rotated through a simulation API. SFML only renders the arrows and translates hotkeys.
+- Conveyor item rendering reads directly from conveyor slots; detailed interpolation animation is deferred.
+- Oil is represented as `CrudeOil` items refined into `Fuel`. Full fluid pressure, pipe networks and reservoirs are deliberately deferred.
+- Energy is tracked as produced versus demanded per player. Shortage visibility is present, but production throttling is not yet strict.
+
+## Commander Interaction
+
+- Right click with the БМК selected issues a deterministic move command.
+- `Ctrl+Left click` with the БМК selected collects all items from the clicked entity output buffer when the target is within `CommanderInteractRadius`.
+- Long-range queued collection is intentionally not implemented yet; only queued construction uses automatic movement.
+
+## Research
+
+- Laboratories consume science packs from their own inventories.
+- T1 and T2 technologies unlock recipes or buildings according to `docs/MVP_GDD.md`.
+- Science recipes are represented as items and balance placeholders rather than a final economy.
+
+## Bastions And Combat
+
+- Bastions own desired unit templates. Assigned factories can auto-pick missing units from the template.
+- Produced units move toward their assigned Bastion and can receive Bastion orders.
+- Combat uses deterministic range, cooldown and damage values. Friendly fire is disabled for MVP.
+- Victory is evaluated by commander survival: the last player with a living БМК wins.
+
+## Fog Of War And Tech Signatures
+
+- Each player has a tile visibility mask: unknown, explored, visible.
+- Owned entities reveal circular Manhattan-radius vision.
+- Tech signatures are aggregated into map zones and expose intensity without exact building identity.
+
+## Open Follow-Ups
+
+- Move balance definitions from code to `config/` once the shape stabilizes.
+- Add stricter energy throttling once production loops are tuned.
+- Expand SFML input from smoke-test-friendly interactions to full RTS controls.
+- Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.

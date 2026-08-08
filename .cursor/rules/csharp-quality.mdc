@@ -1,0 +1,22 @@
+---
+description: C# coding quality conventions for this solution
+globs: "**/*.{cs,csproj,props,targets}"
+alwaysApply: false
+---
+
+# C# quality
+
+- Use file-scoped namespaces and nullable reference types.
+- Prefer explicit public APIs on `GameSimulation` over mutating internals from adapters.
+- Keep gameplay rules out of SFML/Client projects.
+- Do not suppress analyzer warnings without a short comment explaining why.
+- After edits run `dotnet build SteelConveyorWar.sln -c Release` and relevant tests.
+- Prefer renaming placeholder files over leaving `Class1.cs` / `UnitTest1.cs`.
+
+```csharp
+// ❌ BAD — gameplay in adapter
+entity.Health -= 10;
+
+// ✅ GOOD — command/API on core
+simulation.DamageEntity(entity.Id, 10);
+```

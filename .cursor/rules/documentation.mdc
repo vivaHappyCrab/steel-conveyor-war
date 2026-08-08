@@ -1,0 +1,12 @@
+---
+description: Documentation and ADR expectations
+globs: "docs/**/*.md,README.md,CONTRIBUTING.md,AGENTS.md"
+alwaysApply: false
+---
+
+# Documentation
+
+- Keep README verification status and commands accurate.
+- Architecture compromises go in `docs/MVP_IMPLEMENTATION_DECISIONS.md` or a new ADR under `docs/adr/`.
+- Agent role docs live in `docs/agents/`; Cursor discoverable wrappers live in `.cursor/agents/`.
+- Do not reintroduce a root `rules.md`; project rules are `.cursor/rules/*.mdc` plus `AGENTS.md`.

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "type": "prompt",
+        "prompt": "Allow only if this shell command is safe for the Steel Conveyor War repo. DENY force-push and any direct push/merge/commit targeting protected branches main or develop. Allow normal feature-branch git operations, builds, tests, and smoke runs. Hook input: $ARGUMENTS",
+        "matcher": "git\\s+(push|merge|pull)|gh\\s+pr\\s+merge",
+        "timeout": 15,
+        "failClosed": false
+      }
+    ]
+  }
+}

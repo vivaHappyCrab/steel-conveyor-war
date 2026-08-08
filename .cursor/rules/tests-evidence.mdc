@@ -1,0 +1,13 @@
+---
+description: Testing and evidence requirements for changes
+globs: "tests/**/*.cs,eng/**/*.ps1,.github/workflows/**/*.yml"
+alwaysApply: false
+---
+
+# Tests and evidence
+
+- Core tests stay headless (`tests/SteelConveyorWar.Core.Tests` must not reference SFML).
+- SFML-specific assertions live in `tests/SteelConveyorWar.Sfml.Tests`.
+- Prefer focused regression tests for new simulation behavior.
+- Record commands run and results in the PR (build/test/smoke, coverage/TRX when produced).
+- Known gaps belong in `docs/engineering/VERIFICATION_GAPS.md`, not silent omissions.

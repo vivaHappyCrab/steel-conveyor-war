@@ -1,0 +1,13 @@
+---
+description: SFML adapter boundaries for rendering and input
+globs: "src/SteelConveyorWar.Sfml/**/*.cs,src/SteelConveyorWar.Client/**/*.cs,tests/SteelConveyorWar.Sfml.Tests/**/*.cs"
+alwaysApply: false
+---
+
+# SFML boundaries
+
+- `SteelConveyorWar.Sfml` may depend on Core; Core must never depend on SFML.
+- Rendering reads simulation state; it must not own authoritative gameplay state.
+- Input creates core commands (`Try*` APIs); do not mutate `WorldEntity` fields from UI handlers when an API exists.
+- Keep build menus / HUD presentation in SFML, but stable buildable ids and rules belong in Core/config long-term.
+- After Client/Sfml changes run smoke: `dotnet run --project src/SteelConveyorWar.Client -- --smoke-test`.

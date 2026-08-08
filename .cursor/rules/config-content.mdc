@@ -1,0 +1,13 @@
+---
+description: Config and content ID conventions
+globs: "config/**/*.json,src/SteelConveyorWar.Core/Definitions/**/*.cs,src/SteelConveyorWar.Core/Domain/**/*.cs"
+alwaysApply: false
+---
+
+# Config and content IDs
+
+- Prefer stable lowercase namespaced ids in config (`unit.commander`, `terrain.grass`).
+- Until a config loader exists, new balance values go into `MvpDefinitions.cs` — not SFML.
+- Do not hardcode recipes/balance in rendering code.
+- Asset paths are presentation-only and must not define gameplay rules.
+- Document transitional hardcoded values in `docs/MVP_IMPLEMENTATION_DECISIONS.md` when they change product behavior.

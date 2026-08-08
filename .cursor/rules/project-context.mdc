@@ -1,0 +1,14 @@
+---
+description: Project context, sources of truth, and module map for Steel Conveyor War
+alwaysApply: true
+---
+
+# Project context
+
+- Game: Steel Conveyor War — Factorio-like 2D PvP factory/RTS MVP prototype on .NET 10 + SFML.
+- Integration branch: `develop`. Release branch: `main`.
+- Sources of truth in order: `docs/MVP_IMPLEMENTATION_DECISIONS.md`, `docs/MVP_GDD.md`, `docs/ТЗ.md`, `docs/agents/`.
+- Core stays headless and deterministic. SFML only adapts window/input/render.
+- Balance currently lives in `MvpDefinitions.cs`; `config/*.json` is scaffold and not loaded yet — do not pretend it is runtime-active.
+- Never merge, approve PRs, or force-push protected branches. Hand off merge-ready PRs to a human.
+- Prefer `eng/verify.ps1` after meaningful changes. Core tests must not reference SFML.

@@ -1,0 +1,15 @@
+# Code owners
+
+# Protect workflow and agent policy files. Replace OWNER with the GitHub username
+# after the repository is created if different from the authenticated publisher.
+/.github/ @HC
+/.cursor/ @HC
+/AGENTS.md @HC
+/CONTRIBUTING.md @HC
+/SECURITY.md @HC
+/eng/ @HC
+
+/src/SteelConveyorWar.Core/ @HC
+/src/SteelConveyorWar.Sfml/ @HC
+/src/SteelConveyorWar.Client/ @HC
+/tests/ @HC

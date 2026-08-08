@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "entities": [
+    {
+      "id": "unit.commander",
+      "name": "Armored Mobile Commander",
+      "kind": "Commander",
+      "buildsStructures": true,
+      "lossCondition": "Defeat"
+    }
+  ]
+}

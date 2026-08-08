@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "tiles": [
+    {
+      "id": "terrain.grass",
+      "name": "Grass",
+      "walkable": true,
+      "resource": null
+    },
+    {
+      "id": "resource.iron_ore",
+      "name": "Iron Ore",
+      "walkable": true,
+      "resource": "iron_ore"
+    },
+    {
+      "id": "resource.copper_ore",
+      "name": "Copper Ore",
+      "walkable": true,
+      "resource": "copper_ore"
+    }
+  ]
+}

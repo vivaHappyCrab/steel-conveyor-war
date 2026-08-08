@@ -1,0 +1,22 @@
+---
+description: Deterministic headless Core simulation invariants
+globs: "src/SteelConveyorWar.Core/**/*.cs,tests/SteelConveyorWar.Core.Tests/**/*.cs"
+alwaysApply: false
+---
+
+# Core determinism
+
+- No SFML / window / native graphics references in Core.
+- No wall-clock time (`DateTime`, `Stopwatch`, `Environment.TickCount`) in simulation updates.
+- No unseeded randomness. Seeds belong to the simulation.
+- Gameplay-affecting iteration must be order-stable (prefer entity id ordering).
+- Authoritative floating-point use is a multiplayer risk — isolate and document it.
+- New mechanics need public testable APIs and Core unit tests without opening a window.
+
+```csharp
+// ❌ BAD
+var roll = Random.Shared.Next();
+
+// ✅ GOOD
+// use simulation-owned seeded RNG or deterministic tables
+```

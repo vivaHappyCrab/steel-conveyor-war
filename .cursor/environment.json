@@ -1,0 +1,4 @@
+{
+  "snapshot": "ubuntu-24.04",
+  "install": "set -euo pipefail\ncurl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh\nbash /tmp/dotnet-install.sh --channel 10.0 --install-dir \"$HOME/.dotnet\"\necho \"$HOME/.dotnet\" >> \"$GITHUB_PATH\" 2>/dev/null || true\nexport PATH=\"$HOME/.dotnet:$PATH\"\ndotnet --info\nsudo apt-get update\nsudo apt-get install -y xvfb libgl1 libxcursor1 libxrandr2 libxi6 libudev1 libflac12 libvorbis0a || true\ndotnet restore SteelConveyorWar.sln --locked-mode"
+}
