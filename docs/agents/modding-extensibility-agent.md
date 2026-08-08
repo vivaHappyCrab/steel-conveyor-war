@@ -17,13 +17,14 @@ New entities/items/tech ids, balance constants, config schema work, or hardcoded
 
 ## Current transitional state
 
-- Runtime still uses enums + `MvpDefinitions.cs`
-- `config/*.json` is scaffold and **not loaded**
-- Until a loader exists: put new balance in `MvpDefinitions`, keep SFML free of recipes/costs, document shifts in implementation decisions
+- Runtime loads `config/game.json`, `research.json`, `tiles.json`, and `entities.json` via Core parsers + Client I/O (fail-fast on missing/invalid)
+- Recipes, combat stats, build costs, and most timings still live in `MvpDefinitions.cs`
+- Tile/entity JSON catalogs are authoritative **id registries**; simulation still uses Core enums for gameplay
+- Until remaining balance migrates: put new recipes/costs/stats in `MvpDefinitions`, keep SFML free of balance, document shifts in implementation decisions
 
 ## Must preserve
 
-- Core validates content instead of assuming ids exist (once loading lands)
+- Core validates content instead of assuming ids exist
 - UI must not become the source of gameplay balance
 - Ids stay stable for future saves/replays/logs
 
