@@ -31,7 +31,7 @@ public sealed class CombatBastionTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var attacker = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
         var defender = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
-        PlaceAdjacent(attacker, defender.Position);
+        Assert.True(PlaceAdjacent(simulation, attacker, defender.Position));
 
         var stats = MvpDefinitions.GetStats(EntityKind.Commander);
         var healthBefore = defender.Health;
@@ -47,7 +47,7 @@ public sealed class CombatBastionTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var attacker = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
         var friendly = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Bastion && entity.OwnerId == new PlayerId(1));
-        PlaceAdjacent(attacker, friendly.Position);
+        Assert.True(PlaceAdjacent(simulation, attacker, friendly.Position));
 
         var healthBefore = friendly.Health;
         simulation.AdvanceTick();
@@ -61,8 +61,10 @@ public sealed class CombatBastionTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var attacker = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
         var defender = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
-        PlaceAdjacent(attacker, defender.Position);
-        defender.Health = MvpDefinitions.GetStats(EntityKind.Commander).AttackDamage;
+        Assert.True(PlaceAdjacent(simulation, attacker, defender.Position));
+        Assert.True(simulation.TrySetEntityHealthForTests(
+            defender.Id,
+            MvpDefinitions.GetStats(EntityKind.Commander).AttackDamage));
 
         simulation.AdvanceTick();
 
@@ -77,7 +79,7 @@ public sealed class CombatBastionTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         var tank = ProduceTankForBastion(simulation, bastion.Id);
-        PlaceAdjacent(tank, bastion.Position);
+        Assert.True(PlaceAdjacent(simulation, tank, bastion.Position));
 
         Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
         simulation.AdvanceTick();
@@ -98,7 +100,7 @@ public sealed class CombatBastionTests
         return simulation.World.Entities.Single(entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastionId);
     }
 
-    private static void PlaceAdjacent(WorldEntity entity, TilePosition near)
+    private static bool PlaceAdjacent(GameSimulation simulation, WorldEntity entity, TilePosition near)
     {
         var candidates = new[]
         {
@@ -110,13 +112,7 @@ public sealed class CombatBastionTests
 
         // Prefer an empty in-bounds neighbor so combat range stays Manhattan <= 1.
         var position = candidates.First(candidate => candidate.X >= 0 && candidate.Y >= 0);
-        entity.Position = position;
-        entity.WorldPosition = WorldPosition.FromTileCenter(position);
-        entity.MoveTarget = null;
-        entity.MovementPath.Clear();
-        entity.CurrentWaypoint = null;
-        entity.IsGarrisoned = false;
-        entity.AttackCooldownRemaining = 0;
+        return simulation.TryTeleportEntityForTests(entity.Id, position);
     }
 
     private static void AdvanceTicks(GameSimulation simulation, int ticks)
