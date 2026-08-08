@@ -78,6 +78,14 @@ This document records architecture and game-design decisions made while implemen
 - Owned entities reveal circular Manhattan-radius vision.
 - Tech signatures are aggregated into map zones and expose intensity without exact building identity.
 
+## Map And Session Lifetime
+
+- `GameSimulation.CreateNewGame` builds a fixed mirrored terrain in memory via `CreateStartingTerrain` and stores `RandomSeed` on the simulation.
+- Terrain and entity layout currently live only for the process lifetime of one match. Exiting the client discards the in-memory grid; the next session regenerates the same static layout from code.
+- `RandomSeed` is accepted from `GameCreationOptions` / `config/game.json` (`simulation.defaultRandomSeed`) but is **not** consumed by terrain generation yet. Session-to-session reproducibility today comes from the hardcoded mirrored layout, not from seed or disk.
+- Desired post-MVP reproducibility prefers **seed + generation parameters → regenerate** over opaque map blobs (better for lockstep / fairness than shipping terrain files).
+- **MVP non-goal:** no on-disk map/seed-map blob format, and no save/load path for world terrain. Aligns with GDD §17 (saves are out of MVP). Seed-driven generation remains a separate follow-up (see `docs/engineering/VERIFICATION_GAPS.md`).
+
 ## Open Follow-Ups
 
 - Expand remaining non-research balance definitions from code to `config/` once the shape stabilizes.
@@ -85,3 +93,4 @@ This document records architecture and game-design decisions made while implemen
 - Expand SFML research controls from prototype paging/hotkeys to a dedicated full tree panel.
 - Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.
 - Add tick-stamped command queue / state hash for multiplayer research lockstep.
+- Teach map generation to consume `RandomSeed` before any claim of seed-driven layouts (no MVP map-disk format).

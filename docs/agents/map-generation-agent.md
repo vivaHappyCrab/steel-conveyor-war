@@ -22,13 +22,14 @@ Terrain generation, start positions, ore/oil/coal patches, symmetry rules, and m
 
 ## Must preserve
 
-- Generation uses explicit seeds and is reproducible across machines
+- Generation must stay deterministic and reproducible across machines (today via static mirrored layout; later via explicit seeds once generation consumes them)
 - PvP starts remain symmetrical unless design docs change
 - Map data stays independent from presentation assets
 
 ## Current gap
 
 - `RandomSeed` is stored but the current static `CreateStartingTerrain` layout does not yet vary by seed — fix or document before claiming seed-driven maps
+- Persisting terrain/seed-map blobs to disk is an **MVP non-goal** (see `docs/MVP_IMPLEMENTATION_DECISIONS.md` § Map And Session Lifetime). Prefer future seed+params regeneration over map files
 
 ## Verification
 
