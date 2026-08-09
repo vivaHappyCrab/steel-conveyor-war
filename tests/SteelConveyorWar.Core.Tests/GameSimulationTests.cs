@@ -1545,9 +1545,11 @@ public class GameSimulationTests
 
         Assert.Null(simulation.World.GetEntity(victimHubId));
         Assert.Equal(maxIron, commander.Inventory.Count(ItemId.IronPlate));
-        // Half Hub cost (20/2=10) + victim copper must land on the surviving hub, not vanish into the scrap target.
+        // Copper fits on the commander; iron refund (20/2=10) overflows to the surviving hub.
+        // Without excluding the scrap target, that overflow would re-deposit into the dying hub and vanish.
+        Assert.Equal(5, commander.Inventory.Count(ItemId.CopperPlate));
         Assert.Equal(10, survivorHub.Inventory.Count(ItemId.IronPlate));
-        Assert.Equal(5, survivorHub.Inventory.Count(ItemId.CopperPlate));
+        Assert.Equal(0, survivorHub.Inventory.Count(ItemId.CopperPlate));
     }
 
     [Fact]
