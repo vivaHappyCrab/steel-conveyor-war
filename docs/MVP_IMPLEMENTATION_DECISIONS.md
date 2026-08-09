@@ -84,8 +84,12 @@ This document records architecture and game-design decisions made while implemen
 
 ## Map And Session Lifetime
 
+- MVP match map size is **192×112** tiles (4× the original 48×28 prototype footprint).
 - `GameSimulation.CreateNewGame` builds mirrored starting terrain in memory via `CreateStartingTerrain(size, options.RandomSeed)` and stores `RandomSeed` on the simulation.
 - Terrain generation uses a local `System.Random` seeded with `RandomSeed` to jitter patch centers/radii on the left half, then mirrors resource tiles to the right for PvP fairness. Grass remains the default fill. The RNG is not kept for later ticks.
+- Starting Fe/Cu patches sit near each base; coal/oil patches sit farther toward the half-map center. Ore fill uses **Chebyshev** distance so each patch AABB is at least **4×4** (radius ≥ 2 → 5×5).
+- Each side starts with БМК, Bastion, Hub, and **one SolarPanel** on grass at Chebyshev distance 1 from the bastion footprint (no resource overlap).
+- SFML camera pans with **arrow keys**, **MMB drag**, and **edge-scroll** on the playfield (not WASD). World draw is clipped to the playfield; the top bar shows energy + BMK inventory; the side panel wraps HUD text. Buildings (except belts/inserters) and units use geometric pictograms; unit silhouettes are circle (БМК) / square (ground) / triangle (Scout).
 - Terrain and entity layout currently live only for the process lifetime of one match. Exiting the client discards the in-memory grid; the next session regenerates from the same seed + generation parameters.
 - `RandomSeed` is accepted from `GameCreationOptions` / `config/game.json` (`simulation.defaultRandomSeed`) and consumed by starting terrain generation (reproducibility covered by `MapGenerationTests`).
 - Desired post-MVP reproducibility prefers **seed + generation parameters → regenerate** over opaque map blobs (better for lockstep / fairness than shipping terrain files).

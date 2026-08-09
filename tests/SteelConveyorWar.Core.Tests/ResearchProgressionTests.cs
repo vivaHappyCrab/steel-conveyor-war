@@ -97,7 +97,7 @@ public sealed class ResearchProgressionTests
         var player = new PlayerId(1);
         Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(player, TechnologyId.ProductionI));
 
-        Assert.True(simulation.TryPlaceGhostBuild(player, EntityKind.Laboratory, new TilePosition(5, 12), out var labId));
+        Assert.True(simulation.TryPlaceGhostBuild(player, EntityKind.Laboratory, new TilePosition(5, simulation.World.Size.Height / 2 - 2), out var labId));
         for (var i = 0; i < 30; i++)
         {
             simulation.AdvanceTick();

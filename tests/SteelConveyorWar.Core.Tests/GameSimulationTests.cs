@@ -19,21 +19,16 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
 
+        Assert.Equal(new WorldSize(192, 112), simulation.World.Size);
         Assert.Contains(simulation.World.Entities, entity => entity.Kind == EntityKind.Commander);
         Assert.Equal(2, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.Commander));
-        // Seeded patches jitter slightly but keep classic start anchors covered for gameplay tests.
-        Assert.Equal(TerrainType.IronOre, simulation.World.GetTerrain(new TilePosition(7, 7)));
-        Assert.Equal(TerrainType.CopperOre, simulation.World.GetTerrain(new TilePosition(7, 13)));
-        Assert.Equal(TerrainType.IronOre, simulation.World.GetTerrain(new TilePosition(40, 7)));
-        Assert.Equal(TerrainType.CopperOre, simulation.World.GetTerrain(new TilePosition(40, 13)));
-        Assert.Contains(
-            Enumerable.Range(0, simulation.World.Size.Width * simulation.World.Size.Height)
-                .Select(i => simulation.World.GetTerrain(new TilePosition(i % simulation.World.Size.Width, i / simulation.World.Size.Width))),
-            t => t == TerrainType.Coal);
-        Assert.Contains(
-            Enumerable.Range(0, simulation.World.Size.Width * simulation.World.Size.Height)
-                .Select(i => simulation.World.GetTerrain(new TilePosition(i % simulation.World.Size.Width, i / simulation.World.Size.Width))),
-            t => t == TerrainType.Oil);
+        Assert.Equal(2, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.SolarPanel));
+        Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.IronOre && t.X < simulation.World.Size.Width / 2);
+        Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.CopperOre && t.X < simulation.World.Size.Width / 2);
+        Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.IronOre && t.X >= simulation.World.Size.Width / 2);
+        Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.CopperOre && t.X >= simulation.World.Size.Width / 2);
+        Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.Coal);
+        Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.Oil);
     }
 
     [Fact]
@@ -54,8 +49,9 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
         var initialIron = commander.Inventory.Count(ItemId.IronPlate);
+        var ironTile = FindReachableTerrain(simulation, commander, TerrainType.IronOre);
 
-        var placed = simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, new TilePosition(7, 7), out var ghostId);
+        var placed = simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, ironTile, out var ghostId);
         AdvanceTicks(simulation, 30);
 
         var built = simulation.World.GetEntity(ghostId);
@@ -69,8 +65,10 @@ public class GameSimulationTests
     public void MineAndSmelter_ProduceT1Resources()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, new TilePosition(7, 7), out var mineId));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, new TilePosition(10, 8), out var smelterId));
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var ironTile = FindReachableTerrain(simulation, commander, TerrainType.IronOre);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, ironTile, out var mineId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, NearBlue(simulation, 6, -2), out var smelterId));
         AdvanceTicks(simulation, 30);
 
         AdvanceTicks(simulation, 15);
@@ -86,9 +84,9 @@ public class GameSimulationTests
     public void InserterAndConveyor_MoveItemsDeterministically()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, new TilePosition(2, 18), out var sourceHubId));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Inserter, new TilePosition(3, 18), out var inserterId));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, new TilePosition(4, 18), out var conveyorId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, NearBlue(simulation, 2, 4), out var sourceHubId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Inserter, NearBlue(simulation, 3, 4), out var inserterId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, NearBlue(simulation, 4, 4), out var conveyorId));
         AdvanceTicks(simulation, 30);
 
         simulation.TryAddOutputItemToEntity(sourceHubId, ItemId.IronPlate, 1);
@@ -103,7 +101,7 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
@@ -119,7 +117,7 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
@@ -158,7 +156,7 @@ public class GameSimulationTests
         Assert.False(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Bastion,
-            new TilePosition(8, 10),
+            NearBlue(simulation, 8, -4),
             out _));
 
         UnlockTier2ForTests(simulation, playerId);
@@ -169,7 +167,7 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Bastion,
-            new TilePosition(8, 10),
+            NearBlue(simulation, 8, -4),
             out var ghostId));
         Assert.Equal(2, simulation.CountOwnedBastions(playerId));
         Assert.NotEqual(0, ghostId);
@@ -180,7 +178,7 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 40);
@@ -202,7 +200,7 @@ public class GameSimulationTests
     public void TrySetFactoryProduction_RejectsFactoryUnitMismatch()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         Assert.False(simulation.TrySetFactoryProduction(factoryId, EntityKind.Scout));
@@ -214,7 +212,7 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
@@ -233,7 +231,7 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerId = new PlayerId(1);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 1));
@@ -247,7 +245,7 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Bastion,
-            new TilePosition(8, 10),
+            NearBlue(simulation, 8, -4),
             out var secondBastionGhostId));
         AdvanceTicks(simulation, 30);
         var secondBastion = simulation.World.GetEntity(secondBastionGhostId)!;
@@ -275,8 +273,8 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerId = new PlayerId(1);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, new TilePosition(2, 20), out var factoryA));
-        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, new TilePosition(6, 20), out var factoryB));
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryA));
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 6, 6), out var factoryB));
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 1));
@@ -299,7 +297,7 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerId = new PlayerId(1);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.LightBot, 1));
@@ -320,7 +318,7 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var enemyBastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(2) && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         Assert.False(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, enemyBastion.Id));
@@ -333,7 +331,7 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
@@ -363,7 +361,7 @@ public class GameSimulationTests
     public void Laboratory_ConsumesSciencePacksAndUnlocksResearch()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Laboratory, new TilePosition(5, 12), out var labId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Laboratory, NearBlue(simulation, 5, -2), out var labId));
         AdvanceTicks(simulation, 30);
 
         simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 3);
@@ -378,8 +376,10 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         UnlockTier2ForTests(simulation, new PlayerId(1));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, new TilePosition(5, 12), out var smelterId));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Refinery, new TilePosition(8, 12), out var refineryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.SolarPanel, NearBlue(simulation, 6, 4), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.SolarPanel, NearBlue(simulation, 7, 4), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, NearBlue(simulation, 5, -2), out var smelterId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Refinery, NearBlue(simulation, 8, -2), out var refineryId));
         AdvanceTicks(simulation, 30);
 
         simulation.AddItemToEntity(smelterId, ItemId.IronPlate, 2);
@@ -396,10 +396,12 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerOne = new PlayerId(1);
-        Assert.Equal(VisibilityState.Visible, simulation.GetVisibility(playerOne, new TilePosition(4, 14)));
-        Assert.Equal(VisibilityState.Unknown, simulation.GetVisibility(playerOne, new TilePosition(43, 14)));
+        var blueCommander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == playerOne);
+        var redCommander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        Assert.Equal(VisibilityState.Visible, simulation.GetVisibility(playerOne, blueCommander.Position));
+        Assert.Equal(VisibilityState.Unknown, simulation.GetVisibility(playerOne, redCommander.Position));
 
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(2), EntityKind.Smelter, new TilePosition(36, 14), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(2), EntityKind.Smelter, NearBlue(simulation, 8, 0, playerId: 2), out _));
         AdvanceTicks(simulation, 31);
 
         Assert.Contains(simulation.GetTechSignatureHotspots(playerOne), hotspot => hotspot.Intensity > 0);
@@ -409,7 +411,7 @@ public class GameSimulationTests
     public void TryRotateEntity_RotatesDirectedEntityCyclically()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, new TilePosition(7, 14), out var conveyorId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, NearBlue(simulation, 7, 0), out var conveyorId));
         AdvanceTicks(simulation, 30);
 
         Assert.Equal(Direction.East, simulation.World.GetEntity(conveyorId)!.Direction);
@@ -428,7 +430,7 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Conveyor,
-            new TilePosition(7, 14),
+            NearBlue(simulation, 7, 0),
             out var conveyorGhostId,
             Direction.North));
         Assert.Equal(Direction.North, simulation.World.GetEntity(conveyorGhostId)!.Direction);
@@ -438,7 +440,7 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Assembler,
-            new TilePosition(2, 18),
+            NearBlue(simulation, 2, 4),
             out var assemblerGhostId,
             Direction.East,
             ItemRecipeId.CopperWire));
@@ -464,39 +466,41 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         UnlockTier2ForTests(simulation, new PlayerId(1));
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var coalTile = FindTerrain(simulation, TerrainType.Coal, tile => tile.X < simulation.World.Size.Width / 2);
 
-        Assert.True(simulation.TryQueueCommanderBuild(commander.Id, EntityKind.CoalMine, new TilePosition(20, 8)));
+        Assert.True(simulation.TryQueueCommanderBuild(commander.Id, EntityKind.CoalMine, coalTile));
         Assert.NotNull(commander.QueuedBuildOrder);
 
-        AdvanceTicks(simulation, 140);
+        AdvanceTicks(simulation, 900);
 
         Assert.Null(commander.QueuedBuildOrder);
-        Assert.Contains(simulation.World.Entities, entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.CoalMine && entity.Position == new TilePosition(20, 8));
+        Assert.Contains(simulation.World.Entities, entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.CoalMine && entity.Position == coalTile);
     }
 
     [Fact]
     public void FootprintPlacement_BlocksOverlappingBuildings()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var ironTile = FindReachableTerrain(simulation, commander, TerrainType.IronOre);
 
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, new TilePosition(7, 7), out _));
-        Assert.False(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Laboratory, new TilePosition(8, 8), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, ironTile, out _));
+        Assert.False(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Laboratory, new TilePosition(ironTile.X + 1, ironTile.Y + 1), out _));
 
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out _));
-        Assert.False(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, new TilePosition(4, 22), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out _));
+        Assert.False(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, NearBlue(simulation, 4, 8), out _));
     }
 
     [Fact]
     public void PowerState_ExposesObjectAndGridEnergy()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.SolarPanel, new TilePosition(3, 18), out var solarId));
-        AdvanceTicks(simulation, 31);
+        var startingSolar = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.SolarPanel);
 
         Assert.Equal(5, MvpDefinitions.PowerProduction[EntityKind.SolarPanel]);
         Assert.Equal(5, simulation.GetPlayer(new PlayerId(1)).PowerProduced);
-        Assert.Equal(0, MvpDefinitions.PowerDemand.GetValueOrDefault(simulation.World.GetEntity(solarId)!.Kind));
+        Assert.Equal(0, MvpDefinitions.PowerDemand.GetValueOrDefault(startingSolar.Kind));
+        Assert.Equal(TerrainType.Grass, simulation.World.GetTerrain(startingSolar.Position));
     }
 
     [Fact]
@@ -513,7 +517,7 @@ public class GameSimulationTests
     public void Conveyor_AcceptsOnlyTwoItemsPerTile()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, new TilePosition(7, 14), out var conveyorId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, NearBlue(simulation, 7, 0), out var conveyorId));
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.AddItemToEntity(conveyorId, ItemId.IronPlate, 1));
@@ -526,8 +530,8 @@ public class GameSimulationTests
     public void Conveyor_MovesItemOnlyAfterConfiguredTicks()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, new TilePosition(7, 14), out var firstId));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, new TilePosition(8, 14), out var secondId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, NearBlue(simulation, 7, 0), out var firstId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, NearBlue(simulation, 8, 0), out var secondId));
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.AddItemToEntity(firstId, ItemId.IronPlate, 1));
@@ -546,8 +550,8 @@ public class GameSimulationTests
     public void Inserter_HoldsOnlyOneItemUntilTransferCompletes()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, new TilePosition(2, 18), out var sourceHubId));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Inserter, new TilePosition(3, 18), out var inserterId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, NearBlue(simulation, 2, 4), out var sourceHubId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Inserter, NearBlue(simulation, 3, 4), out var inserterId));
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.TryAddOutputItemToEntity(sourceHubId, ItemId.IronPlate, 2));
@@ -596,11 +600,12 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var start = commander.Position;
 
-        Assert.True(simulation.TryIssueMoveCommand(commander.Id, new TilePosition(commander.Position.X + 3, commander.Position.Y - 3)));
+        Assert.True(simulation.TryIssueMoveCommand(commander.Id, new TilePosition(start.X + 3, start.Y - 3)));
         AdvanceTicks(simulation, 12);
 
-        Assert.Equal(new TilePosition(5, 13), commander.Position);
+        Assert.Equal(new TilePosition(start.X + 1, start.Y - 1), commander.Position);
     }
 
     [Fact]
@@ -608,13 +613,13 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, new TilePosition(5, 13), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, NearBlue(simulation, 5, -1), out _));
         AdvanceTicks(simulation, 30);
 
-        Assert.True(simulation.TryIssueMoveCommand(commander.Id, new TilePosition(8, 14)));
+        Assert.True(simulation.TryIssueMoveCommand(commander.Id, NearBlue(simulation, 8, 0)));
         AdvanceTicks(simulation, 90);
 
-        Assert.Equal(new TilePosition(8, 14), commander.Position);
+        Assert.Equal(NearBlue(simulation, 8, 0), commander.Position);
     }
 
     [Fact]
@@ -623,14 +628,14 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
 
-        Assert.True(simulation.TryIssueMoveCommand(commander.Id, new TilePosition(8, 14)));
+        Assert.True(simulation.TryIssueMoveCommand(commander.Id, NearBlue(simulation, 8, 0)));
         AdvanceTicks(simulation, 2);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, new TilePosition(5, 14), out var blockerId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, NearBlue(simulation, 5, 0), out var blockerId));
         AdvanceTicks(simulation, 80);
 
         Assert.True(simulation.World.GetEntity(blockerId)!.IsAlive);
-        Assert.NotEqual(new TilePosition(5, 14), commander.Position);
-        Assert.Equal(new TilePosition(8, 14), commander.Position);
+        Assert.NotEqual(NearBlue(simulation, 5, 0), commander.Position);
+        Assert.Equal(NearBlue(simulation, 8, 0), commander.Position);
     }
 
     [Fact]
@@ -638,14 +643,14 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, new TilePosition(5, 14), out _));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, new TilePosition(4, 13), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, NearBlue(simulation, 5, 0), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, NearBlue(simulation, 4, -1), out _));
         AdvanceTicks(simulation, 30);
 
-        Assert.True(simulation.TryIssueMoveCommand(commander.Id, new TilePosition(5, 13)));
+        Assert.True(simulation.TryIssueMoveCommand(commander.Id, NearBlue(simulation, 5, -1)));
         AdvanceTicks(simulation, 16);
 
-        Assert.NotEqual(new TilePosition(5, 13), commander.Position);
+        Assert.NotEqual(NearBlue(simulation, 5, -1), commander.Position);
     }
 
     [Fact]
@@ -653,6 +658,7 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastions = simulation.World.Entities.Where(entity => entity.Kind == EntityKind.Bastion);
+        var solars = simulation.World.Entities.Where(entity => entity.Kind == EntityKind.SolarPanel);
 
         foreach (var bastion in bastions)
         {
@@ -661,6 +667,29 @@ public class GameSimulationTests
                 Assert.Equal(TerrainType.Grass, simulation.World.GetTerrain(tile));
             }
         }
+
+        foreach (var solar in solars)
+        {
+            Assert.Equal(TerrainType.Grass, simulation.World.GetTerrain(solar.Position));
+            var bastion = bastions.Single(entity => entity.OwnerId == solar.OwnerId);
+            var bastionTiles = GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position).ToHashSet();
+            var adjacent = bastionTiles.Any(tile =>
+                Math.Max(Math.Abs(tile.X - solar.Position.X), Math.Abs(tile.Y - solar.Position.Y)) == 1);
+            Assert.True(adjacent);
+        }
+    }
+
+    [Fact]
+    public void StartingSolar_IsMirroredAcrossMapForPvP()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var blueSolar = simulation.World.Entities.Single(entity =>
+            entity.Kind == EntityKind.SolarPanel && entity.OwnerId == new PlayerId(1));
+        var redSolar = simulation.World.Entities.Single(entity =>
+            entity.Kind == EntityKind.SolarPanel && entity.OwnerId == new PlayerId(2));
+
+        Assert.Equal(blueSolar.Position.Y, redSolar.Position.Y);
+        Assert.Equal(simulation.World.Size.Width - 1 - blueSolar.Position.X, redSolar.Position.X);
     }
 
     [Fact]
@@ -668,24 +697,24 @@ public class GameSimulationTests
     {
         var blockedSimulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var blockedCommander = blockedSimulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
-        Assert.True(blockedSimulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, new TilePosition(4, 12), out _));
+        Assert.True(blockedSimulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, NearBlue(blockedSimulation, 4, -2), out _));
         AdvanceTicks(blockedSimulation, 30);
 
-        Assert.True(blockedSimulation.TryIssueMoveCommand(blockedCommander.Id, new TilePosition(4, 12)));
+        Assert.True(blockedSimulation.TryIssueMoveCommand(blockedCommander.Id, NearBlue(blockedSimulation, 4, -2)));
         AdvanceTicks(blockedSimulation, 40);
 
-        Assert.NotEqual(new TilePosition(4, 12), blockedCommander.Position);
+        Assert.NotEqual(NearBlue(blockedSimulation, 4, -2), blockedCommander.Position);
 
         var passableSimulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var passableCommander = passableSimulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
-        Assert.True(passableSimulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, new TilePosition(4, 13), out _));
-        Assert.True(passableSimulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Inserter, new TilePosition(4, 12), out _));
+        Assert.True(passableSimulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, NearBlue(passableSimulation, 4, -1), out _));
+        Assert.True(passableSimulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Inserter, NearBlue(passableSimulation, 4, -2), out _));
         AdvanceTicks(passableSimulation, 30);
 
-        Assert.True(passableSimulation.TryIssueMoveCommand(passableCommander.Id, new TilePosition(4, 11)));
+        Assert.True(passableSimulation.TryIssueMoveCommand(passableCommander.Id, NearBlue(passableSimulation, 4, -3)));
         AdvanceTicks(passableSimulation, 32);
 
-        Assert.Equal(new TilePosition(4, 11), passableCommander.Position);
+        Assert.Equal(NearBlue(passableSimulation, 4, -3), passableCommander.Position);
     }
 
     [Fact]
@@ -710,7 +739,7 @@ public class GameSimulationTests
     public void Assembler_ProducesIntermediateIngredientsAndSciencePacks()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Assembler, new TilePosition(2, 18), out var assemblerId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Assembler, NearBlue(simulation, 2, 4), out var assemblerId));
         AdvanceTicks(simulation, 30);
         var assembler = simulation.World.GetEntity(assemblerId)!;
 
@@ -735,8 +764,10 @@ public class GameSimulationTests
     public void Laboratory_ConsumesSciencePacksProducedByAssembler()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Assembler, new TilePosition(2, 18), out var assemblerId));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Laboratory, new TilePosition(5, 12), out var labId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.SolarPanel, NearBlue(simulation, 6, 4), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.SolarPanel, NearBlue(simulation, 7, 4), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Assembler, NearBlue(simulation, 2, 4), out var assemblerId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Laboratory, NearBlue(simulation, 5, -2), out var labId));
         AdvanceTicks(simulation, 30);
 
         for (var i = 0; i < 3; i++)
@@ -796,5 +827,85 @@ public class GameSimulationTests
         }
 
         Assert.Equal(ResearchTierIds.T2, simulation.GetPlayer(playerId).Research.CurrentTierId);
+    }
+
+    private static TilePosition NearBlue(GameSimulation simulation, int x, int yOffsetFromMid, int playerId = 1)
+    {
+        var midY = simulation.World.Size.Height / 2;
+        if (playerId == 1)
+        {
+            return new TilePosition(x, midY + yOffsetFromMid);
+        }
+
+        // Mirror X for Red start side (left-half x → right-half).
+        return new TilePosition(simulation.World.Size.Width - 1 - x, midY + yOffsetFromMid);
+    }
+
+    private static TilePosition FindTerrain(GameSimulation simulation, TerrainType type, Func<TilePosition, bool>? predicate = null)
+    {
+        for (var y = 0; y < simulation.World.Size.Height; y++)
+        {
+            for (var x = 0; x < simulation.World.Size.Width; x++)
+            {
+                var tile = new TilePosition(x, y);
+                if (simulation.World.GetTerrain(tile) == type && (predicate?.Invoke(tile) ?? true))
+                {
+                    return tile;
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"Terrain {type} not found.");
+    }
+
+    private static TilePosition FindReachableTerrain(GameSimulation simulation, WorldEntity commander, TerrainType type)
+    {
+        return FindTerrain(
+            simulation,
+            type,
+            tile => Math.Abs(tile.X - commander.Position.X) + Math.Abs(tile.Y - commander.Position.Y) <= MvpDefinitions.CommanderBuildRadius);
+    }
+
+    private static TilePosition FindNearbyGrass(GameSimulation simulation, WorldEntity commander, TilePosition near)
+    {
+        for (var radius = 1; radius <= 6; radius++)
+        {
+            for (var dy = -radius; dy <= radius; dy++)
+            {
+                for (var dx = -radius; dx <= radius; dx++)
+                {
+                    var tile = new TilePosition(near.X + dx, near.Y + dy);
+                    if (!simulation.World.IsInside(tile) || simulation.World.GetTerrain(tile) != TerrainType.Grass)
+                    {
+                        continue;
+                    }
+
+                    if (simulation.World.GetEntitiesAt(tile).Any(entity => entity.IsAlive))
+                    {
+                        continue;
+                    }
+
+                    if (Math.Abs(tile.X - commander.Position.X) + Math.Abs(tile.Y - commander.Position.Y) > MvpDefinitions.CommanderBuildRadius)
+                    {
+                        continue;
+                    }
+
+                    return tile;
+                }
+            }
+        }
+
+        throw new InvalidOperationException("No nearby grass tile within build radius.");
+    }
+
+    private static IEnumerable<(int X, int Y, TerrainType Type)> EnumerateTerrain(GameSimulation simulation)
+    {
+        for (var y = 0; y < simulation.World.Size.Height; y++)
+        {
+            for (var x = 0; x < simulation.World.Size.Width; x++)
+            {
+                yield return (x, y, simulation.World.GetTerrain(new TilePosition(x, y)));
+            }
+        }
     }
 }

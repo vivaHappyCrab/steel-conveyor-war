@@ -35,7 +35,7 @@ public class MapGenerationTests
     [Fact]
     public void Terrain_IsLeftRightMirrorSymmetric()
     {
-        // Even width (48): no center column. Odd widths would leave the middle column unpaired.
+        // Even width (192): no center column. Odd widths would leave the middle column unpaired.
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var width = simulation.World.Size.Width;
         var height = simulation.World.Size.Height;
@@ -56,15 +56,41 @@ public class MapGenerationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var half = simulation.World.Size.Width / 2;
+        var midY = simulation.World.Size.Height / 2;
 
+        Assert.Equal(new WorldSize(192, 112), simulation.World.Size);
         Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.IronOre && t.X < half);
         Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.CopperOre && t.X < half);
         Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.IronOre && t.X >= half);
         Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.CopperOre && t.X >= half);
         Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.Coal);
         Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.Oil);
-        Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.Coal && t.X >= half - 8 && t.X < half);
-        Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.Oil && t.X >= half - 8 && t.X < half);
+        Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.Coal && t.X >= half - 28 && t.X < half);
+        Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.Oil && t.X >= half - 28 && t.X < half);
+
+        var startX = 4;
+        var nearestIron = EnumerateTerrain(simulation)
+            .Where(t => t.Type == TerrainType.IronOre && t.X < half)
+            .Min(t => Math.Abs(t.X - startX) + Math.Abs(t.Y - midY));
+        var nearestCoal = EnumerateTerrain(simulation)
+            .Where(t => t.Type == TerrainType.Coal && t.X < half)
+            .Min(t => Math.Abs(t.X - startX) + Math.Abs(t.Y - midY));
+        Assert.True(nearestCoal > nearestIron);
+    }
+
+    [Fact]
+    public void StartingResourcePatches_HaveAtLeastFourByFourBoundingBox()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        foreach (var type in new[] { TerrainType.IronOre, TerrainType.CopperOre, TerrainType.Coal, TerrainType.Oil })
+        {
+            var tiles = EnumerateTerrain(simulation).Where(t => t.Type == type && t.X < simulation.World.Size.Width / 2).ToList();
+            Assert.NotEmpty(tiles);
+            var width = tiles.Max(t => t.X) - tiles.Min(t => t.X) + 1;
+            var height = tiles.Max(t => t.Y) - tiles.Min(t => t.Y) + 1;
+            Assert.True(width >= 4, $"{type} width {width}");
+            Assert.True(height >= 4, $"{type} height {height}");
+        }
     }
 
     private static void AssertTerrainEqual(GameSimulation left, GameSimulation right)

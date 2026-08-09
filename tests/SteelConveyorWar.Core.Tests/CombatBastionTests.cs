@@ -260,7 +260,7 @@ public sealed class CombatBastionTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, simulation.World.Size.Height / 2 + 6), out var factoryId));
         AdvanceTicks(simulation, 30);
         Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
         Assert.Equal(bastion.Id, simulation.World.GetEntity(factoryId)!.AssignedBastionId);
@@ -277,7 +277,7 @@ public sealed class CombatBastionTests
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         var tank = ProduceTankForBastion(simulation, bastion.Id);
         // Keep the tank far from the attacker so combat targets the bastion only.
-        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, new TilePosition(2, 20)));
+        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, new TilePosition(2, simulation.World.Size.Height / 2 + 6)));
         Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
 
         var enemy = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
@@ -354,7 +354,7 @@ public sealed class CombatBastionTests
 
     private static WorldEntity ProduceTankForBastion(GameSimulation simulation, int bastionId)
     {
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, simulation.World.Size.Height / 2 + 6), out var factoryId));
         AdvanceTicks(simulation, 30);
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
@@ -366,7 +366,7 @@ public sealed class CombatBastionTests
     private static WorldEntity ProduceScoutForBastion(GameSimulation simulation, int bastionId)
     {
         Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.Scout));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.DroneCenter, new TilePosition(6, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.DroneCenter, new TilePosition(6, simulation.World.Size.Height / 2 + 6), out var factoryId));
         AdvanceTicks(simulation, 30);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 20);
         Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.Scout, bastionId));
