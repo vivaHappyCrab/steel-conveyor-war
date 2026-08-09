@@ -1176,7 +1176,8 @@ public sealed class SfmlGameRunner
             ? -1
             : bastions.IndexOf(factory.AssignedBastionId.Value);
         var nextIndex = (currentIndex + 1) % bastions.Count;
-        simulation.TrySetFactoryProduction(factory.Id, factory.ProductionTargetKind, bastions[nextIndex]);
+        // Bastion cycle must not flip autofill → manual via TrySetFactoryProduction.
+        simulation.TryAssignFactoryBastion(factory.Id, bastions[nextIndex]);
     }
 
     private static void ApplyBastionOrderCommand(

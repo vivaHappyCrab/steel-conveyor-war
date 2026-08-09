@@ -228,6 +228,39 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void TryAssignFactoryBastion_PreservesAutofillMode()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        AdvanceTicks(simulation, 30);
+
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 1));
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, null));
+        Assert.False(simulation.World.GetEntity(factoryId)!.IsManualProductionTarget);
+
+        UnlockTier2ForTests(simulation, playerId);
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.AdditionalBastions));
+        var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Bastion,
+            new TilePosition(8, 10),
+            out var secondBastionGhostId));
+        AdvanceTicks(simulation, 30);
+        var secondBastion = simulation.World.GetEntity(secondBastionGhostId)!;
+        Assert.Equal(EntityKind.Bastion, secondBastion.Kind);
+
+        Assert.True(simulation.TryAssignFactoryBastion(factoryId, secondBastion.Id));
+        var factory = simulation.World.GetEntity(factoryId)!;
+        Assert.Equal(secondBastion.Id, factory.AssignedBastionId);
+        Assert.False(factory.IsManualProductionTarget);
+        Assert.Null(factory.ProductionTargetKind);
+    }
+
+    [Fact]
     public void TrySetFactoryProduction_RejectsOutputChangeWhileWorkInProgress()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);

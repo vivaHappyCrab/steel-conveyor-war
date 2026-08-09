@@ -315,6 +315,27 @@ public sealed class GameSimulation
         return true;
     }
 
+    /// <summary>
+    /// Reassigns a factory's bastion without changing recipe / manual-vs-autofill mode.
+    /// </summary>
+    public bool TryAssignFactoryBastion(int factoryId, int bastionId)
+    {
+        var factory = World.GetEntity(factoryId);
+        if (factory is null || !MvpDefinitions.FactoryKinds.Contains(factory.Kind))
+        {
+            return false;
+        }
+
+        var bastion = World.GetEntity(bastionId);
+        if (bastion is null || !bastion.IsAlive || bastion.Kind != EntityKind.Bastion || bastion.OwnerId != factory.OwnerId)
+        {
+            return false;
+        }
+
+        factory.AssignedBastionId = bastionId;
+        return true;
+    }
+
     public bool TryForceCompleteResearch(PlayerId playerId, TechnologyId technologyId, bool confirmExclusive = true)
     {
         var research = GetPlayer(playerId).Research;
