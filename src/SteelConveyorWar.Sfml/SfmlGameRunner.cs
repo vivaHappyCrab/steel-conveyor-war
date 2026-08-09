@@ -208,8 +208,9 @@ public sealed class SfmlGameRunner
                 && selectedEntity.OwnerId == localPlayer
                 && key is "PageDown" or "RBracket" or "PageUp" or "LBracket")
             {
+                var unlocked = BastionCompositionPanelModel.UnlockedUnitKinds(simulation, localPlayer);
+                var count = Math.Max(1, unlocked.Length);
                 var delta = key is "PageDown" or "RBracket" ? 1 : -1;
-                var count = BastionOrderBarModel.TemplateUnitKinds.Length;
                 templateUnitIndex = (templateUnitIndex + delta + count) % count;
                 return;
             }
@@ -369,11 +370,42 @@ public sealed class SfmlGameRunner
             if (button == "Left"
                 && !isBuildMenuOpen
                 && selectedForBar?.Kind == EntityKind.Bastion
-                && selectedForBar.OwnerId == localPlayer
-                && TryPickBastionOrderCommand(mousePosition, windowWidth, windowHeight, panelX, out var barCommand))
+                && selectedForBar.OwnerId == localPlayer)
             {
-                ApplyBastionOrderCommand(simulation, selectedForBar.Id, barCommand, ref bastionPendingMode, patrolWaypoints);
-                return;
+                var compositionSlots = BastionCompositionPanelModel.BuildSlots(simulation, selectedForBar);
+                if (BastionCompositionPanelModel.TryPickAdjust(
+                        mousePosition,
+                        windowWidth,
+                        windowHeight,
+                        panelX,
+                        compositionSlots,
+                        out var slotIndex,
+                        out var adjust))
+                {
+                    var slot = compositionSlots[slotIndex];
+                    templateUnitIndex = slotIndex;
+                    simulation.TrySetBastionTemplate(
+                        selectedForBar.Id,
+                        slot.UnitKind,
+                        Math.Max(0, slot.TemplateMax + (int)adjust));
+                    return;
+                }
+
+                if (BastionCompositionPanelModel.ContainsPanel(
+                        mousePosition,
+                        windowWidth,
+                        windowHeight,
+                        panelX,
+                        compositionSlots.Length))
+                {
+                    return;
+                }
+
+                if (TryPickBastionOrderCommand(mousePosition, windowWidth, windowHeight, panelX, out var barCommand))
+                {
+                    ApplyBastionOrderCommand(simulation, selectedForBar.Id, barCommand, ref bastionPendingMode, patrolWaypoints);
+                    return;
+                }
             }
 
             var tile = TileFromScreen(mousePosition);
@@ -616,6 +648,16 @@ public sealed class SfmlGameRunner
                 var selectedForOrders = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
                 if (selectedForOrders?.Kind == EntityKind.Bastion && selectedForOrders.OwnerId == localPlayer)
                 {
+                    DrawBastionCompositionPanel(
+                        window,
+                        simulation,
+                        selectedForOrders,
+                        templateUnitIndex,
+                        font,
+                        windowWidth,
+                        windowHeight,
+                        panelX,
+                        mousePosition);
                     DrawBastionOrderBar(
                         window,
                         selectedForOrders,
@@ -1150,10 +1192,16 @@ public sealed class SfmlGameRunner
                 var templateSum = selected.BastionTemplate.Values.Sum();
                 lines.Add($"Order: {BastionOrderBarModel.FormatOrder(selected.Order)}");
                 lines.Add($"Template: {templateSum}/{capacity}");
-                var unitKind = BastionOrderBarModel.TemplateUnitKinds[
-                    Math.Clamp(templateUnitIndex, 0, BastionOrderBarModel.TemplateUnitKinds.Length - 1)];
-                var unitCount = selected.BastionTemplate.GetValueOrDefault(unitKind);
-                lines.Add($"Edit: {unitKind} = {unitCount}");
+                var unlocked = BastionCompositionPanelModel.UnlockedUnitKinds(simulation, ownerId);
+                if (unlocked.Length > 0)
+                {
+                    var unitKind = unlocked[Math.Clamp(templateUnitIndex, 0, unlocked.Length - 1)];
+                    var unitCount = selected.BastionTemplate.GetValueOrDefault(unitKind);
+                    var live = simulation.GetBastionUnitSupply(selected.Id, unitKind);
+                    lines.Add($"Edit: {unitKind} = {live}/{unitCount}");
+                }
+
+                lines.Add("Center panel: +/- template max");
                 lines.Add("[/]: unit type  +/-: count");
                 lines.Add("A/S/D/F: Attack/Scout/Defend/Patrol");
                 lines.Add("1-0: switch owned bastions");
@@ -1600,7 +1648,12 @@ public sealed class SfmlGameRunner
 
     private static bool TryAdjustBastionTemplate(string key, GameSimulation simulation, WorldEntity bastion, int templateUnitIndex)
     {
-        var kinds = BastionOrderBarModel.TemplateUnitKinds;
+        if (bastion.OwnerId is null)
+        {
+            return false;
+        }
+
+        var kinds = BastionCompositionPanelModel.UnlockedUnitKinds(simulation, bastion.OwnerId.Value);
         if (kinds.Length == 0)
         {
             return false;
@@ -1621,6 +1674,153 @@ public sealed class SfmlGameRunner
 
         simulation.TrySetBastionTemplate(bastion.Id, unitKind, Math.Max(0, current + delta));
         return true;
+    }
+
+    private static void DrawBastionCompositionPanel(
+        IRenderTarget target,
+        GameSimulation simulation,
+        WorldEntity bastion,
+        int templateUnitIndex,
+        Font? font,
+        uint windowWidth,
+        uint windowHeight,
+        float panelX,
+        Vector2i mousePosition)
+    {
+        var slots = BastionCompositionPanelModel.BuildSlots(simulation, bastion);
+        if (slots.Length == 0)
+        {
+            return;
+        }
+
+        var bounds = BastionCompositionPanelModel.GetPanelBounds(
+            windowWidth,
+            windowHeight,
+            panelX,
+            slots.Length,
+            out var contentX,
+            out var contentY);
+        using var backdrop = new RectangleShape(new Vector2f(bounds.Width, bounds.Height))
+        {
+            Position = new Vector2f(bounds.Left, bounds.Top),
+            FillColor = new Color(10, 14, 20, 220),
+            OutlineColor = new Color(110, 140, 180),
+            OutlineThickness = 1f
+        };
+        target.Draw(backdrop);
+
+        if (font is not null)
+        {
+            using var title = new Text(font, "Bastion composition")
+            {
+                CharacterSize = 14,
+                FillColor = new Color(230, 230, 210),
+                Position = new Vector2f(bounds.Left + BastionCompositionPanelModel.PanelPadding, bounds.Top + 4f)
+            };
+            target.Draw(title);
+        }
+
+        string? tooltip = null;
+        for (var i = 0; i < slots.Length; i++)
+        {
+            var slot = slots[i];
+            var slotBounds = BastionCompositionPanelModel.GetSlotBounds(contentX, contentY, i);
+            var selected = i == Math.Clamp(templateUnitIndex, 0, slots.Length - 1);
+            using var frame = new RectangleShape(new Vector2f(slotBounds.Width, slotBounds.Height))
+            {
+                Position = new Vector2f(slotBounds.Left, slotBounds.Top),
+                FillColor = selected ? new Color(60, 90, 130, 235) : new Color(40, 50, 65, 230),
+                OutlineColor = selected ? new Color(255, 230, 120) : new Color(100, 120, 150),
+                OutlineThickness = selected ? 2f : 1f
+            };
+            target.Draw(frame);
+
+            if (font is not null)
+            {
+                using var glyph = new Text(font, slot.Glyph)
+                {
+                    CharacterSize = 20,
+                    FillColor = Color.White,
+                    Position = new Vector2f(slotBounds.Left + 34f, slotBounds.Top + 6f)
+                };
+                target.Draw(glyph);
+
+                using var counts = new Text(font, BastionCompositionPanelModel.CountLabel(slot.LiveCount, slot.TemplateMax))
+                {
+                    CharacterSize = 13,
+                    FillColor = new Color(220, 230, 240),
+                    Position = new Vector2f(slotBounds.Left + 22f, slotBounds.Top + 30f)
+                };
+                target.Draw(counts);
+            }
+
+            DrawCompositionButton(
+                target,
+                font,
+                BastionCompositionPanelModel.GetMinusButtonBounds(slotBounds),
+                "-",
+                mousePosition,
+                ref tooltip,
+                BastionCompositionPanelModel.Tooltip(slot) + " · -");
+            DrawCompositionButton(
+                target,
+                font,
+                BastionCompositionPanelModel.GetPlusButtonBounds(slotBounds),
+                "+",
+                mousePosition,
+                ref tooltip,
+                BastionCompositionPanelModel.Tooltip(slot) + " · +");
+        }
+
+        if (tooltip is not null && font is not null)
+        {
+            using var tip = new Text(font, tooltip)
+            {
+                CharacterSize = 13,
+                FillColor = Color.White,
+                Position = new Vector2f(bounds.Left, bounds.Top - 20f)
+            };
+            target.Draw(tip);
+        }
+    }
+
+    private static void DrawCompositionButton(
+        IRenderTarget target,
+        Font? font,
+        FloatRect buttonBounds,
+        string label,
+        Vector2i mousePosition,
+        ref string? tooltip,
+        string hoverTooltip)
+    {
+        var hovered = mousePosition.X >= buttonBounds.Left
+            && mousePosition.Y >= buttonBounds.Top
+            && mousePosition.X < buttonBounds.Left + buttonBounds.Width
+            && mousePosition.Y < buttonBounds.Top + buttonBounds.Height;
+        using var button = new RectangleShape(new Vector2f(buttonBounds.Width, buttonBounds.Height))
+        {
+            Position = new Vector2f(buttonBounds.Left, buttonBounds.Top),
+            FillColor = hovered ? new Color(90, 120, 160, 240) : new Color(55, 65, 80, 235),
+            OutlineColor = new Color(140, 160, 190),
+            OutlineThickness = 1f
+        };
+        target.Draw(button);
+
+        if (font is not null)
+        {
+            using var text = new Text(font, label)
+            {
+                CharacterSize = 14,
+                FillColor = Color.White,
+                Position = new Vector2f(buttonBounds.Left + 6f, buttonBounds.Top + 1f)
+            };
+            target.Draw(text);
+        }
+
+        if (hovered)
+        {
+            tooltip = hoverTooltip;
+        }
     }
 
     private static bool TryHandleBastionPendingMapClick(
