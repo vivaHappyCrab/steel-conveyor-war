@@ -67,7 +67,7 @@ public sealed class GameSimulation
             throw new InvalidOperationException($"Unknown research profile '{options.ProfileId}'.");
         }
 
-        var size = new WorldSize(48, 28);
+        var size = new WorldSize(192, 112);
         var terrain = CreateStartingTerrain(size, options.RandomSeed);
         var players = new[]
         {
@@ -523,16 +523,69 @@ public sealed class GameSimulation
     {
         var playerOne = new PlayerId(1);
         var playerTwo = new PlayerId(2);
+        var midY = World.Size.Height / 2;
 
-        var commanderOne = AddCompletedEntity(EntityKind.Commander, new TilePosition(4, World.Size.Height / 2), playerOne);
+        var commanderOne = AddCompletedEntity(EntityKind.Commander, new TilePosition(4, midY), playerOne);
         AddStartingCommanderInventory(commanderOne);
-        AddCompletedEntity(EntityKind.Bastion, new TilePosition(1, World.Size.Height / 2), playerOne);
-        AddCompletedEntity(EntityKind.Hub, new TilePosition(5, World.Size.Height / 2 + 2), playerOne);
+        var bastionOne = AddCompletedEntity(EntityKind.Bastion, new TilePosition(1, midY), playerOne);
+        AddCompletedEntity(EntityKind.Hub, new TilePosition(5, midY + 2), playerOne);
+        PlaceStartingSolar(bastionOne, playerOne);
 
-        var commanderTwo = AddCompletedEntity(EntityKind.Commander, new TilePosition(World.Size.Width - 5, World.Size.Height / 2), playerTwo);
+        var commanderTwo = AddCompletedEntity(EntityKind.Commander, new TilePosition(World.Size.Width - 5, midY), playerTwo);
         AddStartingCommanderInventory(commanderTwo);
-        AddCompletedEntity(EntityKind.Bastion, new TilePosition(World.Size.Width - 4, World.Size.Height / 2), playerTwo);
-        AddCompletedEntity(EntityKind.Hub, new TilePosition(World.Size.Width - 6, World.Size.Height / 2 + 2), playerTwo);
+        var bastionTwo = AddCompletedEntity(EntityKind.Bastion, new TilePosition(World.Size.Width - 4, midY), playerTwo);
+        AddCompletedEntity(EntityKind.Hub, new TilePosition(World.Size.Width - 6, midY + 2), playerTwo);
+        PlaceStartingSolar(bastionTwo, playerTwo);
+    }
+
+    private void PlaceStartingSolar(WorldEntity bastion, PlayerId ownerId)
+    {
+        var bastionTiles = GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position).ToHashSet();
+        var candidates = new List<TilePosition>();
+        foreach (var tile in bastionTiles)
+        {
+            for (var dy = -1; dy <= 1; dy++)
+            {
+                for (var dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0)
+                    {
+                        continue;
+                    }
+
+                    var candidate = new TilePosition(tile.X + dx, tile.Y + dy);
+                    if (!World.IsInside(candidate) || bastionTiles.Contains(candidate))
+                    {
+                        continue;
+                    }
+
+                    // Chebyshev distance 1 from bastion footprint (adjacent including diagonals).
+                    if (World.GetTerrain(candidate) != TerrainType.Grass)
+                    {
+                        continue;
+                    }
+
+                    if (World.GetEntitiesAt(candidate).Any(entity => entity.IsAlive))
+                    {
+                        continue;
+                    }
+
+                    candidates.Add(candidate);
+                }
+            }
+        }
+
+        var ordered = candidates
+            .Distinct()
+            .OrderBy(tile => tile.Y)
+            .ThenBy(tile => tile.X)
+            .ToList();
+        if (ordered.Count == 0)
+        {
+            throw new InvalidOperationException($"No grass tile adjacent to bastion for starting solar (owner {ownerId.Value}).");
+        }
+
+        AddCompletedEntity(EntityKind.SolarPanel, ordered[0], ownerId);
     }
 
     private static void AddStartingCommanderInventory(WorldEntity commander)
@@ -579,14 +632,33 @@ public sealed class GameSimulation
         var halfWidth = size.Width / 2;
 
         // Left-half start ores near Blue; right half is mirrored for PvP fairness.
-        var ironCenter = JitterTile(rng, baseX: 7, baseY: 7, maxOffset: 1, minX: 5, maxX: halfWidth - 1, minY: 4, maxY: size.Height - 5);
-        var copperCenter = JitterTile(rng, baseX: 7, baseY: 13, maxOffset: 1, minX: 5, maxX: halfWidth - 1, minY: 4, maxY: size.Height - 5);
+        // Keep Fe/Cu within early build reach of the start (commander ~ (4, midY)).
+        var midY = size.Height / 2;
+        var ironCenter = JitterTile(rng, baseX: 10, baseY: midY - 6, maxOffset: 1, minX: 6, maxX: 18, minY: midY - 14, maxY: midY - 2);
+        var copperCenter = JitterTile(rng, baseX: 10, baseY: midY + 6, maxOffset: 1, minX: 6, maxX: 18, minY: midY + 2, maxY: midY + 14);
+        // Chebyshev radius ≥ 2 → bounding box at least 5×5 (≥ 4×4 requirement).
         FillOrePatchLeftHalf(terrain, ironCenter, TerrainType.IronOre, maxDistance: 2 + rng.Next(0, 2), halfWidth);
         FillOrePatchLeftHalf(terrain, copperCenter, TerrainType.CopperOre, maxDistance: 2 + rng.Next(0, 2), halfWidth);
 
-        // Neutral coal/oil near center on the left half, then mirrored.
-        var coalCenter = JitterTile(rng, baseX: halfWidth - 4, baseY: 8, maxOffset: 1, minX: halfWidth - 6, maxX: halfWidth - 1, minY: 4, maxY: size.Height / 2);
-        var oilCenter = JitterTile(rng, baseX: halfWidth - 4, baseY: size.Height - 9, maxOffset: 1, minX: halfWidth - 6, maxX: halfWidth - 1, minY: size.Height / 2, maxY: size.Height - 5);
+        // Coal/oil farther from the start, near the center of the left half, then mirrored.
+        var coalCenter = JitterTile(
+            rng,
+            baseX: halfWidth - 16,
+            baseY: midY - 20,
+            maxOffset: 2,
+            minX: halfWidth - 28,
+            maxX: halfWidth - 1,
+            minY: 16,
+            maxY: midY - 8);
+        var oilCenter = JitterTile(
+            rng,
+            baseX: halfWidth - 16,
+            baseY: midY + 20,
+            maxOffset: 2,
+            minX: halfWidth - 28,
+            maxX: halfWidth - 1,
+            minY: midY + 8,
+            maxY: size.Height - 16);
         FillOrePatchLeftHalf(terrain, coalCenter, TerrainType.Coal, maxDistance: 2 + rng.Next(0, 2), halfWidth);
         FillOrePatchLeftHalf(terrain, oilCenter, TerrainType.Oil, maxDistance: 2 + rng.Next(0, 2), halfWidth);
 
@@ -611,11 +683,12 @@ public sealed class GameSimulation
 
     private static void FillOrePatchLeftHalf(TerrainType[,] terrain, TilePosition center, TerrainType type, int maxDistance, int halfWidth)
     {
+        // Chebyshev (square) fill so min radius 2 yields at least a 5×5 AABB (≥ 4×4).
         for (var y = center.Y - maxDistance; y <= center.Y + maxDistance; y++)
         {
             for (var x = center.X - maxDistance; x <= center.X + maxDistance; x++)
             {
-                var distance = Math.Abs(center.X - x) + Math.Abs(center.Y - y);
+                var distance = Math.Max(Math.Abs(center.X - x), Math.Abs(center.Y - y));
                 if (distance <= maxDistance
                     && x >= 0
                     && y >= 0

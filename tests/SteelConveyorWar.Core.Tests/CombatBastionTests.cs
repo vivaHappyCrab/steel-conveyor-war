@@ -91,7 +91,7 @@ public sealed class CombatBastionTests
 
     private static WorldEntity ProduceTankForBastion(GameSimulation simulation, int bastionId)
     {
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, simulation.World.Size.Height / 2 + 6), out var factoryId));
         AdvanceTicks(simulation, 30);
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);

@@ -9,6 +9,9 @@ public sealed class SfmlGameRunner
 {
     private const float TileSize = 24f;
     private const float SidePanelWidth = 240f;
+    private const float TopBarHeight = 36f;
+    private const float EdgeScrollBand = 20f;
+    private const float CameraPanSpeed = 420f;
     private const int MaxHudLines = 34;
     private const int RecipeLinesPerPage = 8;
     private const int HudWrapCharacters = 32;
@@ -19,6 +22,14 @@ public sealed class SfmlGameRunner
         var windowWidth = display.Width;
         var windowHeight = display.Height;
         var panelX = Math.Max(0f, windowWidth - SidePanelWidth);
+        var playfieldWidth = Math.Max(1f, panelX);
+        var playfieldHeight = Math.Max(1f, windowHeight - TopBarHeight);
+        var worldWidthPx = simulation.World.Size.Width * TileSize;
+        var worldHeightPx = simulation.World.Size.Height * TileSize;
+        var cameraX = 0f;
+        var cameraY = Math.Max(0f, (simulation.World.Size.Height / 2f) * TileSize - playfieldHeight / 2f);
+        var isMiddleDragging = false;
+        var lastDragMouse = new Vector2i();
 
         using var window = new RenderWindow(
             new VideoMode(new Vector2u(windowWidth, windowHeight)),
@@ -33,6 +44,46 @@ public sealed class SfmlGameRunner
         EntityKind? pendingBuildKind = null;
         var recipePage = 0;
         var font = TryLoadFont();
+
+        void ClampCamera()
+        {
+            var maxX = Math.Max(0f, worldWidthPx - playfieldWidth);
+            var maxY = Math.Max(0f, worldHeightPx - playfieldHeight);
+            cameraX = Math.Clamp(cameraX, 0f, maxX);
+            cameraY = Math.Clamp(cameraY, 0f, maxY);
+        }
+
+        ClampCamera();
+
+        View CreateWorldView()
+        {
+            var view = new View(new FloatRect(new Vector2f(cameraX, cameraY), new Vector2f(playfieldWidth, playfieldHeight)));
+            view.Viewport = new FloatRect(
+                new Vector2f(0f, TopBarHeight / windowHeight),
+                new Vector2f(playfieldWidth / windowWidth, playfieldHeight / windowHeight));
+            return view;
+        }
+
+        bool IsInPlayfield(Vector2i screen)
+        {
+            return screen.X >= 0
+                && screen.X < playfieldWidth
+                && screen.Y >= TopBarHeight
+                && screen.Y < windowHeight;
+        }
+
+        TilePosition? TileFromScreen(Vector2i screen)
+        {
+            if (!IsInPlayfield(screen))
+            {
+                return null;
+            }
+
+            using var worldView = CreateWorldView();
+            var world = window.MapPixelToCoords(screen, worldView);
+            var tile = new TilePosition((int)(world.X / TileSize), (int)(world.Y / TileSize));
+            return simulation.World.IsInside(tile) ? tile : null;
+        }
 
         window.KeyPressed += (_, args) =>
         {
@@ -123,17 +174,24 @@ public sealed class SfmlGameRunner
         window.MouseButtonPressed += (_, args) =>
         {
             var mousePosition = Mouse.GetPosition(window);
-            var tile = new TilePosition((int)(mousePosition.X / TileSize), (int)(mousePosition.Y / TileSize));
-            if (!simulation.World.IsInside(tile))
+            var button = args.Button.ToString();
+            if (button == "Middle")
+            {
+                isMiddleDragging = true;
+                lastDragMouse = mousePosition;
+                return;
+            }
+
+            var tile = TileFromScreen(mousePosition);
+            if (tile is null)
             {
                 return;
             }
 
-            var button = args.Button.ToString();
             if (button == "Left")
             {
                 var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
-                var clickedEntity = simulation.World.GetTopEntityAt(tile);
+                var clickedEntity = simulation.World.GetTopEntityAt(tile.Value);
                 var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
                 if (ctrlPressed && selectedEntity?.Kind == EntityKind.Commander && clickedEntity is not null)
                 {
@@ -141,7 +199,7 @@ public sealed class SfmlGameRunner
                 }
                 else if (isBuildMenuOpen && pendingBuildKind is not null && selectedEntity?.Kind == EntityKind.Commander)
                 {
-                    simulation.TryQueueCommanderBuild(selectedEntity.Id, pendingBuildKind.Value, tile);
+                    simulation.TryQueueCommanderBuild(selectedEntity.Id, pendingBuildKind.Value, tile.Value);
                 }
                 else
                 {
@@ -158,7 +216,7 @@ public sealed class SfmlGameRunner
                 var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
                 if (selectedEntity?.Kind == EntityKind.Commander)
                 {
-                    simulation.TryIssueMoveCommand(selectedEntity.Id, tile);
+                    simulation.TryIssueMoveCommand(selectedEntity.Id, tile.Value);
                     return;
                 }
 
@@ -167,8 +225,15 @@ public sealed class SfmlGameRunner
                     : simulation.World.Entities.FirstOrDefault(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Bastion);
                 if (bastion is not null)
                 {
-                    simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, tile));
+                    simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, tile.Value));
                 }
+            }
+        };
+        window.MouseButtonReleased += (_, args) =>
+        {
+            if (args.Button.ToString() == "Middle")
+            {
+                isMiddleDragging = false;
             }
         };
 
@@ -181,18 +246,79 @@ public sealed class SfmlGameRunner
         while (window.IsOpen)
         {
             window.DispatchEvents();
-
-            accumulator += clock.Restart().AsSeconds();
+            var frameDt = clock.Restart().AsSeconds();
+            accumulator += frameDt;
             while (accumulator >= fixedDelta)
             {
                 simulation.AdvanceTick();
                 accumulator -= fixedDelta;
             }
 
+            var mousePosition = Mouse.GetPosition(window);
+            if (isMiddleDragging)
+            {
+                cameraX -= mousePosition.X - lastDragMouse.X;
+                cameraY -= mousePosition.Y - lastDragMouse.Y;
+                lastDragMouse = mousePosition;
+                ClampCamera();
+            }
+            else
+            {
+                var pan = CameraPanSpeed * frameDt;
+                if (Keyboard.IsKeyPressed(Keyboard.Key.Left))
+                {
+                    cameraX -= pan;
+                }
+
+                if (Keyboard.IsKeyPressed(Keyboard.Key.Right))
+                {
+                    cameraX += pan;
+                }
+
+                if (Keyboard.IsKeyPressed(Keyboard.Key.Up))
+                {
+                    cameraY -= pan;
+                }
+
+                if (Keyboard.IsKeyPressed(Keyboard.Key.Down))
+                {
+                    cameraY += pan;
+                }
+
+                if (IsInPlayfield(mousePosition))
+                {
+                    if (mousePosition.X < EdgeScrollBand)
+                    {
+                        cameraX -= pan;
+                    }
+                    else if (mousePosition.X > playfieldWidth - EdgeScrollBand)
+                    {
+                        cameraX += pan;
+                    }
+
+                    if (mousePosition.Y < TopBarHeight + EdgeScrollBand)
+                    {
+                        cameraY -= pan;
+                    }
+                    else if (mousePosition.Y > windowHeight - EdgeScrollBand)
+                    {
+                        cameraY += pan;
+                    }
+                }
+
+                ClampCamera();
+            }
+
             window.Clear(new Color(18, 22, 18));
-            var hoverPosition = Mouse.GetPosition(window);
-            var hoverTile = new TilePosition((int)(hoverPosition.X / TileSize), (int)(hoverPosition.Y / TileSize));
-            DrawWorld(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen ? pendingBuildKind : null, hoverTile);
+            using (var worldView = CreateWorldView())
+            {
+                window.SetView(worldView);
+                var hoverTile = TileFromScreen(mousePosition);
+                DrawWorld(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen ? pendingBuildKind : null, hoverTile, cameraX, cameraY, playfieldWidth, playfieldHeight);
+            }
+
+            window.SetView(window.DefaultView);
+            DrawTopBar(window, simulation, localPlayer, font, playfieldWidth);
             DrawHud(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen, pendingBuildKind, recipePage, font, windowWidth, windowHeight, panelX);
             window.Display();
 
@@ -204,14 +330,28 @@ public sealed class SfmlGameRunner
         }
     }
 
-    private static void DrawWorld(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer, int? selectedEntityId, EntityKind? pendingBuildKind, TilePosition hoverTile)
+    private static void DrawWorld(
+        IRenderTarget target,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        int? selectedEntityId,
+        EntityKind? pendingBuildKind,
+        TilePosition? hoverTile,
+        float cameraX,
+        float cameraY,
+        float playfieldWidth,
+        float playfieldHeight)
     {
         var world = simulation.World;
         var tile = new RectangleShape(new Vector2f(TileSize - 1f, TileSize - 1f));
+        var minX = Math.Max(0, (int)(cameraX / TileSize) - 1);
+        var minY = Math.Max(0, (int)(cameraY / TileSize) - 1);
+        var maxX = Math.Min(world.Size.Width - 1, (int)((cameraX + playfieldWidth) / TileSize) + 1);
+        var maxY = Math.Min(world.Size.Height - 1, (int)((cameraY + playfieldHeight) / TileSize) + 1);
 
-        for (var y = 0; y < world.Size.Height; y++)
+        for (var y = minY; y <= maxY; y++)
         {
-            for (var x = 0; x < world.Size.Width; x++)
+            for (var x = minX; x <= maxX; x++)
             {
                 var position = new TilePosition(x, y);
                 tile.Position = new Vector2f(x * TileSize, y * TileSize);
@@ -232,9 +372,9 @@ public sealed class SfmlGameRunner
             DrawEntity(target, entity, selectedEntityId == entity.Id);
         }
 
-        if (pendingBuildKind is not null && world.IsInside(hoverTile))
+        if (pendingBuildKind is not null && hoverTile is not null && world.IsInside(hoverTile.Value))
         {
-            DrawGhostPreview(target, pendingBuildKind.Value, hoverTile);
+            DrawGhostPreview(target, pendingBuildKind.Value, hoverTile.Value);
         }
     }
 
@@ -280,9 +420,10 @@ public sealed class SfmlGameRunner
 
     private static void DrawEntity(IRenderTarget target, WorldEntity entity, bool isSelected)
     {
-        var footprint = MvpDefinitions.GetFootprint(entity.Kind == EntityKind.GhostBuild && entity.BuildTargetKind is not null
+        var drawKind = entity.Kind == EntityKind.GhostBuild && entity.BuildTargetKind is not null
             ? entity.BuildTargetKind.Value
-            : entity.Kind);
+            : entity.Kind;
+        var footprint = MvpDefinitions.GetFootprint(drawKind);
         var isMobile = MvpDefinitions.UnitKinds.Contains(entity.Kind) || entity.Kind == EntityKind.Commander;
         var center = isMobile
             ? ToScreen(entity.WorldPosition)
@@ -290,37 +431,40 @@ public sealed class SfmlGameRunner
                 entity.Position.X * TileSize + footprint.Width * TileSize / 2f,
                 entity.Position.Y * TileSize + footprint.Height * TileSize / 2f);
         var color = GetEntityColor(entity);
+        var ink = new Color(245, 245, 245, 220);
 
         if (isMobile)
         {
-            using var unit = new CircleShape(TileSize * 0.35f)
-            {
-                FillColor = color,
-                OutlineColor = entity.OwnerId == new PlayerId(1) ? Color.White : new Color(230, 140, 140),
-                OutlineThickness = 2f,
-                Origin = new Vector2f(TileSize * 0.35f, TileSize * 0.35f),
-                Position = center
-            };
-            target.Draw(unit);
+            DrawMobileUnit(target, entity, center, color, ink);
             if (isSelected)
             {
                 DrawMobileSelection(target, entity);
             }
+
             return;
         }
 
-        using var building = new RectangleShape(new Vector2f(TileSize * footprint.Width - 2f, TileSize * footprint.Height - 2f))
+        var buildingRect = (
+            Left: entity.Position.X * TileSize + 1f,
+            Top: entity.Position.Y * TileSize + 1f,
+            Width: TileSize * footprint.Width - 2f,
+            Height: TileSize * footprint.Height - 2f);
+        using var building = new RectangleShape(new Vector2f(buildingRect.Width, buildingRect.Height))
         {
             FillColor = color,
             OutlineColor = entity.Kind == EntityKind.GhostBuild ? new Color(120, 190, 255) : new Color(20, 20, 20),
             OutlineThickness = 1f,
-            Position = new Vector2f(entity.Position.X * TileSize + 1f, entity.Position.Y * TileSize + 1f)
+            Position = new Vector2f(buildingRect.Left, buildingRect.Top)
         };
         target.Draw(building);
 
         if (entity.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter)
         {
             DrawDirectionArrow(target, entity.Position, entity.Direction, entity.Kind == EntityKind.Inserter ? new Color(255, 230, 100) : new Color(40, 40, 20));
+        }
+        else
+        {
+            EntityPictograms.DrawBuilding(target, drawKind, buildingRect.Left, buildingRect.Top, buildingRect.Width, buildingRect.Height, ink);
         }
 
         if (entity.Kind is (EntityKind.Conveyor or EntityKind.UndergroundConveyor) && entity.ConveyorItems.Count > 0)
@@ -337,6 +481,52 @@ public sealed class SfmlGameRunner
         {
             DrawSelection(target, entity, footprint);
         }
+    }
+
+    private static void DrawMobileUnit(IRenderTarget target, WorldEntity entity, Vector2f center, Color color, Color ink)
+    {
+        var radius = TileSize * 0.35f;
+        if (entity.Kind == EntityKind.Commander)
+        {
+            using var unit = new CircleShape(radius)
+            {
+                FillColor = color,
+                OutlineColor = entity.OwnerId == new PlayerId(1) ? Color.White : new Color(230, 140, 140),
+                OutlineThickness = 2f,
+                Origin = new Vector2f(radius, radius),
+                Position = center
+            };
+            target.Draw(unit);
+        }
+        else if (entity.Kind == EntityKind.Scout)
+        {
+            using var unit = new ConvexShape(3)
+            {
+                FillColor = color,
+                OutlineColor = entity.OwnerId == new PlayerId(1) ? Color.White : new Color(230, 140, 140),
+                OutlineThickness = 2f,
+                Position = center
+            };
+            unit.SetPoint(0, new Vector2f(0, -radius));
+            unit.SetPoint(1, new Vector2f(radius * 0.9f, radius * 0.75f));
+            unit.SetPoint(2, new Vector2f(-radius * 0.9f, radius * 0.75f));
+            target.Draw(unit);
+        }
+        else
+        {
+            var side = radius * 1.7f;
+            using var unit = new RectangleShape(new Vector2f(side, side))
+            {
+                FillColor = color,
+                OutlineColor = entity.OwnerId == new PlayerId(1) ? Color.White : new Color(230, 140, 140),
+                OutlineThickness = 2f,
+                Origin = new Vector2f(side / 2f, side / 2f),
+                Position = center
+            };
+            target.Draw(unit);
+        }
+
+        EntityPictograms.DrawUnitMark(target, entity.Kind, center, radius, ink);
     }
 
     private static void DrawGhostPreview(IRenderTarget target, EntityKind kind, TilePosition anchor)
@@ -367,15 +557,47 @@ public sealed class SfmlGameRunner
     private static void DrawMobileSelection(IRenderTarget target, WorldEntity entity)
     {
         var center = ToScreen(entity.WorldPosition);
-        using var outline = new CircleShape(TileSize * 0.45f)
+        var radius = TileSize * 0.45f;
+        if (entity.Kind == EntityKind.Commander)
+        {
+            using var outline = new CircleShape(radius)
+            {
+                Position = center,
+                Origin = new Vector2f(radius, radius),
+                FillColor = Color.Transparent,
+                OutlineColor = new Color(255, 245, 120),
+                OutlineThickness = 2f
+            };
+            target.Draw(outline);
+            return;
+        }
+
+        if (entity.Kind == EntityKind.Scout)
+        {
+            using var outline = new ConvexShape(3)
+            {
+                Position = center,
+                FillColor = Color.Transparent,
+                OutlineColor = new Color(255, 245, 120),
+                OutlineThickness = 2f
+            };
+            outline.SetPoint(0, new Vector2f(0, -radius));
+            outline.SetPoint(1, new Vector2f(radius * 0.95f, radius * 0.8f));
+            outline.SetPoint(2, new Vector2f(-radius * 0.95f, radius * 0.8f));
+            target.Draw(outline);
+            return;
+        }
+
+        var side = radius * 1.8f;
+        using var square = new RectangleShape(new Vector2f(side, side))
         {
             Position = center,
-            Origin = new Vector2f(TileSize * 0.45f, TileSize * 0.45f),
+            Origin = new Vector2f(side / 2f, side / 2f),
             FillColor = Color.Transparent,
             OutlineColor = new Color(255, 245, 120),
             OutlineThickness = 2f
         };
-        target.Draw(outline);
+        target.Draw(square);
     }
 
     private static Vector2f ToScreen(WorldPosition position)
@@ -434,6 +656,58 @@ public sealed class SfmlGameRunner
             Position = new Vector2f(position.X * TileSize + TileSize * 0.75f, position.Y * TileSize + TileSize * 0.25f)
         };
         target.Draw(marker);
+    }
+
+    private static void DrawTopBar(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer, Font? font, float playfieldWidth)
+    {
+        using var bar = new RectangleShape(new Vector2f(playfieldWidth, TopBarHeight))
+        {
+            Position = new Vector2f(0f, 0f),
+            FillColor = new Color(12, 16, 22, 235),
+            OutlineColor = new Color(80, 95, 120),
+            OutlineThickness = 1f
+        };
+        target.Draw(bar);
+        if (font is null)
+        {
+            return;
+        }
+
+        var player = simulation.GetPlayer(localPlayer);
+        var commander = simulation.World.Entities.FirstOrDefault(entity =>
+            entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander && entity.IsAlive);
+        var stock = commander is null
+            ? "BMK: -"
+            : "BMK: " + string.Join(" ", commander.Inventory.Items
+                .OrderBy(pair => pair.Key)
+                .Select(pair => $"{ShortItem(pair.Key)}:{pair.Value}"));
+
+        using var energy = new Text(font, $"Energy {player.PowerProduced}/{player.PowerDemand}", 14)
+        {
+            FillColor = Color.White,
+            Position = new Vector2f(10f, 8f)
+        };
+        target.Draw(energy);
+        using var inventory = new Text(font, stock, 13)
+        {
+            FillColor = new Color(210, 220, 230),
+            Position = new Vector2f(180f, 9f)
+        };
+        target.Draw(inventory);
+    }
+
+    private static string ShortItem(ItemId item)
+    {
+        return item switch
+        {
+            ItemId.IronPlate => "Fe",
+            ItemId.CopperPlate => "Cu",
+            ItemId.Coal => "Coal",
+            ItemId.Steel => "St",
+            ItemId.IronOre => "FeOre",
+            ItemId.CopperOre => "CuOre",
+            _ => item.ToString()
+        };
     }
 
     private static void DrawHud(
@@ -501,6 +775,7 @@ public sealed class SfmlGameRunner
                 lines.Add("B: build menu");
                 lines.Add("RMB: move");
                 lines.Add("Ctrl+LMB building: collect output");
+                lines.Add("Arrows/MMB/edge: pan camera");
             }
 
             if (selected.Kind == EntityKind.Assembler)
@@ -555,7 +830,7 @@ public sealed class SfmlGameRunner
             lines.Add("LMB: place/queue build");
         }
 
-        DrawTextLines(target, font, lines, panelX);
+        DrawTextLines(target, font, WrapHudLines(lines, HudWrapCharacters).ToList(), panelX);
     }
 
     private static void DrawPanel(IRenderTarget target, uint windowWidth, uint windowHeight, float panelX)
