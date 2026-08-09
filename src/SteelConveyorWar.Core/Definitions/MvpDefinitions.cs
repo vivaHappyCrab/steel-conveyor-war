@@ -7,7 +7,12 @@ public static class MvpDefinitions
     public const int ConveyorMoveTicks = 10;
     public const int InserterTransferTicks = 12;
     public const int ConveyorMaxItemsPerTile = 2;
+    /// <summary>Oil well mine cycle (unchanged baseline).</summary>
     public const int MineWorkTicks = 15;
+    /// <summary>Iron/copper ore mine cycle (2× baseline).</summary>
+    public const int OreMineWorkTicks = 30;
+    /// <summary>Coal mine cycle (3× baseline).</summary>
+    public const int CoalMineWorkTicks = 45;
     public const int HubStorageStacks = 20;
     public const double MobileMoveWorldUnitsPerTick = 0.125;
     public const int BaseBastionTemplateCapacity = 10;
@@ -232,8 +237,8 @@ public static class MvpDefinitions
     public static readonly IReadOnlyDictionary<ItemRecipeId, ItemRecipeDefinition> ItemRecipes =
         new Dictionary<ItemRecipeId, ItemRecipeDefinition>
         {
-            [ItemRecipeId.IronGear] = new(ItemRecipeId.IronGear, Cost((ItemId.IronPlate, 2)), ItemId.IronGear, 1, 20),
-            [ItemRecipeId.Composite] = new(ItemRecipeId.Composite, Cost((ItemId.IronPlate, 1), (ItemId.CopperPlate, 1)), ItemId.Composite, 1, 30),
+            [ItemRecipeId.IronGear] = new(ItemRecipeId.IronGear, Cost((ItemId.IronPlate, 2)), ItemId.IronGear, 1, 40),
+            [ItemRecipeId.Composite] = new(ItemRecipeId.Composite, Cost((ItemId.IronPlate, 1), (ItemId.CopperPlate, 1)), ItemId.Composite, 1, 60),
             [ItemRecipeId.SciencePackT1] = new(ItemRecipeId.SciencePackT1, Cost((ItemId.IronGear, 1), (ItemId.CopperPlate, 1)), ItemId.SciencePackT1, 1, 35),
             [ItemRecipeId.SciencePackT2] = new(ItemRecipeId.SciencePackT2, Cost((ItemId.Composite, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1)), ItemId.SciencePackT2, 1, 45)
         };

@@ -29,6 +29,9 @@ public sealed class EnergyStatsPanelModel
     public const float IntervalButtonHeight = 28f;
     public const float IntervalGap = 8f;
     public const float GraphHeight = 160f;
+    public const float AxisLeftPad = 36f;
+    public const float AxisBottomPad = 18f;
+    public const float GraphTitleGap = 18f;
     public const float RowHeight = 28f;
     public const float IconSize = 22f;
     public const float ColorBarWidth = 8f;
@@ -94,17 +97,19 @@ public sealed class EnergyStatsPanelModel
                 new Vector2f(IntervalButtonWidth, IntervalButtonHeight)));
         }
 
-        var contentTop = intervalY + IntervalButtonHeight + 10f;
+        var contentTop = intervalY + IntervalButtonHeight + 10f + GraphTitleGap;
         var contentLeft = overlay.Left + ResearchTreePanelModel.OverlayPadding;
         var contentWidth = overlay.Width - ResearchTreePanelModel.OverlayPadding * 2f;
         var columnGap = 16f;
         var columnWidth = (contentWidth - columnGap) * 0.5f;
-        var consumeGraph = new FloatRect(new Vector2f(contentLeft, contentTop), new Vector2f(columnWidth, GraphHeight));
+        // Outer graph bounds include shared axis pads so both plot areas stay GraphHeight × equal width.
+        var outerGraphHeight = GraphHeight + AxisBottomPad;
+        var consumeGraph = new FloatRect(new Vector2f(contentLeft, contentTop), new Vector2f(columnWidth, outerGraphHeight));
         var produceGraph = new FloatRect(
             new Vector2f(contentLeft + columnWidth + columnGap, contentTop),
-            new Vector2f(columnWidth, GraphHeight));
+            new Vector2f(columnWidth, outerGraphHeight));
 
-        var tableTop = contentTop + GraphHeight + 12f;
+        var tableTop = contentTop + outerGraphHeight + 12f;
         var consumerRows = BuildLegendRows(stats.ConsumerRows, contentLeft, tableTop, columnWidth, isProducer: false);
         var producerRows = BuildLegendRows(stats.ProducerRows, contentLeft + columnWidth + columnGap, tableTop, columnWidth, isProducer: true);
 

@@ -38,7 +38,7 @@ This document records architecture and game-design decisions made while implemen
 
 ## Economy And Logistics
 
-- Mines and wells produce items into local building inventories on a `MineWorkTicks` (=15) work cycle driven via `WorkTicksRemaining`/`WorkTicksTotal` each tick (progress bars). On cycle complete the building drains energy and adds 1 ore; full output leaves the building idle (ticks cleared).
+- Mines and wells produce items into local building inventories on a work cycle driven via `WorkTicksRemaining`/`WorkTicksTotal` each tick (progress bars): iron/copper mines use `OreMineWorkTicks` (=30), coal mines `CoalMineWorkTicks` (=45), oil wells `MineWorkTicks` (=15). On cycle complete the building drains energy and adds 1 ore; full output leaves the building idle (ticks cleared).
 - Buildings now expose separate input and output buffers. Recipes consume from input buffers and put completed products into output buffers.
 - Input and output buffers are limited by per-item stack size definitions in `MvpDefinitions.ItemStackSizes`.
 - Inserters move items between adjacent output/input buffers and conveyor slots. An inserter hand can hold only one item with amount `1`.
@@ -46,20 +46,22 @@ This document records architecture and game-design decisions made while implemen
 - Conveyor tiles hold at most two item slots and move items in their direction only after `MvpDefinitions.ConveyorMoveTicks`.
 - Inserters transfer held items only after `MvpDefinitions.InserterTransferTicks`.
 - Conveyor and inserter direction is core state and can be rotated through a simulation API. SFML only renders the arrows and translates hotkeys.
-- Conveyor item rendering reads directly from conveyor slots; detailed interpolation animation is deferred.
+- Conveyor item rendering interpolates draw position from `ProgressTicks / moveTicks` along belt `Direction`; two slots are placed along the belt axis (~25%/75%). Core movement remains discrete hops.
 - Oil is represented as `CrudeOil` items refined into `Fuel`. Full fluid pressure, pipe networks and reservoirs are deliberately deferred.
-- Energy is tracked as produced versus demanded per player. Each powered consumer has an `EnergyBuffer` with capacity `PowerDemand × 100`. The grid fills buffers emptiest-first each tick: sort by `EnergyBuffer/Capacity` ascending then entity id, and distribute `PowerProduced` one energy unit at a time. Buildings drain `PowerDemand` from their buffer only while actively producing; empty buffer pauses work progress (soft craft-time inflate removed). Per-player presentation-only `EnergyStatsHistory` ring (10 min @ 30 TPS tick storage keyed by absolute `Tick`, not hashed) feeds the SFML energy overlay (**P**): windows 10s/30s/1m/5m/10m; consumption series are **actual** buffer drains; `Query` emits averages over **fixed absolute** buckets (1s / 5s / 10s) so completed graph points never rewrite as the live window slides.
-- Assemblers and factories default to no recipe until selected (or bastion autofill). Smelters use a sticky auto-recipe from input; unused empty smelters refuse Ctrl+deposit.
+- Energy is tracked as produced versus demanded per player. Each powered consumer has an `EnergyBuffer` with capacity `PowerDemand × 100`. The grid fills buffers emptiest-first each tick: sort by `EnergyBuffer/Capacity` ascending then entity id, and distribute `PowerProduced` one energy unit at a time. Buildings drain `PowerDemand` from their buffer only while actively producing; empty buffer pauses work progress (soft craft-time inflate removed). Per-player presentation-only `EnergyStatsHistory` ring (10 min @ 30 TPS tick storage keyed by absolute `Tick`, not hashed) feeds the SFML energy overlay (**P**): windows 10s/30s/1m/5m/10m; consumption series are **actual** buffer drains; `Query` emits averages over **fixed absolute** buckets (1s / 5s / 10s) so completed graph points never rewrite as the live window slides. Both graphs share one Y max and draw axis labels (Y energy/tick, X window time) with equal plot height.
+- Assemblers and factories default to no recipe until selected (or bastion autofill). Smelters use a sticky auto-recipe from input; unused empty smelters refuse Ctrl+deposit. Base smelt ticks: iron/copper plate 40, steel 60. Iron gear / composite craft ticks: 40 / 60.
 - Player-facing inventory UI applies only to Commander and Hub (`MvpDefinitions.HasPlayerInventory`).
 
 ## Commander Interaction
 
-- Right click with the БМК selected issues a deterministic move command.
+- Right click with the БМК selected issues a deterministic move command (outside build mode).
+- In build mode (`B`), RMB hold ≥ 1s on an owned demolishable building calls `TryQueueCommanderDemolish` (instant in build radius, else queued move+demolish). Release early or retarget cancels. RMB on empty/invalid tiles is a no-op (does not move). Refund is `floor(BuildCosts/2)` plus full buffers/inventory/conveyor/held/pending output; deposit uses commander per-item stack cap, then hubs in interact radius, discard remainder. Bastion/Commander/units cannot be demolished.
+- `S` with the БМК selected clears move / queued build / queued demolish (`TryStopCommander`); paid ghosts keep constructing.
 - `Ctrl+Left click` with the БМК selected withdraws from hub inventory or collects the clicked entity output buffer when the target is within `CommanderInteractRadius` and owned by the same player.
 - `Ctrl+Right click` with the БМК selected deposits commander inventory into hub storage or a building input buffer within `CommanderInteractRadius` and same ownership (instead of issuing a move). Production buildings accept only current-recipe inputs; no recipe → deposit fails and falls through to move. Hub remains unfiltered.
 - Sidebar: RMB on an Input storage line (or hub inventory) deposits all of that item type from the БМК; LMB on an Output line (or hub inventory) withdraws all of that type into the БМК (same interact radius). Energy and craft progress bars are drawn on the selected building panel.
 - Hover/`R` rotate and selected rotate only apply to directed buildings owned by the local player.
-- Long-range queued collection is intentionally not implemented yet; only queued construction uses automatic movement.
+- Long-range queued collection is intentionally not implemented yet; only queued construction and queued demolish use automatic movement.
 
 ## Research
 
@@ -80,7 +82,7 @@ This document records architecture and game-design decisions made while implemen
 - Active defense garrisons units inside the Bastion when they reach the footprint perimeter (multi-tile aware): snap to bastion tile, `IsGarrisoned` (hidden — skipped by world tile queries, FoW, combat, and SFML draw/minimap); threats in Bastion vision trigger a sortie. Bastion death kills assigned units.
 - Combat uses deterministic Euclidean range, cooldown, and **formula C** damage: `max(1, AttackDamage - Armor) * Resistance(projectile, targetCategory)` with basis-point integer math (`CombatDamage` / `MvpDefinitions.GetResistanceBasisPoints`). HP is clamped to ≥ 0. Each landed shot appends a presentation-only `CombatShotEvent` (not hashed) for SFML tracers.
 - Mobile units collide with buildings (circle vs footprint) always. Unit↔unit circle–circle applies only while **stopped**; moving units ignore other units' collision radii (buildings unchanged). Draw silhouettes scale from `GetCollisionSize`.
-- Intermediate craft uses `IronGear` and `Composite` (1 iron + 1 copper plate → 1, 30 ticks). `CopperWire` / circuit-via-wire are removed. Scout production costs 4×Composite; SciencePackT2 consumes Composite.
+- Intermediate craft uses `IronGear` and `Composite` (1 iron + 1 copper plate → 1; work ticks 40 / 60). `CopperWire` / circuit-via-wire are removed. Scout production costs 4×Composite; SciencePackT2 consumes Composite.
 - `EntityStats` includes Armor, `ProjectileKind` (`GroundToGround` | `Ballistic` | `AirToGround`), and `SplashRadius` (0 = single target). MG turrets/bots/БМК are G2G; cannon/rocket/medium tank are Ballistic; AA turret/bot are AirToGround. Splash applies in the same `ProcessCombat` pass to enemies near the primary target (ordered by entity id).
 - Walls/SteelWalls block **GroundToGround** damage to allied **ground** units (БМК + `UnitKinds` except Scout) when a Bresenham LoS tile between attacker and target holds a Wall/SteelWall owned by a player with the same `TeamId` as the target. Ballistic and AirToGround ignore walls. Buildings and walls as targets still take full formula-C damage.
 - Research modifiers (`ResearchStatIds.AttackDamage` / `Armor` / `AttackCooldownTicks` / `MaxHealth`, plus existing `VisionRadius`) flow through `ResolveStat` / `AddModifierEffect`. `ProcessCombat` and FoW/HP sync use resolved values (MaxHealth delta adjusts current HP when the cap changes).
