@@ -69,8 +69,20 @@ public sealed class SfmlGameRunner
         TechnologyId? researchSelectedId = null;
         TechnologyId? researchLastClickId = null;
         var researchLastClickSeconds = -1f;
+        var researchScrollY = 0f;
         var researchClickClock = new Clock();
         var font = TryLoadFont();
+
+        void CloseResearchOverlay()
+        {
+            isResearchOverlayOpen = false;
+            researchSelectedId = null;
+            researchLastClickId = null;
+            researchScrollY = 0f;
+        }
+
+        float ClampResearchScroll(ResearchTreePanelModel tree) =>
+            ResearchTreePanelModel.ClampScroll(researchScrollY, tree.ContentHeight, tree.ContentViewport.Height);
 
         FloatRect GetMinimapBounds() =>
             new(
@@ -181,9 +193,7 @@ public sealed class SfmlGameRunner
 
             if (key == "Escape" && isResearchOverlayOpen)
             {
-                isResearchOverlayOpen = false;
-                researchSelectedId = null;
-                researchLastClickId = null;
+                CloseResearchOverlay();
                 return;
             }
 
@@ -307,11 +317,14 @@ public sealed class SfmlGameRunner
 
             if (key == "T")
             {
-                isResearchOverlayOpen = !isResearchOverlayOpen;
-                if (!isResearchOverlayOpen)
+                if (isResearchOverlayOpen)
                 {
-                    researchSelectedId = null;
-                    researchLastClickId = null;
+                    CloseResearchOverlay();
+                }
+                else
+                {
+                    isResearchOverlayOpen = true;
+                    researchScrollY = 0f;
                 }
 
                 return;
@@ -436,12 +449,11 @@ public sealed class SfmlGameRunner
                 var overlayBounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
                 var snapshot = simulation.GetResearchSnapshot(localPlayer);
                 var tree = ResearchTreePanelModel.FromSnapshot(snapshot, overlayBounds, researchSelectedId);
+                researchScrollY = ClampResearchScroll(tree);
 
                 if (tree.HitExit(mousePosition))
                 {
-                    isResearchOverlayOpen = false;
-                    researchSelectedId = null;
-                    researchLastClickId = null;
+                    CloseResearchOverlay();
                     return;
                 }
 
@@ -473,7 +485,7 @@ public sealed class SfmlGameRunner
                     return;
                 }
 
-                if (tree.TryPickNode(mousePosition, out var techId))
+                if (tree.TryPickNode(mousePosition, researchScrollY, out var techId))
                 {
                     var now = researchClickClock.ElapsedTime.AsSeconds();
                     var isDouble = researchLastClickId == techId
@@ -702,6 +714,30 @@ public sealed class SfmlGameRunner
                 }
             }
         };
+        window.MouseWheelScrolled += (_, args) =>
+        {
+            if (!isResearchOverlayOpen)
+            {
+                return;
+            }
+
+            var mousePosition = Mouse.GetPosition(window);
+            var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
+            var overlayBounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
+            var tree = ResearchTreePanelModel.FromSnapshot(
+                simulation.GetResearchSnapshot(localPlayer),
+                overlayBounds,
+                researchSelectedId);
+            if (!tree.ContainsContentViewport(mousePosition) && !tree.ContainsOverlay(mousePosition))
+            {
+                return;
+            }
+
+            researchScrollY = ResearchTreePanelModel.ClampScroll(
+                researchScrollY - args.Delta * ResearchTreePanelModel.ScrollStep,
+                tree.ContentHeight,
+                tree.ContentViewport.Height);
+        };
         window.MouseButtonReleased += (_, args) =>
         {
             if (args.Button.ToString() == "Middle")
@@ -865,7 +901,8 @@ public sealed class SfmlGameRunner
                     simulation.GetResearchSnapshot(localPlayer),
                     overlayBounds,
                     researchSelectedId);
-                DrawResearchTreeOverlay(window, tree, font);
+                researchScrollY = ClampResearchScroll(tree);
+                DrawResearchTreeOverlay(window, tree, font, researchScrollY, windowWidth, windowHeight);
             }
 
             if (isBuildMenuOpen)
@@ -2389,7 +2426,13 @@ public sealed class SfmlGameRunner
         });
     }
 
-    private static void DrawResearchTreeOverlay(IRenderTarget target, ResearchTreePanelModel tree, Font? font)
+    private static void DrawResearchTreeOverlay(
+        RenderWindow window,
+        ResearchTreePanelModel tree,
+        Font? font,
+        float scrollY,
+        uint windowWidth,
+        uint windowHeight)
     {
         using var backdrop = new RectangleShape(new Vector2f(tree.OverlayBounds.Width, tree.OverlayBounds.Height))
         {
@@ -2398,7 +2441,7 @@ public sealed class SfmlGameRunner
             OutlineColor = new Color(100, 120, 150),
             OutlineThickness = 1f
         };
-        target.Draw(backdrop);
+        window.Draw(backdrop);
 
         if (font is not null)
         {
@@ -2407,73 +2450,86 @@ public sealed class SfmlGameRunner
                 FillColor = new Color(220, 230, 240),
                 Position = new Vector2f(tree.OverlayBounds.Left + 10f, tree.OverlayBounds.Top + 6f)
             };
-            target.Draw(title);
+            window.Draw(title);
         }
 
-        var busColor = new Color(140, 160, 190);
-        foreach (var edge in tree.Edges)
+        var viewport = tree.ContentViewport;
+        using (var contentView = new View(new FloatRect(
+                   new Vector2f(0f, scrollY),
+                   new Vector2f(Math.Max(1f, viewport.Width), Math.Max(1f, viewport.Height)))))
         {
-            var line = new[]
-            {
-                new Vertex(edge.From, busColor),
-                new Vertex(edge.To, busColor)
-            };
-            target.Draw(line, PrimitiveType.Lines);
-        }
+            contentView.Viewport = new FloatRect(
+                new Vector2f(viewport.Left / windowWidth, viewport.Top / windowHeight),
+                new Vector2f(viewport.Width / windowWidth, viewport.Height / windowHeight));
+            window.SetView(contentView);
 
-        foreach (var node in tree.Nodes)
-        {
-            var fill = node.Status switch
+            var busColor = new Color(140, 160, 190);
+            foreach (var edge in tree.Edges)
             {
-                ResearchTreeNodeStatus.Completed => new Color(50, 110, 210),
-                ResearchTreeNodeStatus.Available => new Color(50, 170, 80),
-                ResearchTreeNodeStatus.Active => new Color(70, 190, 210),
-                _ => new Color(180, 55, 55)
-            };
-            var outline = tree.SelectedId == node.Id
-                ? Color.White
-                : node.IsMandatory
-                    ? new Color(220, 200, 120)
-                    : new Color(20, 20, 24);
-            using var icon = new RectangleShape(new Vector2f(node.Bounds.Width, node.Bounds.Height))
-            {
-                Position = new Vector2f(node.Bounds.Left, node.Bounds.Top),
-                FillColor = fill,
-                OutlineColor = outline,
-                OutlineThickness = tree.SelectedId == node.Id ? 2f : 1f
-            };
-            target.Draw(icon);
-
-            if (font is not null)
-            {
-                using var glyph = new Text(font, node.Symbol, 16)
+                var line = new[]
                 {
-                    FillColor = Color.White,
-                    Position = new Vector2f(node.Bounds.Left + 14f, node.Bounds.Top + 10f)
+                    new Vertex(edge.From, busColor),
+                    new Vertex(edge.To, busColor)
                 };
-                target.Draw(glyph);
+                window.Draw(line, PrimitiveType.Lines);
+            }
 
-                var label = node.DisplayName.Length > 18 ? node.DisplayName[..17] + "…" : node.DisplayName;
-                using var name = new Text(font, label, 11)
+            foreach (var node in tree.Nodes)
+            {
+                var fill = node.Status switch
                 {
-                    FillColor = new Color(210, 220, 230),
-                    Position = new Vector2f(node.Bounds.Left - 4f, node.Bounds.Top + node.Bounds.Height + 1f)
+                    ResearchTreeNodeStatus.Completed => new Color(50, 110, 210),
+                    ResearchTreeNodeStatus.Available => new Color(50, 170, 80),
+                    ResearchTreeNodeStatus.Active => new Color(70, 190, 210),
+                    _ => new Color(180, 55, 55)
                 };
-                target.Draw(name);
+                var outline = tree.SelectedId == node.Id
+                    ? Color.White
+                    : node.IsMandatory
+                        ? new Color(220, 200, 120)
+                        : new Color(20, 20, 24);
+                using var icon = new RectangleShape(new Vector2f(node.Bounds.Width, node.Bounds.Height))
+                {
+                    Position = new Vector2f(node.Bounds.Left, node.Bounds.Top),
+                    FillColor = fill,
+                    OutlineColor = outline,
+                    OutlineThickness = tree.SelectedId == node.Id ? 2f : 1f
+                };
+                window.Draw(icon);
+
+                if (font is not null)
+                {
+                    using var glyph = new Text(font, node.Symbol, 14)
+                    {
+                        FillColor = Color.White,
+                        Position = new Vector2f(node.Bounds.Left + 11f, node.Bounds.Top + 8f)
+                    };
+                    window.Draw(glyph);
+
+                    var label = node.DisplayName.Length > 16 ? node.DisplayName[..15] + "…" : node.DisplayName;
+                    using var name = new Text(font, label, 10)
+                    {
+                        FillColor = new Color(210, 220, 230),
+                        Position = new Vector2f(node.Bounds.Left - 2f, node.Bounds.Top + node.Bounds.Height + 1f)
+                    };
+                    window.Draw(name);
+                }
             }
         }
 
-        DrawUiButton(target, font, tree.ExitButtonBounds, "Exit", new Color(70, 80, 100));
+        window.SetView(window.DefaultView);
+
+        DrawUiButton(window, font, tree.ExitButtonBounds, "Exit", new Color(70, 80, 100));
         var actionEnabled = tree.CanStartSelected || tree.CanCancelSelected;
         DrawUiButton(
-            target,
+            window,
             font,
             tree.ActionButtonBounds,
             tree.ActionButtonLabel,
             actionEnabled ? new Color(60, 120, 80) : new Color(50, 55, 65));
         if (tree.SupportsAllocationToggle)
         {
-            DrawUiButton(target, font, tree.AllocationButtonBounds, "Alloc cycle/tact", new Color(70, 90, 130));
+            DrawUiButton(window, font, tree.AllocationButtonBounds, "Alloc cycle/tact", new Color(70, 90, 130));
         }
     }
 

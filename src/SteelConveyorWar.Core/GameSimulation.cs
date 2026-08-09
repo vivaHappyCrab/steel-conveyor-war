@@ -1383,10 +1383,11 @@ public sealed class GameSimulation
         var halfWidth = size.Width / 2;
 
         // Left-half start ores near Blue; right half is mirrored for PvP fairness.
-        // Keep Fe/Cu within early build reach of the start (commander ~ (4, midY)).
+        // Keep Fe/Cu within CommanderBuildRadius of the start (commander ~ (4, midY)).
+        // Prefer vertical separation; baseX near commander so Manhattan distance stays ≤ radius after jitter.
         var midY = size.Height / 2;
-        var ironCenter = JitterTile(rng, baseX: 10, baseY: midY - 6, maxOffset: 1, minX: 6, maxX: 18, minY: midY - 14, maxY: midY - 2);
-        var copperCenter = JitterTile(rng, baseX: 10, baseY: midY + 6, maxOffset: 1, minX: 6, maxX: 18, minY: midY + 2, maxY: midY + 14);
+        var ironCenter = JitterTile(rng, baseX: 4, baseY: midY - 10, maxOffset: 1, minX: 3, maxX: 7, minY: midY - 12, maxY: midY - 8);
+        var copperCenter = JitterTile(rng, baseX: 4, baseY: midY + 10, maxOffset: 1, minX: 3, maxX: 7, minY: midY + 8, maxY: midY + 12);
         // Chebyshev radius ≥ 2 → bounding box at least 5×5 (≥ 4×4 requirement).
         FillOrePatchLeftHalf(terrain, ironCenter, TerrainType.IronOre, maxDistance: 2 + rng.Next(0, 2), halfWidth);
         FillOrePatchLeftHalf(terrain, copperCenter, TerrainType.CopperOre, maxDistance: 2 + rng.Next(0, 2), halfWidth);
