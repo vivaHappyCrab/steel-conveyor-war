@@ -88,7 +88,7 @@ This document records architecture and game-design decisions made while implemen
 - Bastion vision radius is elevated relative to other buildings.
 - Combat attack range uses the same Euclidean tile check for determinism.
 - Tech signatures are aggregated into map zones from **non-allied** entities and expose intensity without exact building identity.
-- SFML draws a **display-only FoW minimap** (top-right of the playfield, left of the side panel): explored/visible terrain + resource patches; buildings colored blue=own / red=enemy / magenta(255,0,255)=ally; unknown tiles stay hidden.
+- SFML draws a **display-only FoW minimap** (top-right of the playfield, left of the side panel): explored/visible terrain + resource patches; live entity markers (blue=own / red=enemy / magenta(255,0,255)=ally) use the same Visible gate as the main playfield so Explored does not leak current enemy/ally positions; unknown tiles stay hidden.
 
 ## Map And Session Lifetime
 
