@@ -204,10 +204,12 @@ public sealed class GameSimulation
         return kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter;
     }
 
-    public bool TryRotateEntity(int entityId, bool clockwise)
+    public bool TryRotateEntity(int entityId, PlayerId actorPlayerId, bool clockwise)
     {
         var entity = World.GetEntity(entityId);
-        if (entity is null || entity.Kind is not (EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter))
+        if (entity is null
+            || entity.OwnerId != actorPlayerId
+            || entity.Kind is not (EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter))
         {
             return false;
         }
@@ -711,7 +713,7 @@ public sealed class GameSimulation
         if (target!.Kind == EntityKind.Hub)
         {
             var maxStacks = GetHubStorageStacks(target.OwnerId);
-            foreach (var item in commander!.Inventory.Items.ToList())
+            foreach (var item in commander!.Inventory.Items.OrderBy(pair => pair.Key).ToList())
             {
                 var remaining = item.Value;
                 while (remaining > 0)
@@ -740,7 +742,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        foreach (var item in commander!.Inventory.Items.ToList())
+        foreach (var item in commander!.Inventory.Items.OrderBy(pair => pair.Key).ToList())
         {
             var remaining = item.Value;
             while (remaining > 0)
@@ -766,7 +768,12 @@ public sealed class GameSimulation
 
     private static bool TryValidateCommanderInteract(WorldEntity? commander, WorldEntity? target)
     {
-        if (commander is null || target is null || commander.Kind != EntityKind.Commander || !commander.IsAlive)
+        if (commander is null
+            || target is null
+            || commander.Kind != EntityKind.Commander
+            || !commander.IsAlive
+            || commander.OwnerId is null
+            || target.OwnerId != commander.OwnerId)
         {
             return false;
         }

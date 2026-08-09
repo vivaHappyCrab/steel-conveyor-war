@@ -51,8 +51,9 @@ This document records architecture and game-design decisions made while implemen
 ## Commander Interaction
 
 - Right click with the БМК selected issues a deterministic move command.
-- `Ctrl+Left click` with the БМК selected withdraws from hub inventory or collects the clicked entity output buffer when the target is within `CommanderInteractRadius`.
-- `Ctrl+Right click` with the БМК selected deposits commander inventory into hub storage or a building input buffer within `CommanderInteractRadius` (instead of issuing a move).
+- `Ctrl+Left click` with the БМК selected withdraws from hub inventory or collects the clicked entity output buffer when the target is within `CommanderInteractRadius` and owned by the same player.
+- `Ctrl+Right click` with the БМК selected deposits commander inventory into hub storage or a building input buffer within `CommanderInteractRadius` and same ownership (instead of issuing a move). Failed/invalid deposit targets fall through to move.
+- Hover/`R` rotate and selected rotate only apply to directed buildings owned by the local player.
 - Long-range queued collection is intentionally not implemented yet; only queued construction uses automatic movement.
 
 ## Research

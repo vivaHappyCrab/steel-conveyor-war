@@ -415,9 +415,20 @@ public class GameSimulationTests
         AdvanceTicks(simulation, 30);
 
         Assert.Equal(Direction.East, simulation.World.GetEntity(conveyorId)!.Direction);
-        Assert.True(simulation.TryRotateEntity(conveyorId, clockwise: true));
+        Assert.True(simulation.TryRotateEntity(conveyorId, new PlayerId(1), clockwise: true));
         Assert.Equal(Direction.South, simulation.World.GetEntity(conveyorId)!.Direction);
-        Assert.True(simulation.TryRotateEntity(conveyorId, clockwise: false));
+        Assert.True(simulation.TryRotateEntity(conveyorId, new PlayerId(1), clockwise: false));
+        Assert.Equal(Direction.East, simulation.World.GetEntity(conveyorId)!.Direction);
+    }
+
+    [Fact]
+    public void TryRotateEntity_RejectsEnemyOwnedDirectedBuilding()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, NearBlue(simulation, 7, 0), out var conveyorId));
+        AdvanceTicks(simulation, 30);
+
+        Assert.False(simulation.TryRotateEntity(conveyorId, new PlayerId(2), clockwise: true));
         Assert.Equal(Direction.East, simulation.World.GetEntity(conveyorId)!.Direction);
     }
 
@@ -875,6 +886,35 @@ public class GameSimulationTests
 
         Assert.False(simulation.TryWithdrawFromHubOrOutput(commander.Id, farHubId));
         Assert.Equal(2, simulation.World.GetEntity(farHubId)!.Inventory.Count(ItemId.IronPlate));
+    }
+
+    [Fact]
+    public void TryWithdrawFromHubOrOutput_RejectsEnemyHub()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var enemyHub = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(2) && entity.Kind == EntityKind.Hub);
+        Assert.True(simulation.TryTeleportEntityForTests(commander.Id, enemyHub.Position));
+        Assert.True(simulation.AddItemToEntity(enemyHub.Id, ItemId.IronPlate, 5));
+
+        Assert.False(simulation.TryWithdrawFromHubOrOutput(commander.Id, enemyHub.Id));
+        Assert.Equal(5, enemyHub.Inventory.Count(ItemId.IronPlate));
+    }
+
+    [Fact]
+    public void TryDepositToHubOrInput_RejectsEnemyHub()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var enemyHub = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(2) && entity.Kind == EntityKind.Hub);
+        Assert.True(simulation.TryTeleportEntityForTests(commander.Id, enemyHub.Position));
+        ClearInventory(commander.Inventory);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.CopperPlate, 4));
+        var hubBefore = enemyHub.Inventory.Count(ItemId.CopperPlate);
+
+        Assert.False(simulation.TryDepositToHubOrInput(commander.Id, enemyHub.Id));
+        Assert.Equal(4, commander.Inventory.Count(ItemId.CopperPlate));
+        Assert.Equal(hubBefore, enemyHub.Inventory.Count(ItemId.CopperPlate));
     }
 
     [Fact]
