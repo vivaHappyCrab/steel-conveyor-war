@@ -437,6 +437,21 @@ public sealed class GameSimulation
     }
 
     /// <summary>
+    /// Test helper: fills or sets a building energy buffer within capacity.
+    /// </summary>
+    public bool TrySetEnergyBufferForTests(int entityId, int energy)
+    {
+        var entity = World.GetEntity(entityId);
+        if (entity is null || !entity.IsAlive || entity.EnergyBufferCapacity <= 0)
+        {
+            return false;
+        }
+
+        entity.EnergyBuffer = Math.Clamp(energy, 0, entity.EnergyBufferCapacity);
+        return true;
+    }
+
+    /// <summary>
     /// Test helper: spawns a completed entity (skips ghost construction) for combat setups.
     /// </summary>
     public bool TrySpawnEntityForTests(EntityKind kind, TilePosition position, PlayerId ownerId, out int entityId)
@@ -576,6 +591,7 @@ public sealed class GameSimulation
         assembler.PendingOutputItem = null;
         assembler.PendingOutputAmount = 1;
         assembler.WorkTicksRemaining = 0;
+        assembler.WorkTicksTotal = 0;
         return true;
     }
 
@@ -745,7 +761,9 @@ public sealed class GameSimulation
 
     /// <summary>
     /// Deposits commander inventory into hub storage or a building input buffer within interact radius.
-    /// Transfers as many items as fit; returns true when the target is a valid deposit destination.
+    /// Production buildings only accept items matching the current recipe; no recipe → false (move fallback).
+    /// Transfers as many accepted items as fit; returns true when the target is a valid deposit destination
+    /// with a non-empty accepted set (hub always) even if nothing moved due to full buffers.
     /// </summary>
     public bool TryDepositToHubOrInput(int commanderId, int targetEntityId)
     {
@@ -758,28 +776,7 @@ public sealed class GameSimulation
 
         if (target!.Kind == EntityKind.Hub)
         {
-            var maxStacks = GetHubStorageStacks(target.OwnerId);
-            foreach (var item in commander!.Inventory.Items.OrderBy(pair => pair.Key).ToList())
-            {
-                var remaining = item.Value;
-                while (remaining > 0)
-                {
-                    var chunk = Math.Min(remaining, MvpDefinitions.GetMaxStackSize(item.Key));
-                    while (chunk > 0 && !target.Inventory.TryAddWithinTotalStackLimit(item.Key, chunk, maxStacks))
-                    {
-                        chunk--;
-                    }
-
-                    if (chunk <= 0)
-                    {
-                        break;
-                    }
-
-                    commander.Inventory.TryRemove(item.Key, chunk);
-                    remaining -= chunk;
-                }
-            }
-
+            DepositAllMatching(commander!, target.Inventory, item => true, GetHubStorageStacks(target.OwnerId), hubMode: true);
             return true;
         }
 
@@ -788,14 +785,191 @@ public sealed class GameSimulation
             return false;
         }
 
-        foreach (var item in commander!.Inventory.Items.OrderBy(pair => pair.Key).ToList())
+        var accepted = GetAcceptedInputItems(target);
+        if (accepted is null || accepted.Count == 0)
         {
+            return false;
+        }
+
+        DepositAllMatching(commander!, target.InputBuffer, accepted.Contains, hubStackLimit: null, hubMode: false);
+        return true;
+    }
+
+    /// <summary>
+    /// Moves all of <paramref name="item"/> from commander inventory into hub storage or building input.
+    /// </summary>
+    public bool TryDepositItemTypeToHubOrInput(int commanderId, int targetEntityId, ItemId item)
+    {
+        var commander = World.GetEntity(commanderId);
+        var target = World.GetEntity(targetEntityId);
+        if (!TryValidateCommanderInteract(commander, target))
+        {
+            return false;
+        }
+
+        if (target!.Kind == EntityKind.Hub)
+        {
+            DepositAllMatching(commander!, target.Inventory, candidate => candidate == item, GetHubStorageStacks(target.OwnerId), hubMode: true);
+            return true;
+        }
+
+        if (!IsBuildingWithBuffers(target.Kind))
+        {
+            return false;
+        }
+
+        var accepted = GetAcceptedInputItems(target);
+        if (accepted is null || !accepted.Contains(item))
+        {
+            return false;
+        }
+
+        DepositAllMatching(commander!, target.InputBuffer, candidate => candidate == item, hubStackLimit: null, hubMode: false);
+        return true;
+    }
+
+    /// <summary>
+    /// Moves all of <paramref name="item"/> from hub inventory or building output into commander inventory.
+    /// </summary>
+    public bool TryWithdrawItemTypeFromHubOrOutput(int commanderId, int targetEntityId, ItemId item)
+    {
+        var commander = World.GetEntity(commanderId);
+        var target = World.GetEntity(targetEntityId);
+        if (!TryValidateCommanderInteract(commander, target))
+        {
+            return false;
+        }
+
+        if (target!.Kind == EntityKind.Hub)
+        {
+            var amount = target.Inventory.Count(item);
+            if (amount <= 0)
+            {
+                return true;
+            }
+
+            if (!target.Inventory.TryRemove(item, amount))
+            {
+                return false;
+            }
+
+            commander!.Inventory.Add(item, amount);
+            return true;
+        }
+
+        var outputAmount = target.OutputBuffer.Count(item);
+        if (outputAmount <= 0)
+        {
+            return true;
+        }
+
+        if (!target.OutputBuffer.TryRemove(item, outputAmount))
+        {
+            return false;
+        }
+
+        commander!.Inventory.Add(item, outputAmount);
+        return true;
+    }
+
+    /// <summary>
+    /// Items currently accepted into this building's input (empty = no recipe / refuse Ctrl+deposit).
+    /// Hub is not handled here.
+    /// </summary>
+    public static IReadOnlySet<ItemId> GetAcceptedInputItems(WorldEntity entity)
+    {
+        switch (entity.Kind)
+        {
+            case EntityKind.Assembler:
+                if (entity.SelectedItemRecipe is null
+                    || !MvpDefinitions.ItemRecipes.TryGetValue(entity.SelectedItemRecipe.Value, out var itemRecipe))
+                {
+                    return EmptyItemSet;
+                }
+
+                return itemRecipe.Inputs.Keys.ToHashSet();
+
+            case EntityKind.Smelter:
+                return entity.ActiveSmeltRecipe switch
+                {
+                    SmeltRecipeId.IronPlate => IronOreOnly,
+                    SmeltRecipeId.CopperPlate => CopperOreOnly,
+                    SmeltRecipeId.Steel => SteelSmeltInputs,
+                    _ => EmptyItemSet
+                };
+
+            case EntityKind.Refinery:
+                return CrudeOilOnly;
+
+            case EntityKind.TankFactory:
+            case EntityKind.DroneCenter:
+                if (entity.ProductionTargetKind is null
+                    || !MvpDefinitions.ProductionRecipes.TryGetValue(entity.ProductionTargetKind.Value, out var unitRecipe))
+                {
+                    return EmptyItemSet;
+                }
+
+                return unitRecipe.Inputs.Keys.ToHashSet();
+
+            case EntityKind.Laboratory:
+                return SciencePackInputs;
+
+            case EntityKind.CoalPlant:
+                return CoalOnly;
+
+            case EntityKind.MachineGunTurret:
+                return AmmoOnly;
+
+            case EntityKind.CannonTurret:
+                return ShellOnly;
+
+            case EntityKind.AntiAirTurret:
+                return AntiAirShellOnly;
+
+            default:
+                return EmptyItemSet;
+        }
+    }
+
+    private static readonly HashSet<ItemId> EmptyItemSet = new();
+    private static readonly HashSet<ItemId> IronOreOnly = new() { ItemId.IronOre };
+    private static readonly HashSet<ItemId> CopperOreOnly = new() { ItemId.CopperOre };
+    private static readonly HashSet<ItemId> SteelSmeltInputs = new() { ItemId.IronPlate, ItemId.Coal };
+    private static readonly HashSet<ItemId> CrudeOilOnly = new() { ItemId.CrudeOil };
+    private static readonly HashSet<ItemId> SciencePackInputs = new() { ItemId.SciencePackT1, ItemId.SciencePackT2 };
+    private static readonly HashSet<ItemId> CoalOnly = new() { ItemId.Coal };
+    private static readonly HashSet<ItemId> AmmoOnly = new() { ItemId.Ammo };
+    private static readonly HashSet<ItemId> ShellOnly = new() { ItemId.Shell };
+    private static readonly HashSet<ItemId> AntiAirShellOnly = new() { ItemId.AntiAirShell };
+
+    private static void DepositAllMatching(
+        WorldEntity commander,
+        Inventory destination,
+        Func<ItemId, bool> accept,
+        int? hubStackLimit,
+        bool hubMode)
+    {
+        foreach (var item in commander.Inventory.Items.OrderBy(pair => pair.Key).ToList())
+        {
+            if (!accept(item.Key))
+            {
+                continue;
+            }
+
             var remaining = item.Value;
             while (remaining > 0)
             {
                 var chunk = Math.Min(remaining, MvpDefinitions.GetMaxStackSize(item.Key));
-                while (chunk > 0 && !TryAddToBuffer(target.InputBuffer, item.Key, chunk))
+                while (chunk > 0)
                 {
+                    var ok = hubMode
+                        ? destination.TryAddWithinTotalStackLimit(item.Key, chunk, hubStackLimit!.Value)
+                        : TryAddToBuffer(destination, item.Key, chunk);
+                    if (ok)
+                    {
+                        break;
+                    }
+
                     chunk--;
                 }
 
@@ -808,7 +982,26 @@ public sealed class GameSimulation
                 remaining -= chunk;
             }
         }
+    }
 
+    /// <summary>
+    /// Drains this tick's power demand from the building buffer. Returns false when the building
+    /// cannot afford to run (no demand configured is treated as success / unpowered-free).
+    /// </summary>
+    public bool TryConsumeBuildingEnergy(WorldEntity building)
+    {
+        var demand = MvpDefinitions.GetPowerDemand(building.Kind);
+        if (demand <= 0)
+        {
+            return true;
+        }
+
+        if (building.EnergyBuffer < demand)
+        {
+            return false;
+        }
+
+        building.EnergyBuffer -= demand;
         return true;
     }
 
@@ -997,10 +1190,9 @@ public sealed class GameSimulation
 
     private static void ConfigureEntityDefaults(WorldEntity entity)
     {
-        if (entity.Kind == EntityKind.Assembler && entity.SelectedItemRecipe is null)
-        {
-            entity.SelectedItemRecipe = ItemRecipeId.IronGear;
-        }
+        entity.EnergyBufferCapacity = MvpDefinitions.GetEnergyBufferCapacity(entity.Kind);
+        entity.EnergyBuffer = 0;
+        // Assembler / factory default recipe is none until the player (or autofill) selects one.
     }
 
     /// <summary>
@@ -1597,8 +1789,56 @@ public sealed class GameSimulation
                 EntityKind.CoalPlant when entity.InputBuffer.TryRemove(ItemId.Coal, 1) => MvpDefinitions.PowerProduction.GetValueOrDefault(EntityKind.CoalPlant),
                 _ => 0
             };
-            player.PowerDemand += MvpDefinitions.PowerDemand.GetValueOrDefault(entity.Kind);
+            player.PowerDemand += MvpDefinitions.GetPowerDemand(entity.Kind);
         }
+
+        foreach (var player in _players)
+        {
+            FillEnergyBuffersRoundRobin(player);
+        }
+    }
+
+    private void FillEnergyBuffersRoundRobin(PlayerState player)
+    {
+        var remaining = player.PowerProduced;
+        if (remaining <= 0)
+        {
+            return;
+        }
+
+        var consumers = World.Entities
+            .Where(entity =>
+                entity.IsAlive
+                && entity.OwnerId == player.Id
+                && entity.EnergyBufferCapacity > 0)
+            .OrderBy(entity => entity.Id)
+            .ToList();
+
+        if (consumers.Count == 0)
+        {
+            return;
+        }
+
+        var index = player.EnergyRoundRobinIndex % consumers.Count;
+        var idleCycles = 0;
+        while (remaining > 0 && idleCycles < consumers.Count)
+        {
+            var consumer = consumers[index];
+            if (consumer.EnergyBuffer < consumer.EnergyBufferCapacity)
+            {
+                consumer.EnergyBuffer++;
+                remaining--;
+                idleCycles = 0;
+            }
+            else
+            {
+                idleCycles++;
+            }
+
+            index = (index + 1) % consumers.Count;
+        }
+
+        player.EnergyRoundRobinIndex = index;
     }
 
     private void ProduceRawResources()
@@ -1611,21 +1851,32 @@ public sealed class GameSimulation
         foreach (var entity in World.Entities.Where(entity => entity.IsAlive))
         {
             var terrain = World.GetTerrain(entity.Position);
-            switch (entity.Kind)
+            ItemId? product = entity.Kind switch
             {
-                case EntityKind.Mine when terrain == TerrainType.IronOre:
-                    TryAddToBuffer(entity.OutputBuffer, ItemId.IronOre, 1);
-                    break;
-                case EntityKind.Mine when terrain == TerrainType.CopperOre:
-                    TryAddToBuffer(entity.OutputBuffer, ItemId.CopperOre, 1);
-                    break;
-                case EntityKind.CoalMine when terrain == TerrainType.Coal:
-                    TryAddToBuffer(entity.OutputBuffer, ItemId.Coal, 1);
-                    break;
-                case EntityKind.OilWell when terrain == TerrainType.Oil:
-                    TryAddToBuffer(entity.OutputBuffer, ItemId.CrudeOil, 1);
-                    break;
+                EntityKind.Mine when terrain == TerrainType.IronOre => ItemId.IronOre,
+                EntityKind.Mine when terrain == TerrainType.CopperOre => ItemId.CopperOre,
+                EntityKind.CoalMine when terrain == TerrainType.Coal => ItemId.Coal,
+                EntityKind.OilWell when terrain == TerrainType.Oil => ItemId.CrudeOil,
+                _ => null
+            };
+
+            if (product is null)
+            {
+                continue;
             }
+
+            // Drain only when a unit can actually be produced (full output = idle).
+            if (entity.OutputBuffer.Count(product.Value) >= MvpDefinitions.GetMaxStackSize(product.Value))
+            {
+                continue;
+            }
+
+            if (!TryConsumeBuildingEnergy(entity))
+            {
+                continue;
+            }
+
+            TryAddToBuffer(entity.OutputBuffer, product.Value, 1);
         }
     }
 
@@ -1635,10 +1886,19 @@ public sealed class GameSimulation
         {
             if (building.WorkTicksRemaining > 0 && building.PendingOutputItem is not null && !MvpDefinitions.FactoryKinds.Contains(building.Kind))
             {
+                if (!TryConsumeBuildingEnergy(building))
+                {
+                    continue;
+                }
+
                 building.WorkTicksRemaining--;
                 if (building.WorkTicksRemaining == 0)
                 {
                     TryCompletePendingOutput(building);
+                    if (building.WorkTicksRemaining == 0 && building.PendingOutputItem is null)
+                    {
+                        building.WorkTicksTotal = 0;
+                    }
                 }
 
                 continue;
@@ -1647,6 +1907,11 @@ public sealed class GameSimulation
             if (building.WorkTicksRemaining == 0 && building.PendingOutputItem is not null && !MvpDefinitions.FactoryKinds.Contains(building.Kind))
             {
                 TryCompletePendingOutput(building);
+                if (building.PendingOutputItem is null)
+                {
+                    building.WorkTicksTotal = 0;
+                }
+
                 continue;
             }
 
@@ -1658,21 +1923,7 @@ public sealed class GameSimulation
             switch (building.Kind)
             {
                 case EntityKind.Smelter:
-                    StartItemRecipe(building, ItemId.IronOre, ItemId.IronPlate, 20);
-                    StartItemRecipe(building, ItemId.CopperOre, ItemId.CopperPlate, 20);
-                    if (building.PendingOutputItem is null && building.InputBuffer.Has(ItemId.IronPlate, 2) && building.InputBuffer.TryRemove(ItemId.Coal, 1))
-                    {
-                        building.InputBuffer.TryRemove(ItemId.IronPlate, 2);
-                        building.PendingOutputItem = ItemId.Steel;
-                        var steelTicks = 30;
-                        if (building.OwnerId is not null)
-                        {
-                            steelTicks = ResolveStat(building.OwnerId.Value, ResearchStatIds.SmelterWorkTicks, steelTicks);
-                            steelTicks = ApplyEnergyShortage(building.OwnerId.Value, steelTicks);
-                        }
-                        building.WorkTicksRemaining = steelTicks;
-                    }
-
+                    TryStartSmelterRecipe(building);
                     break;
                 case EntityKind.Refinery:
                     StartItemRecipe(building, ItemId.CrudeOil, ItemId.Fuel, 30);
@@ -1681,6 +1932,82 @@ public sealed class GameSimulation
                     StartAssemblerRecipe(building);
                     break;
             }
+        }
+    }
+
+    private void TryStartSmelterRecipe(WorldEntity smelter)
+    {
+        if (smelter.PendingOutputItem is not null)
+        {
+            return;
+        }
+
+        if (smelter.ActiveSmeltRecipe is { } sticky && TryBeginSmeltRecipe(smelter, sticky))
+        {
+            return;
+        }
+
+        foreach (var candidate in new[] { SmeltRecipeId.IronPlate, SmeltRecipeId.CopperPlate, SmeltRecipeId.Steel })
+        {
+            if (smelter.ActiveSmeltRecipe == candidate)
+            {
+                continue;
+            }
+
+            if (TryBeginSmeltRecipe(smelter, candidate))
+            {
+                return;
+            }
+        }
+    }
+
+    private bool TryBeginSmeltRecipe(WorldEntity smelter, SmeltRecipeId recipe)
+    {
+        switch (recipe)
+        {
+            case SmeltRecipeId.IronPlate:
+                if (!smelter.InputBuffer.Has(ItemId.IronOre, 1))
+                {
+                    return false;
+                }
+
+                smelter.ActiveSmeltRecipe = SmeltRecipeId.IronPlate;
+                StartItemRecipe(smelter, ItemId.IronOre, ItemId.IronPlate, 20);
+                return smelter.PendingOutputItem is not null;
+
+            case SmeltRecipeId.CopperPlate:
+                if (!smelter.InputBuffer.Has(ItemId.CopperOre, 1))
+                {
+                    return false;
+                }
+
+                smelter.ActiveSmeltRecipe = SmeltRecipeId.CopperPlate;
+                StartItemRecipe(smelter, ItemId.CopperOre, ItemId.CopperPlate, 20);
+                return smelter.PendingOutputItem is not null;
+
+            case SmeltRecipeId.Steel:
+                if (!smelter.InputBuffer.Has(ItemId.IronPlate, 2) || !smelter.InputBuffer.Has(ItemId.Coal, 1))
+                {
+                    return false;
+                }
+
+                smelter.InputBuffer.TryRemove(ItemId.Coal, 1);
+                smelter.InputBuffer.TryRemove(ItemId.IronPlate, 2);
+                smelter.ActiveSmeltRecipe = SmeltRecipeId.Steel;
+                smelter.PendingOutputItem = ItemId.Steel;
+                smelter.PendingOutputAmount = 1;
+                var steelTicks = 30;
+                if (smelter.OwnerId is not null)
+                {
+                    steelTicks = ResolveStat(smelter.OwnerId.Value, ResearchStatIds.SmelterWorkTicks, steelTicks);
+                }
+
+                smelter.WorkTicksTotal = steelTicks;
+                smelter.WorkTicksRemaining = steelTicks;
+                return true;
+
+            default:
+                return false;
         }
     }
 
@@ -1697,11 +2024,11 @@ public sealed class GameSimulation
                 ? ResearchStatIds.SmelterWorkTicks
                 : ResearchStatIds.FactoryWorkTicks;
             workTicks = ResolveStat(building.OwnerId.Value, statId, workTicks);
-            workTicks = ApplyEnergyShortage(building.OwnerId.Value, workTicks);
         }
 
         building.PendingOutputItem = output;
         building.PendingOutputAmount = 1;
+        building.WorkTicksTotal = workTicks;
         building.WorkTicksRemaining = workTicks;
     }
 
@@ -1727,11 +2054,11 @@ public sealed class GameSimulation
         if (assembler.OwnerId is not null)
         {
             workTicks = ResolveStat(assembler.OwnerId.Value, ResearchStatIds.FactoryWorkTicks, workTicks);
-            workTicks = ApplyEnergyShortage(assembler.OwnerId.Value, workTicks);
         }
 
         assembler.PendingOutputItem = recipe.OutputItem;
         assembler.PendingOutputAmount = recipe.OutputAmount;
+        assembler.WorkTicksTotal = workTicks;
         assembler.WorkTicksRemaining = workTicks;
     }
 
@@ -1909,23 +2236,6 @@ public sealed class GameSimulation
         SyncAllResolvedMaxHealth();
     }
 
-    private int ApplyEnergyShortage(PlayerId playerId, int workTicks)
-    {
-        var player = GetPlayer(playerId);
-        // No generators yet: treat as pre-power economy (no shortage slowdown).
-        if (player.PowerProduced <= 0 || player.PowerDemand <= player.PowerProduced || player.PowerDemand <= 0)
-        {
-            return workTicks;
-        }
-
-        var shortageBasisPoints = Math.Min(
-            ModifierResolver.BasisPointsScale,
-            (player.PowerDemand - player.PowerProduced) * ModifierResolver.BasisPointsScale / player.PowerDemand);
-        var penalty = ResolveStat(playerId, ResearchStatIds.EnergyShortagePenalty, shortageBasisPoints, minValue: 0);
-        var slowed = workTicks + (int)((long)workTicks * penalty / ModifierResolver.BasisPointsScale);
-        return Math.Max(workTicks, slowed);
-    }
-
     private int GetHubStorageStacks(PlayerId? ownerId)
     {
         if (ownerId is null)
@@ -1976,10 +2286,16 @@ public sealed class GameSimulation
         {
             if (factory.WorkTicksRemaining > 0 && factory.ProductionTargetKind is not null)
             {
+                if (!TryConsumeBuildingEnergy(factory))
+                {
+                    continue;
+                }
+
                 factory.WorkTicksRemaining--;
                 if (factory.WorkTicksRemaining == 0)
                 {
                     SpawnProducedUnit(factory, factory.ProductionTargetKind.Value);
+                    factory.WorkTicksTotal = 0;
                     if (!factory.IsManualProductionTarget)
                     {
                         factory.ProductionTargetKind = null;
@@ -2014,9 +2330,9 @@ public sealed class GameSimulation
             if (factory.OwnerId is not null)
             {
                 workTicks = ResolveStat(factory.OwnerId.Value, ResearchStatIds.FactoryWorkTicks, workTicks, recipe.OutputKind.ToString());
-                workTicks = ApplyEnergyShortage(factory.OwnerId.Value, workTicks);
             }
 
+            factory.WorkTicksTotal = workTicks;
             factory.WorkTicksRemaining = workTicks;
         }
     }
@@ -2658,6 +2974,11 @@ public sealed class GameSimulation
                 .ThenBy(entity => entity.Id)
                 .FirstOrDefault();
             if (target is null)
+            {
+                continue;
+            }
+
+            if (MvpDefinitions.GetPowerDemand(attacker.Kind) > 0 && !TryConsumeBuildingEnergy(attacker))
             {
                 continue;
             }

@@ -72,6 +72,14 @@ public enum ItemRecipeId
     SciencePackT2
 }
 
+/// <summary>Sticky auto-selected smelter recipe (null = never smelted / no recipe).</summary>
+public enum SmeltRecipeId
+{
+    IronPlate,
+    CopperPlate,
+    Steel
+}
+
 public enum Direction
 {
     North,

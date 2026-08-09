@@ -19,6 +19,16 @@ public sealed class SfmlGameRunner
     private const int MaxHudLines = 34;
     private const int RecipeLinesPerPage = 8;
     private const int HudWrapCharacters = 32;
+    private const float HudLineHeight = 18f;
+    private const float HudTextStartY = 10f;
+
+    private enum SidebarStorageKind
+    {
+        Input,
+        Output
+    }
+
+    private readonly record struct SidebarStorageHit(FloatRect Bounds, ItemId Item, SidebarStorageKind Kind);
 
     public void Run(GameSimulation simulation, int? maxFrames = null, SfmlDisplayOptions? display = null)
     {
@@ -52,6 +62,7 @@ public sealed class SfmlGameRunner
         var templateUnitIndex = 0;
         var bastionPendingMode = BastionPendingInputMode.None;
         var patrolWaypoints = new List<TilePosition>();
+        var sidebarStorageHits = new List<SidebarStorageHit>();
         var font = TryLoadFont();
 
         void ClearBastionPending()
@@ -368,6 +379,23 @@ public sealed class SfmlGameRunner
                 return;
             }
 
+            if (mousePosition.X >= panelX
+                && TryHandleSidebarStorageClick(
+                    simulation,
+                    localPlayer,
+                    selectedEntityId,
+                    sidebarStorageHits,
+                    mousePosition,
+                    button))
+            {
+                return;
+            }
+
+            if (mousePosition.X >= panelX)
+            {
+                return;
+            }
+
             var selectedForBar = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
             if (button == "Left"
                 && !isBuildMenuOpen
@@ -633,7 +661,8 @@ public sealed class SfmlGameRunner
                 font,
                 windowWidth,
                 windowHeight,
-                panelX);
+                panelX,
+                sidebarStorageHits);
             if (isBuildMenuOpen)
             {
                 DrawBuildBar(
@@ -1209,15 +1238,18 @@ public sealed class SfmlGameRunner
         Font? font,
         uint windowWidth,
         uint windowHeight,
-        float panelX)
+        float panelX,
+        List<SidebarStorageHit> sidebarStorageHits)
     {
         DrawPanel(target, windowWidth, windowHeight, panelX);
+        sidebarStorageHits.Clear();
         if (font is null)
         {
             return;
         }
 
         var lines = new List<string>();
+        var lineItemTags = new Dictionary<int, (ItemId Item, SidebarStorageKind Kind)>();
         var selected = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
         if (selected is not null)
         {
@@ -1235,6 +1267,7 @@ public sealed class SfmlGameRunner
             if (demand > 0)
             {
                 lines.Add($"Power demand: {demand}");
+                lines.Add($"Energy: {selected.EnergyBuffer}/{selected.EnergyBufferCapacity}");
             }
 
             if (production > 0)
@@ -1249,6 +1282,12 @@ public sealed class SfmlGameRunner
             }
 
             lines.Add($"Output: {(selected.PendingOutputItem?.ToString() ?? "-")}");
+            if (selected.WorkTicksTotal > 0)
+            {
+                var done = selected.WorkTicksTotal - selected.WorkTicksRemaining;
+                lines.Add($"Craft: {done}/{selected.WorkTicksTotal}");
+            }
+
             if (selected.ProductionTargetKind is not null)
             {
                 lines.Add($"Producing: {selected.ProductionTargetKind}");
@@ -1266,6 +1305,7 @@ public sealed class SfmlGameRunner
                 lines.Add("RMB: move");
                 lines.Add("Ctrl+LMB: withdraw hub/output");
                 lines.Add("Ctrl+RMB: deposit hub/input");
+                lines.Add("Sidebar RMB input / LMB output");
                 lines.Add("Arrows/MMB/edge: pan camera");
             }
 
@@ -1282,14 +1322,20 @@ public sealed class SfmlGameRunner
 
             if (selected.Kind == EntityKind.Assembler)
             {
-                lines.Add($"Recipe: {(selected.SelectedItemRecipe?.ToString() ?? "-")}");
+                lines.Add($"Recipe: {(selected.SelectedItemRecipe?.ToString() ?? "none")}");
                 lines.Add("1-5: set assembler recipe");
+            }
+
+            if (selected.Kind == EntityKind.Smelter)
+            {
+                lines.Add($"Smelt recipe: {(selected.ActiveSmeltRecipe?.ToString() ?? "none")}");
             }
 
             if (MvpDefinitions.FactoryKinds.Contains(selected.Kind))
             {
                 lines.Add($"Assigned bastion: {(selected.AssignedBastionId?.ToString() ?? "-")}");
                 lines.Add($"Manual produce: {(selected.IsManualProductionTarget ? "yes" : "no")}");
+                lines.Add($"Recipe: {(selected.ProductionTargetKind?.ToString() ?? "none")}");
                 lines.Add("1-N: set factory recipe");
                 lines.Add("N/Tab: cycle assigned bastion");
             }
@@ -1324,7 +1370,14 @@ public sealed class SfmlGameRunner
             AddRecipeLines(lines, GetRecipeLines(selected, simulation, localPlayer, recipePage), recipePage: 0);
 
             lines.Add("Inventory:");
-            AddInventoryLines(lines, selected.Inventory);
+            if (selected.Kind == EntityKind.Hub)
+            {
+                AddInventoryLinesWithHits(lines, lineItemTags, selected.Inventory, SidebarStorageKind.Input);
+            }
+            else
+            {
+                AddInventoryLines(lines, selected.Inventory);
+            }
 
             if (selected.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter)
             {
@@ -1349,9 +1402,9 @@ public sealed class SfmlGameRunner
             if (selected.InputBuffer.Items.Count > 0 || selected.OutputBuffer.Items.Count > 0 || IsBufferedBuildingForUi(selected.Kind))
             {
                 lines.Add("Input:");
-                AddInventoryLines(lines, selected.InputBuffer);
+                AddInventoryLinesWithHits(lines, lineItemTags, selected.InputBuffer, SidebarStorageKind.Input);
                 lines.Add("Output:");
-                AddInventoryLines(lines, selected.OutputBuffer);
+                AddInventoryLinesWithHits(lines, lineItemTags, selected.OutputBuffer, SidebarStorageKind.Output);
             }
         }
 
@@ -1374,7 +1427,158 @@ public sealed class SfmlGameRunner
             lines.Add("LMB: place/queue build");
         }
 
-        DrawTextLines(target, font, WrapHudLines(lines, HudWrapCharacters).ToList(), panelX);
+        var displayLines = new List<string>();
+        var panelWidth = windowWidth - panelX;
+        for (var rawIndex = 0; rawIndex < lines.Count; rawIndex++)
+        {
+            var wrappedChunk = WrapHudLines(new[] { lines[rawIndex] }, HudWrapCharacters).ToList();
+            if (lineItemTags.TryGetValue(rawIndex, out var tag) && displayLines.Count < MaxHudLines)
+            {
+                var bounds = new FloatRect(
+                    new Vector2f(panelX + 4f, HudTextStartY + displayLines.Count * HudLineHeight),
+                    new Vector2f(panelWidth - 8f, HudLineHeight));
+                sidebarStorageHits.Add(new SidebarStorageHit(bounds, tag.Item, tag.Kind));
+            }
+
+            displayLines.AddRange(wrappedChunk);
+        }
+
+        DrawTextLines(target, font, displayLines, panelX);
+        if (selected is not null)
+        {
+            DrawBuildingProgressBars(target, selected, panelX, windowWidth);
+        }
+    }
+
+    private static void AddInventoryLinesWithHits(
+        List<string> lines,
+        Dictionary<int, (ItemId Item, SidebarStorageKind Kind)> lineItemTags,
+        Inventory inventory,
+        SidebarStorageKind kind)
+    {
+        if (inventory.Items.Count == 0)
+        {
+            lines.Add("  -");
+            return;
+        }
+
+        foreach (var item in inventory.Items.OrderBy(pair => pair.Key).Take(8))
+        {
+            var lineIndex = lines.Count;
+            lines.Add($"  {item.Key}: {item.Value}/{MvpDefinitions.GetMaxStackSize(item.Key)}");
+            lineItemTags[lineIndex] = (item.Key, kind);
+        }
+    }
+
+    private static bool TryHandleSidebarStorageClick(
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        int? selectedEntityId,
+        List<SidebarStorageHit> hits,
+        Vector2i mousePosition,
+        string button)
+    {
+        if (selectedEntityId is null || hits.Count == 0)
+        {
+            return false;
+        }
+
+        var selected = simulation.World.GetEntity(selectedEntityId.Value);
+        if (selected is null || selected.OwnerId != localPlayer)
+        {
+            return false;
+        }
+
+        var commander = simulation.World.Entities.FirstOrDefault(entity =>
+            entity.IsAlive && entity.Kind == EntityKind.Commander && entity.OwnerId == localPlayer);
+        if (commander is null)
+        {
+            return false;
+        }
+
+        var point = new Vector2f(mousePosition.X, mousePosition.Y);
+        foreach (var hit in hits)
+        {
+            if (!hit.Bounds.Contains(point))
+            {
+                continue;
+            }
+
+            if (button == "Right" && hit.Kind == SidebarStorageKind.Input)
+            {
+                return simulation.TryDepositItemTypeToHubOrInput(commander.Id, selected.Id, hit.Item);
+            }
+
+            if (button == "Left" && hit.Kind == SidebarStorageKind.Output)
+            {
+                return simulation.TryWithdrawItemTypeFromHubOrOutput(commander.Id, selected.Id, hit.Item);
+            }
+
+            if (button == "Left"
+                && hit.Kind == SidebarStorageKind.Input
+                && selected.Kind == EntityKind.Hub)
+            {
+                return simulation.TryWithdrawItemTypeFromHubOrOutput(commander.Id, selected.Id, hit.Item);
+            }
+        }
+
+        return false;
+    }
+
+    private static void DrawBuildingProgressBars(IRenderTarget target, WorldEntity selected, float panelX, uint windowWidth)
+    {
+        var barX = panelX + 8f;
+        var barWidth = Math.Max(40f, windowWidth - panelX - 16f);
+        var barY = 4f;
+
+        if (selected.EnergyBufferCapacity > 0)
+        {
+            var ratio = selected.EnergyBuffer / (float)selected.EnergyBufferCapacity;
+            var color = ratio >= 0.9f
+                ? new Color(60, 180, 75)
+                : ratio >= 0.5f
+                    ? new Color(220, 180, 40)
+                    : new Color(200, 60, 60);
+            DrawProgressBar(target, barX, barY, barWidth, 6f, ratio, color);
+            barY += 10f;
+        }
+
+        if (selected.WorkTicksTotal > 0)
+        {
+            var ratio = 1f - selected.WorkTicksRemaining / (float)selected.WorkTicksTotal;
+            DrawProgressBar(target, barX, barY, barWidth, 6f, ratio, new Color(80, 140, 220));
+        }
+    }
+
+    private static void DrawProgressBar(
+        IRenderTarget target,
+        float x,
+        float y,
+        float width,
+        float height,
+        float ratio,
+        Color fill)
+    {
+        ratio = Math.Clamp(ratio, 0f, 1f);
+        using var background = new RectangleShape(new Vector2f(width, height))
+        {
+            Position = new Vector2f(x, y),
+            FillColor = new Color(30, 35, 45),
+            OutlineColor = new Color(90, 100, 120),
+            OutlineThickness = 1f
+        };
+        target.Draw(background);
+        if (ratio <= 0f)
+        {
+            return;
+        }
+
+        using var bar = new RectangleShape(new Vector2f(width * ratio, height))
+        {
+            Position = new Vector2f(x, y),
+            FillColor = fill
+        };
+        target.Draw(bar);
     }
 
     private static void DrawPanel(IRenderTarget target, uint windowWidth, uint windowHeight, float panelX)
