@@ -374,7 +374,12 @@ public sealed class SfmlGameRunner
                     }
                     else if (mousePosition.Y > windowHeight - EdgeScrollBand)
                     {
-                        cameraY += pan;
+                        var overBuildBar = isBuildMenuOpen
+                            && GetBuildBarBounds(windowWidth, windowHeight, panelX, out _, out _).Contains(new Vector2f(mousePosition.X, mousePosition.Y));
+                        if (!overBuildBar)
+                        {
+                            cameraY += pan;
+                        }
                     }
                 }
 
@@ -386,6 +391,12 @@ public sealed class SfmlGameRunner
             {
                 window.SetView(worldView);
                 var hoverTile = TileFromScreen(mousePosition);
+                if (isBuildMenuOpen
+                    && GetBuildBarBounds(windowWidth, windowHeight, panelX, out _, out _).Contains(new Vector2f(mousePosition.X, mousePosition.Y)))
+                {
+                    hoverTile = null;
+                }
+
                 DrawWorld(
                     window,
                     simulation,
@@ -402,10 +413,35 @@ public sealed class SfmlGameRunner
 
             window.SetView(window.DefaultView);
             DrawTopBar(window, simulation, localPlayer, font, playfieldWidth);
-            DrawHud(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen, pendingBuildKind, pendingDirection, pendingRecipe, recipePage, font, windowWidth, windowHeight, panelX);
+            DrawHud(
+                window,
+                simulation,
+                localPlayer,
+                selectedEntityId,
+                isBuildMenuOpen,
+                pendingBuildKind,
+                pendingDirection,
+                pendingRecipe,
+                recipePage,
+                font,
+                windowWidth,
+                windowHeight,
+                panelX);
             if (isBuildMenuOpen)
             {
-                DrawBuildBar(window, simulation, localPlayer, selectedEntityId, pendingBuildKind, pendingDirection, pendingRecipe, font, windowWidth, windowHeight, panelX, mousePosition);
+                DrawBuildBar(
+                    window,
+                    simulation,
+                    localPlayer,
+                    selectedEntityId,
+                    pendingBuildKind,
+                    pendingDirection,
+                    pendingRecipe,
+                    font,
+                    windowWidth,
+                    windowHeight,
+                    panelX,
+                    mousePosition);
             }
 
             window.Display();
