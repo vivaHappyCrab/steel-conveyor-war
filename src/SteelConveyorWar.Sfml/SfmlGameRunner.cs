@@ -10,6 +10,8 @@ public sealed class SfmlGameRunner
     private const float TileSize = 24f;
     private const float SidePanelWidth = 240f;
     private const float TopBarHeight = 36f;
+    private const float MinimapSize = 140f;
+    private const float MinimapMargin = 8f;
     private const float EdgeScrollBand = 20f;
     private const float CameraPanSpeed = 420f;
     private const float BuildBarSlotSize = 48f;
@@ -614,6 +616,7 @@ public sealed class SfmlGameRunner
 
             window.SetView(window.DefaultView);
             DrawTopBar(window, simulation, localPlayer, font, playfieldWidth);
+            DrawMinimap(window, simulation, localPlayer, playfieldWidth);
             DrawHud(
                 window,
                 simulation,
@@ -1072,6 +1075,108 @@ public sealed class SfmlGameRunner
             Position = new Vector2f(180f, 9f)
         };
         target.Draw(inventory);
+    }
+
+    private static void DrawMinimap(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer, float playfieldWidth)
+    {
+        var world = simulation.World;
+        var mapW = world.Size.Width;
+        var mapH = world.Size.Height;
+        if (mapW <= 0 || mapH <= 0)
+        {
+            return;
+        }
+
+        var left = playfieldWidth - MinimapSize - MinimapMargin;
+        var top = TopBarHeight + MinimapMargin;
+        if (left < MinimapMargin)
+        {
+            left = MinimapMargin;
+        }
+
+        using var frame = new RectangleShape(new Vector2f(MinimapSize, MinimapSize))
+        {
+            Position = new Vector2f(left, top),
+            FillColor = new Color(8, 10, 12, 220),
+            OutlineColor = new Color(90, 105, 130),
+            OutlineThickness = 1f
+        };
+        target.Draw(frame);
+
+        var scaleX = MinimapSize / mapW;
+        var scaleY = MinimapSize / mapH;
+        var pixelW = Math.Max(1f, scaleX);
+        var pixelH = Math.Max(1f, scaleY);
+
+        using var pixel = new RectangleShape();
+        for (var y = 0; y < mapH; y++)
+        {
+            for (var x = 0; x < mapW; x++)
+            {
+                var position = new TilePosition(x, y);
+                var visibility = simulation.GetVisibility(localPlayer, position);
+                if (visibility == VisibilityState.Unknown)
+                {
+                    continue;
+                }
+
+                var color = GetMinimapTerrainColor(world.GetTerrain(position), visibility);
+                pixel.Size = new Vector2f(pixelW, pixelH);
+                pixel.Position = new Vector2f(left + x * scaleX, top + y * scaleY);
+                pixel.FillColor = color;
+                target.Draw(pixel);
+            }
+        }
+
+        var localTeam = simulation.GetPlayer(localPlayer).TeamId;
+        foreach (var entity in world.Entities.Where(entity => entity.IsAlive && !entity.IsGarrisoned && entity.OwnerId is not null))
+        {
+            // Match main playfield FoW: explored tiles keep terrain, but live enemy/ally
+            // positions only render while Visible (GDD §13).
+            if (!IsVisibleToLocalPlayer(simulation, localPlayer, entity))
+            {
+                continue;
+            }
+
+            var owner = entity.OwnerId!.Value;
+            Color buildingColor;
+            if (owner == localPlayer)
+            {
+                buildingColor = new Color(70, 160, 255);
+            }
+            else if (simulation.GetPlayer(owner).TeamId == localTeam)
+            {
+                buildingColor = new Color(255, 0, 255);
+            }
+            else
+            {
+                buildingColor = new Color(220, 50, 50);
+            }
+
+            var footprint = MvpDefinitions.GetFootprint(entity.Kind);
+            var w = Math.Max(pixelW, footprint.Width * scaleX);
+            var h = Math.Max(pixelH, footprint.Height * scaleY);
+            pixel.Size = new Vector2f(w, h);
+            pixel.Position = new Vector2f(left + entity.Position.X * scaleX, top + entity.Position.Y * scaleY);
+            pixel.FillColor = buildingColor;
+            target.Draw(pixel);
+        }
+    }
+
+    private static Color GetMinimapTerrainColor(TerrainType terrain, VisibilityState visibility)
+    {
+        var color = terrain switch
+        {
+            TerrainType.IronOre => new Color(110, 120, 130),
+            TerrainType.CopperOre => new Color(170, 110, 55),
+            TerrainType.Coal => new Color(55, 55, 58),
+            TerrainType.Oil => new Color(70, 45, 95),
+            _ => new Color(48, 78, 48)
+        };
+
+        return visibility == VisibilityState.Explored
+            ? new Color((byte)(color.R * 2 / 3), (byte)(color.G * 2 / 3), (byte)(color.B * 2 / 3))
+            : color;
     }
 
     private static string ShortItem(ItemId item)

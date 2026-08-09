@@ -9,7 +9,7 @@ namespace SteelConveyorWar.Core;
 /// </summary>
 public static class SimulationStateHasher
 {
-    public const int AlgorithmVersion = 2;
+    public const int AlgorithmVersion = 3;
 
     public static string Compute(GameSimulation simulation)
     {
@@ -58,6 +58,7 @@ public static class SimulationStateHasher
     {
         writer.Write(player.Id.Value);
         writer.Write(player.Name);
+        writer.Write(player.TeamId);
         writer.Write(player.IsDefeated);
         writer.Write(player.PowerProduced);
         writer.Write(player.PowerDemand);
