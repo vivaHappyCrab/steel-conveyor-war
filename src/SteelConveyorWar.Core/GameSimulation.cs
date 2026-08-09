@@ -7,6 +7,10 @@ public sealed class GameSimulation
     private readonly List<PlayerState> _players;
     private readonly ResearchSystem _researchSystem;
     private readonly List<CombatShotEvent> _combatShotsThisTick = new();
+    private readonly Dictionary<PlayerId, int> _tickPowerProduced = new();
+    private readonly Dictionary<PlayerId, int> _tickPowerConsumed = new();
+    private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickProducedByKind = new();
+    private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickConsumedByKind = new();
     private int _nextEntityId = 1;
 
     private GameSimulation(
@@ -104,6 +108,7 @@ public sealed class GameSimulation
             options.Entities);
         simulation.CreateStartingEntities();
         simulation.UpdatePower();
+        simulation.RecordEnergyStatsSample();
         simulation.UpdateFogOfWar();
         simulation.UpdateTechSignatures();
         return simulation;
@@ -617,6 +622,8 @@ public sealed class GameSimulation
     private static void ApplyBastionOrderToUnit(WorldEntity unit, BastionOrder bastionOrder)
     {
         unit.Order = ResolveOrderForUnit(unit.Kind, bastionOrder);
+        // Drop stale Attack/Scout waypoints so Defend/home (or a new target) can repath immediately.
+        ResetMovementPath(unit);
         if (unit.Order.Kind == BastionOrderKind.Defend)
         {
             // Stay home / garrison unless Defend active defense ungarrisons them.
@@ -631,12 +638,9 @@ public sealed class GameSimulation
         return bastionOrder.Kind switch
         {
             BastionOrderKind.Scout when unitKind != EntityKind.Scout => new BastionOrder(BastionOrderKind.Defend),
-            BastionOrderKind.AttackArea when unitKind == EntityKind.Scout => new BastionOrder(BastionOrderKind.Defend),
             _ => bastionOrder
         };
     }
-
-    private static bool IsCombatUnit(EntityKind kind) => kind != EntityKind.Scout && MvpDefinitions.UnitKinds.Contains(kind);
 
     public void AddPlayerItems(PlayerId playerId, ItemId item, int amount)
     {
@@ -967,8 +971,9 @@ public sealed class GameSimulation
     }
 
     /// <summary>
-    /// Drains this tick's power demand from the building buffer. Returns false when the building
-    /// cannot afford to run (no demand configured is treated as success / unpowered-free).
+    /// Drains <see cref="MvpDefinitions.GetPowerDemand"/> from the building buffer when it can afford to run.
+    /// Returns false when the buffer is too low (work must pause). No demand configured → success (unpowered-free).
+    /// Successful drains accumulate into this tick's energy-stats consumption sample.
     /// </summary>
     public bool TryConsumeBuildingEnergy(WorldEntity building)
     {
@@ -984,6 +989,19 @@ public sealed class GameSimulation
         }
 
         building.EnergyBuffer -= demand;
+        if (building.OwnerId is not null)
+        {
+            var ownerId = building.OwnerId.Value;
+            _tickPowerConsumed[ownerId] = _tickPowerConsumed.GetValueOrDefault(ownerId) + demand;
+            if (!_tickConsumedByKind.TryGetValue(ownerId, out var byKind))
+            {
+                byKind = new Dictionary<EntityKind, int>();
+                _tickConsumedByKind[ownerId] = byKind;
+            }
+
+            byKind[building.Kind] = byKind.GetValueOrDefault(building.Kind) + demand;
+        }
+
         return true;
     }
 
@@ -1048,6 +1066,7 @@ public sealed class GameSimulation
         ProcessCombat();
         CascadeBastionDeaths();
         ProcessRepairOutOfCombat();
+        RecordEnergyStatsSample();
         CheckVictory();
         World.RemoveDead();
         UpdateFogOfWar();
@@ -1758,6 +1777,8 @@ public sealed class GameSimulation
 
     private void UpdatePower()
     {
+        ResetEnergyTickAccumulators();
+
         foreach (var player in _players)
         {
             player.PowerProduced = 0;
@@ -1767,18 +1788,59 @@ public sealed class GameSimulation
         foreach (var entity in World.Entities.Where(entity => entity.IsAlive && entity.OwnerId is not null))
         {
             var player = GetPlayer(entity.OwnerId!.Value);
-            player.PowerProduced += entity.Kind switch
+            var produced = entity.Kind switch
             {
                 EntityKind.SolarPanel => MvpDefinitions.PowerProduction.GetValueOrDefault(EntityKind.SolarPanel),
                 EntityKind.CoalPlant when entity.InputBuffer.TryRemove(ItemId.Coal, 1) => MvpDefinitions.PowerProduction.GetValueOrDefault(EntityKind.CoalPlant),
                 _ => 0
             };
+            if (produced > 0)
+            {
+                player.PowerProduced += produced;
+                _tickPowerProduced[player.Id] = _tickPowerProduced.GetValueOrDefault(player.Id) + produced;
+                var producedMap = _tickProducedByKind[player.Id];
+                producedMap[entity.Kind] = producedMap.GetValueOrDefault(entity.Kind) + produced;
+            }
+
+            // HUD demand = installed consumer rating (not actual drain this tick).
             player.PowerDemand += MvpDefinitions.GetPowerDemand(entity.Kind);
         }
 
         foreach (var player in _players)
         {
             FillEnergyBuffersEmptiestFirst(player);
+        }
+    }
+
+    private void ResetEnergyTickAccumulators()
+    {
+        _tickPowerProduced.Clear();
+        _tickPowerConsumed.Clear();
+        _tickProducedByKind.Clear();
+        _tickConsumedByKind.Clear();
+        foreach (var player in _players)
+        {
+            _tickProducedByKind[player.Id] = new Dictionary<EntityKind, int>();
+            _tickConsumedByKind[player.Id] = new Dictionary<EntityKind, int>();
+            _tickPowerProduced[player.Id] = 0;
+            _tickPowerConsumed[player.Id] = 0;
+        }
+    }
+
+    /// <summary>
+    /// Records this tick's production and <b>actual</b> buffer drains into presentation-only energy history.
+    /// Must run after all <see cref="TryConsumeBuildingEnergy"/> call sites for the tick.
+    /// </summary>
+    private void RecordEnergyStatsSample()
+    {
+        foreach (var player in _players)
+        {
+            player.EnergyStats.Record(
+                Tick,
+                _tickPowerProduced.GetValueOrDefault(player.Id),
+                _tickPowerConsumed.GetValueOrDefault(player.Id),
+                _tickProducedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>(),
+                _tickConsumedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>());
         }
     }
 
@@ -2656,7 +2718,9 @@ public sealed class GameSimulation
                     continue;
                 }
 
-                if (unit.Position.IsWithinEuclideanRange(bastion.Position, 1))
+                // Bastion is multi-tile; units stop on the footprint perimeter (building collision)
+                // and must hide when adjacent to any footprint tile — not only near bastion.Position.
+                if (IsWithinBastionGarrisonRange(bastion, unit.Position))
                 {
                     unit.Position = bastion.Position;
                     unit.WorldPosition = WorldPosition.FromTileCenter(bastion.Position);
@@ -2667,15 +2731,38 @@ public sealed class GameSimulation
         }
     }
 
+    /// <summary>
+    /// True when <paramref name="unitPosition"/> is on or Chebyshev-adjacent to the bastion footprint
+    /// (units cannot occupy building tiles, so they garrison from the perimeter ring).
+    /// </summary>
+    private static bool IsWithinBastionGarrisonRange(WorldEntity bastion, TilePosition unitPosition)
+    {
+        var footprint = MvpDefinitions.GetFootprint(bastion.Kind);
+        var minX = bastion.Position.X - 1;
+        var maxX = bastion.Position.X + footprint.Width;
+        var minY = bastion.Position.Y - 1;
+        var maxY = bastion.Position.Y + footprint.Height;
+        return unitPosition.X >= minX
+            && unitPosition.X <= maxX
+            && unitPosition.Y >= minY
+            && unitPosition.Y <= maxY;
+    }
+
     private void TryCompleteBastionOrder(WorldEntity bastion)
     {
         if (bastion.Order.Kind == BastionOrderKind.AttackArea && bastion.Order.Target is not null)
         {
-            var combatUnits = World.Entities
-                .Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && IsCombatUnit(entity.Kind))
+            // Scouts join AttackArea for FoW; completion waits for every assigned unit still on
+            // AttackArea (combat and scouts), so scout-only pushes and post-wipe leftovers can finish.
+            var attackUnits = World.Entities
+                .Where(entity =>
+                    entity.IsAlive
+                    && entity.AssignedBastionId == bastion.Id
+                    && MvpDefinitions.UnitKinds.Contains(entity.Kind)
+                    && entity.Order.Kind == BastionOrderKind.AttackArea)
                 .ToList();
-            if (combatUnits.Count > 0
-                && combatUnits.All(unit => unit.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1)))
+            if (attackUnits.Count > 0
+                && attackUnits.All(unit => unit.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1)))
             {
                 SwitchBastionToDefend(bastion);
             }
@@ -2706,6 +2793,7 @@ public sealed class GameSimulation
                      && MvpDefinitions.UnitKinds.Contains(entity.Kind)))
         {
             unit.Order = defend;
+            ResetMovementPath(unit);
         }
     }
 
@@ -3088,6 +3176,12 @@ public sealed class GameSimulation
                 continue;
             }
 
+            // Moving units ignore unit↔unit collision (radius effectively 0); stopped units keep full size.
+            if (IsMobileEntityMoving(mover) || IsMobileEntityMoving(entity))
+            {
+                continue;
+            }
+
             var otherRadius = MvpDefinitions.GetCollisionSize(entity.Kind).Radius;
             if (otherRadius <= 0)
             {
@@ -3112,6 +3206,24 @@ public sealed class GameSimulation
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// True when a mobile entity has active movement (waypoint, path, or move target) and is not garrisoned.
+    /// </summary>
+    private static bool IsMobileEntityMoving(WorldEntity entity)
+    {
+        if (entity.IsGarrisoned)
+        {
+            return false;
+        }
+
+        if (entity.CurrentWaypoint is not null || entity.MovementPath.Count > 0)
+        {
+            return true;
+        }
+
+        return entity.MoveTarget is not null && entity.MoveTarget.Value != entity.Position;
     }
 
     private static bool CircleIntersectsEntityFootprint(WorldPosition position, double radius, WorldEntity obstacle)

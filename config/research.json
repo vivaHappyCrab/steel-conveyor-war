@@ -1779,13 +1779,7 @@
         {
           "type": "unlockContent",
           "contentKind": "item-recipe",
-          "contentId": "CopperWire",
-          "valueBasisPoints": 0
-        },
-        {
-          "type": "unlockContent",
-          "contentKind": "item-recipe",
-          "contentId": "Circuit",
+          "contentId": "Composite",
           "valueBasisPoints": 0
         },
         {

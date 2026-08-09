@@ -626,10 +626,10 @@ public class GameSimulationTests
             NearBlue(simulation, 2, 4),
             out var assemblerGhostId,
             Direction.East,
-            ItemRecipeId.CopperWire));
-        Assert.Equal(ItemRecipeId.CopperWire, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
+            ItemRecipeId.Composite));
+        Assert.Equal(ItemRecipeId.Composite, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
         AdvanceTicks(simulation, 30);
-        Assert.Equal(ItemRecipeId.CopperWire, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
+        Assert.Equal(ItemRecipeId.Composite, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
     }
 
     [Fact]
@@ -930,17 +930,14 @@ public class GameSimulationTests
         ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.IronGear, (ItemId.IronPlate, 2));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.IronGear));
 
-        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.CopperWire, (ItemId.CopperPlate, 1));
-        Assert.Equal(2, assembler.OutputBuffer.Count(ItemId.CopperWire));
-
-        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.Circuit, (ItemId.IronPlate, 1), (ItemId.CopperWire, 2));
-        Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.Circuit));
+        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.Composite, (ItemId.IronPlate, 1), (ItemId.CopperPlate, 1));
+        Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.Composite));
 
         ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT1, (ItemId.IronGear, 1), (ItemId.CopperPlate, 1));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.SciencePackT1));
 
         UnlockTier2ForTests(simulation, new PlayerId(1));
-        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT2, (ItemId.Circuit, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1));
+        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT2, (ItemId.Composite, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.SciencePackT2));
     }
 
@@ -1140,6 +1137,116 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
         AdvanceTicks(simulation, remaining + 1);
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.IronGear));
+    }
+
+    [Fact]
+    public void EnergyStats_RecordsActualDrain_NotInstalledDemandWhenStarved()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Assembler, NearBlue(simulation, 5, -2), out var assemblerId));
+        AdvanceTicks(simulation, 30);
+
+        var solar = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.SolarPanel);
+        Assert.True(simulation.TrySetEntityHealthForTests(solar.Id, 0));
+
+        Assert.True(simulation.TrySetAssemblerRecipe(assemblerId, ItemRecipeId.IronGear));
+        simulation.AddItemToEntity(assemblerId, ItemId.IronPlate, 40);
+        var demand = MvpDefinitions.GetPowerDemand(EntityKind.Assembler);
+        Assert.True(demand > 0);
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
+        simulation.AdvanceTick(); // start craft
+        Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
+        // Fill a full 1s display bucket with working drains.
+        for (var i = 0; i < GameSimulation.TicksPerSecond; i++)
+        {
+            Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
+            simulation.AdvanceTick();
+        }
+
+        var working = simulation.GetPlayer(new PlayerId(1)).EnergyStats.Query(10);
+        Assert.Equal(1, EnergyStatsHistory.DisplayBucketSeconds(10));
+        Assert.Equal(demand, working.DemandSeries[^1]);
+        var assemblerWorking = working.ConsumerRows.Single(row => row.Kind == EntityKind.Assembler);
+        Assert.Equal(demand, assemblerWorking.Series[^1]);
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
+        for (var i = 0; i < GameSimulation.TicksPerSecond; i++)
+        {
+            Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
+            simulation.AdvanceTick();
+        }
+
+        var starved = simulation.GetPlayer(new PlayerId(1)).EnergyStats.Query(10);
+        Assert.Equal(0, starved.DemandSeries[^1]);
+        Assert.DoesNotContain(starved.ConsumerRows, row => row.Kind == EntityKind.Assembler && row.Series[^1] > 0);
+        Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
+    }
+
+    [Fact]
+    public void EnergyStats_Query_UsesFixedAbsoluteBuckets()
+    {
+        Assert.Equal(1, EnergyStatsHistory.DisplayBucketSeconds(10));
+        Assert.Equal(5, EnergyStatsHistory.DisplayBucketSeconds(300));
+        Assert.Equal(10, EnergyStatsHistory.DisplayBucketSeconds(600));
+
+        var history = new EnergyStatsHistory();
+        var empty = new Dictionary<EntityKind, int>();
+        var tps = GameSimulation.TicksPerSecond;
+
+        // Ticks 0..29 → bucket 0 avg 1; 30..59 → bucket 1 avg 9. Mid-bucket noise must not rewrite bucket 0.
+        for (long tick = 0; tick < tps; tick++)
+        {
+            history.Record(tick, 1, 1, empty, empty);
+        }
+
+        var afterFirst = history.Query(10);
+        Assert.Equal(1, afterFirst.SampleCount);
+        Assert.Equal(1, afterFirst.DemandSeries[0]);
+
+        for (long tick = tps; tick < tps + tps / 2; tick++)
+        {
+            history.Record(tick, 100, 100, empty, empty);
+        }
+
+        var midSecond = history.Query(10);
+        Assert.Equal(1, midSecond.SampleCount);
+        Assert.Equal(1, midSecond.DemandSeries[0]); // completed bucket unchanged
+
+        for (long tick = tps + tps / 2; tick < 2 * tps; tick++)
+        {
+            history.Record(tick, 9, 9, empty, empty);
+        }
+
+        var afterSecond = history.Query(10);
+        Assert.Equal(2, afterSecond.SampleCount);
+        Assert.Equal(1, afterSecond.DemandSeries[0]);
+        // Second bucket = 15 ticks of 100 + 15 ticks of 9 → avg 54.5 → 54 or 55
+        Assert.InRange(afterSecond.DemandSeries[1], 54, 55);
+    }
+
+    [Fact]
+    public void EnergyStats_Query_UsesLargerBucketsForLongWindows()
+    {
+        var history = new EnergyStatsHistory();
+        var empty = new Dictionary<EntityKind, int>();
+        for (long tick = 0; tick < 10 * GameSimulation.TicksPerSecond; tick++)
+        {
+            history.Record(tick, 5, 4, empty, empty);
+        }
+
+        var shortWindow = history.Query(10);
+        Assert.Equal(10, shortWindow.SampleCount);
+        Assert.All(shortWindow.DemandSeries, value => Assert.Equal(4, value));
+
+        for (long tick = 10 * GameSimulation.TicksPerSecond; tick < 5 * 60 * GameSimulation.TicksPerSecond; tick++)
+        {
+            history.Record(tick, 5, 4, empty, empty);
+        }
+
+        var fiveMin = history.Query(300);
+        Assert.Equal(60, fiveMin.SampleCount);
+        Assert.All(fiveMin.DemandSeries, value => Assert.Equal(4, value));
     }
 
     [Fact]

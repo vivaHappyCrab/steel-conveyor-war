@@ -73,22 +73,44 @@ public static class BastionCompositionPanelModel
         uint windowWidth,
         uint windowHeight,
         float panelX,
+        float bottomReserved,
+        out float contentX,
+        out float contentY)
+    {
+        var bounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
+        contentX = bounds.Left + PanelPadding;
+        contentY = bounds.Top + ResearchTreePanelModel.TitleChromeHeight + PanelPadding;
+        return bounds;
+    }
+
+    /// <summary>Legacy overload used by hit-tests that already know bottom reserved via caller defaults.</summary>
+    public static FloatRect GetPanelBounds(
+        uint windowWidth,
+        uint windowHeight,
+        float panelX,
         int slotCount,
         out float contentX,
         out float contentY)
     {
-        var rows = Math.Max(1, (int)Math.Ceiling(slotCount / (double)SlotsPerRow));
-        var columns = Math.Min(SlotsPerRow, Math.Max(1, slotCount));
-        var contentWidth = columns * SlotWidth + Math.Max(0, columns - 1) * SlotGap;
-        var contentHeight = rows * SlotHeight + Math.Max(0, rows - 1) * SlotGap;
-        var width = contentWidth + PanelPadding * 2f;
-        var height = contentHeight + PanelPadding * 2f + 22f;
-        var playfieldWidth = Math.Max(1f, panelX);
-        var left = Math.Max(8f, (playfieldWidth - width) * 0.5f);
-        var top = Math.Max(TopBarClearance(), (windowHeight - height) * 0.5f - 20f);
-        contentX = left + PanelPadding;
-        contentY = top + PanelPadding + 20f;
-        return new FloatRect(new Vector2f(left, top), new Vector2f(width, height));
+        _ = slotCount;
+        const float bottomReserved = 48f + 10f + 8f;
+        return GetPanelBounds(windowWidth, windowHeight, panelX, bottomReserved, out contentX, out contentY);
+    }
+
+    public static FloatRect GetExitButtonBounds(FloatRect overlayBounds) =>
+        new(
+            new Vector2f(overlayBounds.Left + overlayBounds.Width - 78f, overlayBounds.Top + 6f),
+            new Vector2f(70f, ResearchTreePanelModel.ButtonHeight));
+
+    public static bool HitExit(
+        Vector2i mousePosition,
+        uint windowWidth,
+        uint windowHeight,
+        float panelX,
+        float bottomReserved)
+    {
+        var bounds = GetPanelBounds(windowWidth, windowHeight, panelX, bottomReserved, out _, out _);
+        return Contains(GetExitButtonBounds(bounds), mousePosition);
     }
 
     public static FloatRect GetSlotBounds(float contentX, float contentY, int slotIndex)
@@ -166,16 +188,10 @@ public static class BastionCompositionPanelModel
         float panelX,
         int slotCount)
     {
-        if (slotCount <= 0)
-        {
-            return false;
-        }
-
-        var bounds = GetPanelBounds(windowWidth, windowHeight, panelX, slotCount, out _, out _);
+        _ = slotCount;
+        var bounds = GetPanelBounds(windowWidth, windowHeight, panelX, 0, out _, out _);
         return Contains(bounds, mousePosition);
     }
-
-    private static float TopBarClearance() => 48f;
 
     private static bool Contains(FloatRect rect, Vector2i point)
     {
