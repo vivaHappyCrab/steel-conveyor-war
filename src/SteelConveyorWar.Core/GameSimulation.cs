@@ -287,6 +287,11 @@ public sealed class GameSimulation
             return false;
         }
 
+        if (bastionId is not null && !TryValidateOwnedBastion(factory, bastionId.Value))
+        {
+            return false;
+        }
+
         if (outputKind is null)
         {
             factory.ProductionTargetKind = null;
@@ -317,6 +322,7 @@ public sealed class GameSimulation
 
     /// <summary>
     /// Reassigns a factory's bastion without changing recipe / manual-vs-autofill mode.
+    /// Autofill clears a sticky idle target so the next tick re-picks the new bastion's deficit.
     /// </summary>
     public bool TryAssignFactoryBastion(int factoryId, int bastionId)
     {
@@ -326,14 +332,27 @@ public sealed class GameSimulation
             return false;
         }
 
-        var bastion = World.GetEntity(bastionId);
-        if (bastion is null || !bastion.IsAlive || bastion.Kind != EntityKind.Bastion || bastion.OwnerId != factory.OwnerId)
+        if (!TryValidateOwnedBastion(factory, bastionId))
         {
             return false;
         }
 
         factory.AssignedBastionId = bastionId;
+        if (!factory.IsManualProductionTarget && factory.WorkTicksRemaining <= 0)
+        {
+            factory.ProductionTargetKind = null;
+        }
+
         return true;
+    }
+
+    private bool TryValidateOwnedBastion(WorldEntity factory, int bastionId)
+    {
+        var bastion = World.GetEntity(bastionId);
+        return bastion is not null
+            && bastion.IsAlive
+            && bastion.Kind == EntityKind.Bastion
+            && bastion.OwnerId == factory.OwnerId;
     }
 
     public bool TryForceCompleteResearch(PlayerId playerId, TechnologyId technologyId, bool confirmExclusive = true)
@@ -1372,7 +1391,8 @@ public sealed class GameSimulation
                 continue;
             }
 
-            if (factory.ProductionTargetKind is null && factory.AssignedBastionId is not null)
+            // Autofill re-resolves every idle tick so sticky locked/zeroed template entries cannot block later deficits.
+            if (!factory.IsManualProductionTarget && factory.AssignedBastionId is not null)
             {
                 factory.ProductionTargetKind = ChooseBastionDeficit(factory);
             }
@@ -1382,16 +1402,9 @@ public sealed class GameSimulation
                 continue;
             }
 
-            if (factory.OwnerId is not null && recipe.RequiredTechnology is not null)
+            if (!IsRecipeUnlockedForOwner(factory.OwnerId, recipe))
             {
-                var owner = GetPlayer(factory.OwnerId.Value);
-                var unlocked = owner.ResearchedTechnologies.Contains(recipe.RequiredTechnology.Value)
-                    || CapabilityResolver.IsRecipeUnlocked(owner.Research, recipe.OutputKind.ToString())
-                    || owner.Research.UnlockedEntityKinds.Contains(recipe.OutputKind.ToString());
-                if (!unlocked)
-                {
-                    continue;
-                }
+                continue;
             }
 
             if (!CanFactoryProduce(factory.Kind, recipe.OutputKind) || !factory.InputBuffer.TryRemoveAll(recipe.Inputs))
@@ -1425,12 +1438,18 @@ public sealed class GameSimulation
 
         foreach (var desired in bastion.BastionTemplate.OrderBy(pair => pair.Key))
         {
-            if (!CanFactoryProduce(factory.Kind, desired.Key))
+            if (desired.Value <= 0 || !CanFactoryProduce(factory.Kind, desired.Key))
             {
                 continue;
             }
 
-            var current = World.Entities.Count(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && entity.Kind == desired.Key);
+            if (!MvpDefinitions.ProductionRecipes.TryGetValue(desired.Key, out var recipe)
+                || !IsRecipeUnlockedForOwner(factory.OwnerId, recipe))
+            {
+                continue;
+            }
+
+            var current = CountBastionUnitSupply(bastion.Id, desired.Key);
             if (current < desired.Value)
             {
                 return desired.Key;
@@ -1438,6 +1457,34 @@ public sealed class GameSimulation
         }
 
         return null;
+    }
+
+    private int CountBastionUnitSupply(int bastionId, EntityKind unitKind)
+    {
+        var living = World.Entities.Count(entity =>
+            entity.IsAlive
+            && entity.AssignedBastionId == bastionId
+            && entity.Kind == unitKind);
+        var inFlight = World.Entities.Count(entity =>
+            entity.IsAlive
+            && MvpDefinitions.FactoryKinds.Contains(entity.Kind)
+            && entity.AssignedBastionId == bastionId
+            && entity.ProductionTargetKind == unitKind
+            && entity.WorkTicksRemaining > 0);
+        return living + inFlight;
+    }
+
+    private bool IsRecipeUnlockedForOwner(PlayerId? ownerId, ProductionRecipe recipe)
+    {
+        if (ownerId is null || recipe.RequiredTechnology is null)
+        {
+            return true;
+        }
+
+        var owner = GetPlayer(ownerId.Value);
+        return owner.ResearchedTechnologies.Contains(recipe.RequiredTechnology.Value)
+            || CapabilityResolver.IsRecipeUnlocked(owner.Research, recipe.OutputKind.ToString())
+            || owner.Research.UnlockedEntityKinds.Contains(recipe.OutputKind.ToString());
     }
 
     private static bool CanFactoryProduce(EntityKind factoryKind, EntityKind unitKind)
