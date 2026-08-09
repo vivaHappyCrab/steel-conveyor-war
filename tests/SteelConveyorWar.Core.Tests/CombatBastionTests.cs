@@ -256,6 +256,64 @@ public sealed class CombatBastionTests
     }
 
     [Fact]
+    public void BastionDeath_DoesNotKillAssignedFactory()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        AdvanceTicks(simulation, 30);
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
+        Assert.Equal(bastion.Id, simulation.World.GetEntity(factoryId)!.AssignedBastionId);
+
+        simulation.DamageEntity(bastion.Id, bastion.Health);
+        Assert.False(simulation.World.GetEntity(bastion.Id)!.IsAlive);
+        Assert.True(simulation.World.GetEntity(factoryId)!.IsAlive);
+    }
+
+    [Fact]
+    public void ProcessBastions_Scout_GarrisonsHomeCombatUnitsAndDoesNotSortie()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var tank = ProduceTankForBastion(simulation, bastion.Id);
+        Assert.True(PlaceAdjacent(simulation, tank, bastion.Position));
+        var scoutTarget = new TilePosition(bastion.Position.X + 4, bastion.Position.Y);
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Scout, scoutTarget)));
+        Assert.Equal(BastionOrderKind.Defend, tank.Order.Kind);
+
+        simulation.AdvanceTick();
+        tank = simulation.World.GetEntity(tank.Id)!;
+        Assert.True(tank.IsGarrisoned);
+
+        var enemy = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        Assert.True(simulation.TryTeleportEntityForTests(
+            enemy.Id,
+            new TilePosition(bastion.Position.X + 3, bastion.Position.Y)));
+
+        simulation.AdvanceTick();
+        tank = simulation.World.GetEntity(tank.Id)!;
+        Assert.True(tank.IsGarrisoned);
+        Assert.Equal(bastion.Position, tank.Position);
+    }
+
+    [Fact]
+    public void ProcessBastions_AttackArea_GarrisonsHomeScouts()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var tank = ProduceTankForBastion(simulation, bastion.Id);
+        var scout = ProduceScoutForBastion(simulation, bastion.Id);
+        Assert.True(PlaceAdjacent(simulation, scout, bastion.Position));
+        var target = new TilePosition(tank.Position.X + 3, tank.Position.Y);
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, target)));
+        Assert.Equal(BastionOrderKind.Defend, scout.Order.Kind);
+
+        simulation.AdvanceTick();
+        scout = simulation.World.GetEntity(scout.Id)!;
+        Assert.True(scout.IsGarrisoned);
+    }
+
+    [Fact]
     public void GarrisonedUnit_DoesNotOccupyTiles()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);

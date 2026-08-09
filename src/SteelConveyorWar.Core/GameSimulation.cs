@@ -1482,13 +1482,12 @@ public sealed class GameSimulation
                 .OrderBy(entity => entity.Id)
                 .ToList();
 
-            if (bastion.Order.Kind != BastionOrderKind.Defend)
-            {
-                continue;
-            }
-
-            var visionRadius = GetBastionVisionRadius(bastion);
-            var threat = FindNearestEnemyInRange(bastion, visionRadius);
+            // Home units keep Defend while bastion is Scout/AttackArea; garrison them,
+            // but sortie only during active bastion Defend.
+            var allowSortie = bastion.Order.Kind == BastionOrderKind.Defend;
+            var threat = allowSortie
+                ? FindNearestEnemyInRange(bastion, GetBastionVisionRadius(bastion))
+                : null;
 
             foreach (var unit in units)
             {
@@ -1591,7 +1590,10 @@ public sealed class GameSimulation
         foreach (var bastion in World.Entities.Where(entity => entity.Kind == EntityKind.Bastion && !entity.IsAlive).ToList())
         {
             foreach (var unit in World.Entities
-                         .Where(entity => entity.AssignedBastionId == bastion.Id && entity.IsAlive)
+                         .Where(entity =>
+                             entity.AssignedBastionId == bastion.Id
+                             && entity.IsAlive
+                             && MvpDefinitions.UnitKinds.Contains(entity.Kind))
                          .ToList())
             {
                 unit.Health = 0;
@@ -1649,11 +1651,15 @@ public sealed class GameSimulation
                 return null;
             }
 
-            var visionRadius = GetBastionVisionRadius(bastion);
-            var threat = FindNearestEnemyInRange(bastion, visionRadius);
-            if (threat is not null)
+            // Sortie only for active bastion Defend; Scout/AttackArea home units stay put.
+            if (bastion.Order.Kind == BastionOrderKind.Defend)
             {
-                return threat.Position;
+                var visionRadius = GetBastionVisionRadius(bastion);
+                var threat = FindNearestEnemyInRange(bastion, visionRadius);
+                if (threat is not null)
+                {
+                    return threat.Position;
+                }
             }
 
             return bastion.Position;
