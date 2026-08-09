@@ -67,6 +67,7 @@ public sealed class SfmlGameRunner
         var sidebarStorageHits = new List<SidebarStorageHit>();
         var isResearchOverlayOpen = false;
         var isEnergyOverlayOpen = false;
+        var isBastionCompositionOpen = false;
         var energySelectedInterval = EnergyStatsWindowKind.Seconds30;
         TechnologyId? researchSelectedId = null;
         TechnologyId? researchLastClickId = null;
@@ -86,6 +87,11 @@ public sealed class SfmlGameRunner
         void CloseEnergyOverlay()
         {
             isEnergyOverlayOpen = false;
+        }
+
+        void CloseBastionComposition()
+        {
+            isBastionCompositionOpen = false;
         }
 
         float ClampResearchScroll(ResearchTreePanelModel tree) =>
@@ -210,12 +216,9 @@ public sealed class SfmlGameRunner
                 return;
             }
 
-            if (key == "Escape"
-                && selectedEntity?.Kind == EntityKind.Bastion
-                && selectedEntity.OwnerId == localPlayer)
+            if (key == "Escape" && isBastionCompositionOpen)
             {
-                selectedEntityId = null;
-                ClearBastionPending();
+                CloseBastionComposition();
                 return;
             }
 
@@ -246,6 +249,7 @@ public sealed class SfmlGameRunner
                 pendingBuildKind = null;
                 pendingDirection = Direction.East;
                 pendingRecipe = null;
+                CloseBastionComposition();
                 ClearBastionPending();
                 return;
             }
@@ -314,6 +318,7 @@ public sealed class SfmlGameRunner
             }
 
             if (!isBuildMenuOpen
+                && isBastionCompositionOpen
                 && selectedEntity?.Kind == EntityKind.Bastion
                 && selectedEntity.OwnerId == localPlayer
                 && key is "PageDown" or "RBracket" or "PageUp" or "LBracket")
@@ -340,6 +345,7 @@ public sealed class SfmlGameRunner
             if (key == "T")
             {
                 CloseEnergyOverlay();
+                CloseBastionComposition();
                 if (isResearchOverlayOpen)
                 {
                     CloseResearchOverlay();
@@ -356,6 +362,7 @@ public sealed class SfmlGameRunner
             if (key == "P")
             {
                 CloseResearchOverlay();
+                CloseBastionComposition();
                 if (isEnergyOverlayOpen)
                 {
                     CloseEnergyOverlay();
@@ -365,6 +372,16 @@ public sealed class SfmlGameRunner
                     isEnergyOverlayOpen = true;
                 }
 
+                return;
+            }
+
+            if (key == "E"
+                && selectedEntity?.Kind == EntityKind.Bastion
+                && selectedEntity.OwnerId == localPlayer)
+            {
+                CloseResearchOverlay();
+                CloseEnergyOverlay();
+                isBastionCompositionOpen = !isBastionCompositionOpen;
                 return;
             }
 
@@ -655,46 +672,48 @@ public sealed class SfmlGameRunner
                 && selectedForBar?.Kind == EntityKind.Bastion
                 && selectedForBar.OwnerId == localPlayer)
             {
-                var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
-                var compositionSlots = BastionCompositionPanelModel.BuildSlots(simulation, selectedForBar);
-                if (BastionCompositionPanelModel.HitExit(
-                        mousePosition,
-                        windowWidth,
-                        windowHeight,
-                        panelX,
-                        bottomReserved))
+                if (isBastionCompositionOpen)
                 {
-                    selectedEntityId = null;
-                    ClearBastionPending();
-                    return;
-                }
+                    var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
+                    var compositionSlots = BastionCompositionPanelModel.BuildSlots(simulation, selectedForBar);
+                    if (BastionCompositionPanelModel.HitExit(
+                            mousePosition,
+                            windowWidth,
+                            windowHeight,
+                            panelX,
+                            bottomReserved))
+                    {
+                        CloseBastionComposition();
+                        return;
+                    }
 
-                if (BastionCompositionPanelModel.TryPickAdjust(
-                        mousePosition,
-                        windowWidth,
-                        windowHeight,
-                        panelX,
-                        compositionSlots,
-                        out var slotIndex,
-                        out var adjust))
-                {
-                    var slot = compositionSlots[slotIndex];
-                    templateUnitIndex = slotIndex;
-                    simulation.TrySetBastionTemplate(
-                        selectedForBar.Id,
-                        slot.UnitKind,
-                        Math.Max(0, slot.TemplateMax + (int)adjust));
-                    return;
-                }
+                    if (BastionCompositionPanelModel.TryPickAdjust(
+                            mousePosition,
+                            windowWidth,
+                            windowHeight,
+                            panelX,
+                            compositionSlots,
+                            out var slotIndex,
+                            out var adjust))
+                    {
+                        var slot = compositionSlots[slotIndex];
+                        templateUnitIndex = slotIndex;
+                        simulation.TrySetBastionTemplate(
+                            selectedForBar.Id,
+                            slot.UnitKind,
+                            Math.Max(0, slot.TemplateMax + (int)adjust));
+                        return;
+                    }
 
-                if (BastionCompositionPanelModel.ContainsPanel(
-                        mousePosition,
-                        windowWidth,
-                        windowHeight,
-                        panelX,
-                        compositionSlots.Length))
-                {
-                    return;
+                    if (BastionCompositionPanelModel.ContainsPanel(
+                            mousePosition,
+                            windowWidth,
+                            windowHeight,
+                            panelX,
+                            compositionSlots.Length))
+                    {
+                        return;
+                    }
                 }
 
                 if (TryPickBastionOrderCommand(mousePosition, windowWidth, windowHeight, panelX, out var barCommand))
@@ -752,9 +771,15 @@ public sealed class SfmlGameRunner
                 }
                 else
                 {
+                    var previousSelectedId = selectedEntityId;
                     selectedEntityId = clickedEntity is not null && IsVisibleToLocalPlayer(simulation, localPlayer, clickedEntity)
                         ? clickedEntity.Id
                         : null;
+                    if (selectedEntityId != previousSelectedId)
+                    {
+                        CloseBastionComposition();
+                    }
+
                     recipePage = 0;
                     templateUnitIndex = 0;
                     isBuildMenuOpen = false;
@@ -1022,16 +1047,20 @@ public sealed class SfmlGameRunner
                 var selectedForOrders = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
                 if (selectedForOrders?.Kind == EntityKind.Bastion && selectedForOrders.OwnerId == localPlayer)
                 {
-                    DrawBastionCompositionPanel(
-                        window,
-                        simulation,
-                        selectedForOrders,
-                        templateUnitIndex,
-                        font,
-                        windowWidth,
-                        windowHeight,
-                        panelX,
-                        mousePosition);
+                    if (isBastionCompositionOpen)
+                    {
+                        DrawBastionCompositionPanel(
+                            window,
+                            simulation,
+                            selectedForOrders,
+                            templateUnitIndex,
+                            font,
+                            windowWidth,
+                            windowHeight,
+                            panelX,
+                            mousePosition);
+                    }
+
                     DrawBastionOrderBar(
                         window,
                         selectedForOrders,
@@ -1041,6 +1070,10 @@ public sealed class SfmlGameRunner
                         windowHeight,
                         panelX,
                         mousePosition);
+                }
+                else
+                {
+                    CloseBastionComposition();
                 }
             }
 
