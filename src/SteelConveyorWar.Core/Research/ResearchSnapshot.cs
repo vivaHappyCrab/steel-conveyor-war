@@ -11,7 +11,9 @@ public sealed record ResearchTechnologySnapshot(
     bool RequiresExclusiveConfirmation,
     string? TrackId,
     IReadOnlyList<SciencePackCost> SciencePacks,
-    IReadOnlyList<string> Tags);
+    IReadOnlyList<string> Tags,
+    string DisplayName,
+    string Description);
 
 public sealed record ResearchTrackSnapshot(
     string Id,

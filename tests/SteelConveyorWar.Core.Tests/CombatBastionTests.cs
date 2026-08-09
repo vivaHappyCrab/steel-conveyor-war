@@ -153,6 +153,40 @@ public sealed class CombatBastionTests
     }
 
     [Fact]
+    public void ProcessCombat_EmitsCombatShotEvent()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var attacker = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var defender = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        Assert.True(simulation.TryTeleportEntityForTests(attacker.Id, new TilePosition(10, 10)));
+        Assert.True(simulation.TryTeleportEntityForTests(defender.Id, new TilePosition(11, 11)));
+
+        simulation.AdvanceTick();
+
+        Assert.Contains(
+            simulation.CombatShotsThisTick,
+            shot => shot.AttackerId == attacker.Id
+                && shot.TargetId == defender.Id
+                && shot.ProjectileKind == ProjectileKind.GroundToGround);
+    }
+
+    [Fact]
+    public void CanOccupyWorldPosition_RejectsOverlapWithOtherUnit()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var tankA = ProduceTankForBastion(simulation, bastion.Id);
+        var tankB = ProduceTankForBastion(simulation, bastion.Id);
+        Assert.True(simulation.TryTeleportEntityForTests(tankA.Id, new TilePosition(20, 20)));
+        Assert.True(simulation.TryTeleportEntityForTests(tankB.Id, new TilePosition(30, 30)));
+
+        Assert.False(simulation.CanOccupyWorldPositionForTests(tankB.Id, tankA.WorldPosition));
+        Assert.True(simulation.CanOccupyWorldPositionForTests(
+            tankB.Id,
+            WorldPosition.FromTileCenter(new TilePosition(40, 40))));
+    }
+
+    [Fact]
     public void ProcessCombat_EuclideanDiagonalInRange_DamagesEnemy()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
@@ -359,25 +393,57 @@ public sealed class CombatBastionTests
     private static WorldEntity ProduceScoutForBastion(GameSimulation simulation, int bastionId)
     {
         Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.Scout));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.DroneCenter, new TilePosition(6, simulation.World.Size.Height / 2 + 6), out var factoryId));
-        AdvanceTicks(simulation, 30);
+        var desired = simulation.World.GetEntity(bastionId)!.BastionTemplate.GetValueOrDefault(EntityKind.Scout) + 1;
+        Assert.True(simulation.TrySetBastionTemplate(bastionId, EntityKind.Scout, desired));
+        var factory = simulation.World.Entities.FirstOrDefault(entity =>
+            entity.IsAlive && entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.DroneCenter);
+        int factoryId;
+        if (factory is null)
+        {
+            Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.DroneCenter, new TilePosition(6, simulation.World.Size.Height / 2 + 6), out factoryId));
+            AdvanceTicks(simulation, 30);
+        }
+        else
+        {
+            factoryId = factory.Id;
+        }
+
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 20);
         Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.Scout, bastionId));
         AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.Scout].WorkTicks + 5);
-        return simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Scout && entity.AssignedBastionId == bastionId);
+        return simulation.World.Entities
+            .Where(entity => entity.Kind == EntityKind.Scout && entity.AssignedBastionId == bastionId && entity.IsAlive)
+            .OrderByDescending(entity => entity.Id)
+            .First();
     }
 
     private static WorldEntity ProduceTankForBastion(GameSimulation simulation, int bastionId)
     {
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, simulation.World.Size.Height / 2 + 6), out var factoryId));
-        AdvanceTicks(simulation, 30);
+        var desired = simulation.World.GetEntity(bastionId)!.BastionTemplate.GetValueOrDefault(EntityKind.BasicTank) + 1;
+        Assert.True(simulation.TrySetBastionTemplate(bastionId, EntityKind.BasicTank, desired));
+        var factory = simulation.World.Entities.FirstOrDefault(entity =>
+            entity.IsAlive && entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.TankFactory);
+        int factoryId;
+        if (factory is null)
+        {
+            Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, simulation.World.Size.Height / 2 + 6), out factoryId));
+            AdvanceTicks(simulation, 30);
+        }
+        else
+        {
+            factoryId = factory.Id;
+        }
+
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
         Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastionId));
         AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
-        return simulation.World.Entities.Single(entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastionId);
+        return simulation.World.Entities
+            .Where(entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastionId && entity.IsAlive)
+            .OrderByDescending(entity => entity.Id)
+            .First();
     }
 
     private static bool PlaceAdjacent(GameSimulation simulation, WorldEntity entity, TilePosition near)

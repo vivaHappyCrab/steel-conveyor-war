@@ -34,14 +34,21 @@ public static class ResearchContentLoader
 
         var technologies = dto.Technologies.ToDictionary(
             tech => new TechnologyId(tech.Id),
-            tech => new TechnologyDefinition(
-                new TechnologyId(tech.Id),
-                tech.TierId,
-                new ResearchCostDefinition(
-                    tech.Cost.EffortUnits,
-                    tech.Cost.SciencePacks.Select(pack => new SciencePackCost(ParseItemId(pack.Item), pack.Amount)).ToList()),
-                tech.Effects.Select(ParseEffect).ToList(),
-                tech.Tags ?? new List<string>()));
+            tech =>
+            {
+                var id = new TechnologyId(tech.Id);
+                var tags = tech.Tags ?? new List<string>();
+                return new TechnologyDefinition(
+                    id,
+                    tech.TierId,
+                    new ResearchCostDefinition(
+                        tech.Cost.EffortUnits,
+                        tech.Cost.SciencePacks.Select(pack => new SciencePackCost(ParseItemId(pack.Item), pack.Amount)).ToList()),
+                    tech.Effects.Select(ParseEffect).ToList(),
+                    tags,
+                    string.IsNullOrWhiteSpace(tech.DisplayName) ? ResearchDisplayNames.GetDisplayName(id) : tech.DisplayName,
+                    string.IsNullOrWhiteSpace(tech.Description) ? ResearchDisplayNames.GetDescription(id, tags) : tech.Description);
+            });
 
         var tiers = dto.Tiers.ToDictionary(
             tier => tier.Id,
@@ -158,6 +165,8 @@ public static class ResearchContentLoader
                 {
                     Id = tech.Id.Value,
                     TierId = tech.TierId,
+                    DisplayName = tech.DisplayName,
+                    Description = tech.Description,
                     Cost = new CostDto
                     {
                         EffortUnits = tech.Cost.EffortUnits,
@@ -285,6 +294,8 @@ public static class ResearchContentLoader
     {
         public string Id { get; set; } = "";
         public string TierId { get; set; } = "";
+        public string? DisplayName { get; set; }
+        public string? Description { get; set; }
         public CostDto Cost { get; set; } = new();
         public List<EffectDto> Effects { get; set; } = new();
         public List<string>? Tags { get; set; }

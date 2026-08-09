@@ -9,7 +9,9 @@ public sealed record TechnologyDefinition(
     string TierId,
     ResearchCostDefinition Cost,
     IReadOnlyList<ResearchEffect> Effects,
-    IReadOnlyList<string> Tags);
+    IReadOnlyList<string> Tags,
+    string DisplayName,
+    string Description);
 
 public sealed record TierDefinition(
     string Id,

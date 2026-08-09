@@ -6,6 +6,7 @@ public sealed class GameSimulation
 
     private readonly List<PlayerState> _players;
     private readonly ResearchSystem _researchSystem;
+    private readonly List<CombatShotEvent> _combatShotsThisTick = new();
     private int _nextEntityId = 1;
 
     private GameSimulation(
@@ -46,6 +47,12 @@ public sealed class GameSimulation
     public long Tick { get; private set; }
 
     public IReadOnlyList<PlayerState> Players => _players;
+
+    /// <summary>
+    /// Presentation-only shots fired during the last <see cref="AdvanceTick"/> combat pass.
+    /// Not included in determinism hashing.
+    /// </summary>
+    public IReadOnlyList<CombatShotEvent> CombatShotsThisTick => _combatShotsThisTick;
 
     public GameStatus Status { get; private set; } = GameStatus.InProgress;
 
@@ -387,6 +394,13 @@ public sealed class GameSimulation
         entity.IsGarrisoned = false;
         entity.AttackCooldownRemaining = 0;
         return true;
+    }
+
+    /// <summary>Test helper: whether <paramref name="entityId"/> may occupy <paramref name="position"/>.</summary>
+    public bool CanOccupyWorldPositionForTests(int entityId, WorldPosition position)
+    {
+        var entity = World.GetEntity(entityId);
+        return entity is not null && CanOccupyWorldPosition(entity, position);
     }
 
     /// <summary>
@@ -2318,6 +2332,12 @@ public sealed class GameSimulation
                 continue;
             }
 
+            // Manual and autofill both wait when template demand or army capacity is full.
+            if (factory.OwnerId is null || !CanStartUnitProduction(factory.OwnerId.Value, recipe.OutputKind))
+            {
+                continue;
+            }
+
             if (!CanFactoryProduce(factory.Kind, recipe.OutputKind) || !factory.InputBuffer.TryRemoveAll(recipe.Inputs))
             {
                 continue;
@@ -2389,6 +2409,61 @@ public sealed class GameSimulation
     }
 
     /// <summary>
+    /// True when player-wide living+in-flight supply of <paramref name="unitKind"/> is below
+    /// summed bastion templates for that kind, and total army supply is below template capacity.
+    /// </summary>
+    private bool CanStartUnitProduction(PlayerId ownerId, EntityKind unitKind)
+    {
+        var kindDemand = World.Entities
+            .Where(entity => entity.IsAlive && entity.OwnerId == ownerId && entity.Kind == EntityKind.Bastion)
+            .Sum(bastion => bastion.BastionTemplate.GetValueOrDefault(unitKind));
+        if (kindDemand <= 0)
+        {
+            return false;
+        }
+
+        if (CountPlayerUnitKindSupply(ownerId, unitKind) >= kindDemand)
+        {
+            return false;
+        }
+
+        return CountPlayerArmySupply(ownerId) < GetBastionTemplateCapacity(ownerId);
+    }
+
+    private int CountPlayerUnitKindSupply(PlayerId ownerId, EntityKind unitKind)
+    {
+        var living = World.Entities.Count(entity =>
+            entity.IsAlive
+            && entity.OwnerId == ownerId
+            && entity.Kind == unitKind);
+        return living + CountInFlightOfKind(ownerId, unitKind);
+    }
+
+    private int CountPlayerArmySupply(PlayerId ownerId)
+    {
+        var living = World.Entities.Count(entity =>
+            entity.IsAlive
+            && entity.OwnerId == ownerId
+            && MvpDefinitions.UnitKinds.Contains(entity.Kind));
+        var inFlight = World.Entities.Count(entity =>
+            entity.IsAlive
+            && entity.OwnerId == ownerId
+            && MvpDefinitions.FactoryKinds.Contains(entity.Kind)
+            && entity.ProductionTargetKind is not null
+            && entity.WorkTicksRemaining > 0
+            && MvpDefinitions.UnitKinds.Contains(entity.ProductionTargetKind.Value));
+        return living + inFlight;
+    }
+
+    private int CountInFlightOfKind(PlayerId ownerId, EntityKind unitKind) =>
+        World.Entities.Count(entity =>
+            entity.IsAlive
+            && entity.OwnerId == ownerId
+            && MvpDefinitions.FactoryKinds.Contains(entity.Kind)
+            && entity.ProductionTargetKind == unitKind
+            && entity.WorkTicksRemaining > 0);
+
+    /// <summary>
     /// Attributes in-flight factory crafts of <paramref name="unitKind"/> to bastions greedily:
     /// lowest factory Id fills the lowest bastion Id that still has living-based deficit.
     /// </summary>
@@ -2425,18 +2500,13 @@ public sealed class GameSimulation
                 .Where(pair => pair.Value > 0)
                 .OrderBy(pair => pair.Key)
                 .Select(pair => (int?)pair.Key)
-                .FirstOrDefault()
-                ?? (bastions.Count > 0 ? bastions[0].Id : null);
+                .FirstOrDefault();
             if (assignee is null)
             {
                 continue;
             }
 
-            if (remainingDeficit.GetValueOrDefault(assignee.Value) > 0)
-            {
-                remainingDeficit[assignee.Value]--;
-            }
-
+            remainingDeficit[assignee.Value]--;
             if (assignee.Value == bastionId)
             {
                 attributed++;
@@ -2488,16 +2558,13 @@ public sealed class GameSimulation
 
     /// <summary>
     /// Lowest owned bastion Id that still needs <paramref name="unitKind"/> (living count vs template).
-    /// Falls back to the lowest owned bastion when none have a deficit (manual overshoot).
+    /// Returns null when no bastion has a deficit (production should have waited at the factory).
     /// </summary>
     private int? ChooseSpawnBastionId(PlayerId ownerId, EntityKind unitKind)
     {
-        var bastions = World.Entities
+        foreach (var bastion in World.Entities
             .Where(entity => entity.IsAlive && entity.OwnerId == ownerId && entity.Kind == EntityKind.Bastion)
-            .OrderBy(entity => entity.Id)
-            .ToList();
-
-        foreach (var bastion in bastions)
+            .OrderBy(entity => entity.Id))
         {
             var desired = bastion.BastionTemplate.GetValueOrDefault(unitKind);
             if (desired <= 0)
@@ -2515,33 +2582,46 @@ public sealed class GameSimulation
             }
         }
 
-        return bastions.Count > 0 ? bastions[0].Id : null;
+        return null;
     }
 
     private TilePosition FindSpawnTileNear(WorldEntity factory, EntityKind unitKind)
     {
         var footprint = MvpDefinitions.GetFootprint(factory.Kind);
-        var candidates = new List<TilePosition>();
-        for (var x = factory.Position.X - 1; x <= factory.Position.X + footprint.Width; x++)
+        for (var ring = 1; ring <= 6; ring++)
         {
-            candidates.Add(new TilePosition(x, factory.Position.Y - 1));
-            candidates.Add(new TilePosition(x, factory.Position.Y + footprint.Height));
-        }
+            var candidates = new List<TilePosition>();
+            var minX = factory.Position.X - ring;
+            var maxX = factory.Position.X + footprint.Width - 1 + ring;
+            var minY = factory.Position.Y - ring;
+            var maxY = factory.Position.Y + footprint.Height - 1 + ring;
+            for (var x = minX; x <= maxX; x++)
+            {
+                candidates.Add(new TilePosition(x, minY));
+                candidates.Add(new TilePosition(x, maxY));
+            }
 
-        for (var y = factory.Position.Y; y < factory.Position.Y + footprint.Height; y++)
-        {
-            candidates.Add(new TilePosition(factory.Position.X - 1, y));
-            candidates.Add(new TilePosition(factory.Position.X + footprint.Width, y));
-        }
+            for (var y = minY + 1; y <= maxY - 1; y++)
+            {
+                candidates.Add(new TilePosition(minX, y));
+                candidates.Add(new TilePosition(maxX, y));
+            }
 
-        return candidates
-            .Where(tile => World.IsInside(tile))
-            .OrderBy(tile => tile.ManhattanDistance(factory.Position))
-            .FirstOrDefault(tile =>
+            foreach (var tile in candidates
+                         .Where(tile => World.IsInside(tile))
+                         .OrderBy(tile => tile.ManhattanDistance(factory.Position))
+                         .ThenBy(tile => tile.X)
+                         .ThenBy(tile => tile.Y))
             {
                 var probe = new WorldEntity(-1, unitKind, tile, factory.OwnerId);
-                return IsGroundPassable(probe, tile) && CanOccupyWorldPosition(probe, probe.WorldPosition);
-            }, factory.Position);
+                if (IsGroundPassable(probe, tile) && CanOccupyWorldPosition(probe, probe.WorldPosition))
+                {
+                    return tile;
+                }
+            }
+        }
+
+        return factory.Position;
     }
 
     private void ProcessBastions()
@@ -2989,12 +3069,48 @@ public sealed class GameSimulation
             return true;
         }
 
-        return !World.Entities.Any(entity =>
-            entity.Id != mover.Id
-            && entity.IsAlive
-            && MvpDefinitions.BlocksGroundMovement(entity.Kind)
-            && CircleIntersectsEntityFootprint(position, radius, entity)
-            && !MovesOutOfExistingOverlap(mover, position, radius, entity));
+        foreach (var entity in World.Entities)
+        {
+            if (entity.Id == mover.Id || !entity.IsAlive || entity.IsGarrisoned)
+            {
+                continue;
+            }
+
+            if (MvpDefinitions.BlocksGroundMovement(entity.Kind))
+            {
+                if (CircleIntersectsEntityFootprint(position, radius, entity)
+                    && !MovesOutOfExistingOverlap(mover, position, radius, entity))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            var otherRadius = MvpDefinitions.GetCollisionSize(entity.Kind).Radius;
+            if (otherRadius <= 0)
+            {
+                continue;
+            }
+
+            var minDistance = radius + otherRadius;
+            var nextDistance = position.DistanceTo(entity.WorldPosition);
+            if (nextDistance >= minDistance)
+            {
+                continue;
+            }
+
+            var currentDistance = mover.WorldPosition.DistanceTo(entity.WorldPosition);
+            if (currentDistance < minDistance && nextDistance > currentDistance)
+            {
+                // Allow sliding out of an existing overlap.
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
     }
 
     private static bool CircleIntersectsEntityFootprint(WorldPosition position, double radius, WorldEntity obstacle)
@@ -3034,6 +3150,7 @@ public sealed class GameSimulation
 
     private void ProcessCombat()
     {
+        _combatShotsThisTick.Clear();
         foreach (var attacker in World.Entities.Where(entity =>
                      entity.IsAlive
                      && !entity.IsGarrisoned
@@ -3080,6 +3197,13 @@ public sealed class GameSimulation
             {
                 continue;
             }
+
+            _combatShotsThisTick.Add(new CombatShotEvent(
+                attacker.Id,
+                target.Id,
+                attacker.WorldPosition,
+                target.WorldPosition,
+                stats.ProjectileKind));
 
             var primaryDamage = ComputeDamageAgainst(attacker, stats, target);
             ApplyCombatDamage(target, primaryDamage);
