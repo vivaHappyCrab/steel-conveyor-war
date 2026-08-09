@@ -122,6 +122,24 @@ public sealed class SfmlGameRunner
                 return;
             }
 
+            if (key == "F1")
+            {
+                EnsureLocalCommanderSelected(simulation, localPlayer, ref selectedEntityId);
+                selectedEntity = simulation.World.GetEntity(selectedEntityId!.Value);
+                if (selectedEntity is not null)
+                {
+                    CenterCameraOnWorldPosition(selectedEntity.WorldPosition, playfieldWidth, playfieldHeight, ref cameraX, ref cameraY);
+                    ClampCamera();
+                }
+
+                isBuildMenuOpen = false;
+                pendingBuildKind = null;
+                pendingDirection = Direction.East;
+                pendingRecipe = null;
+                ClearBastionPending();
+                return;
+            }
+
             if (key == "Q")
             {
                 var mousePosition = Mouse.GetPosition(window);
@@ -164,9 +182,22 @@ public sealed class SfmlGameRunner
                     return;
                 }
 
-                if (selectedEntity is not null)
+                var hoverTile = TileFromScreen(Mouse.GetPosition(window));
+                if (hoverTile is not null)
                 {
-                    simulation.TryRotateEntity(selectedEntity.Id, clockwise: !counterClockwise);
+                    var hoverEntity = simulation.World.GetTopEntityAt(hoverTile.Value);
+                    if (hoverEntity is not null
+                        && hoverEntity.OwnerId == localPlayer
+                        && BuildBarModel.IsDirectedKind(hoverEntity.Kind)
+                        && simulation.TryRotateEntity(hoverEntity.Id, localPlayer, clockwise: !counterClockwise))
+                    {
+                        return;
+                    }
+                }
+
+                if (selectedEntity is not null && selectedEntity.OwnerId == localPlayer)
+                {
+                    simulation.TryRotateEntity(selectedEntity.Id, localPlayer, clockwise: !counterClockwise);
                 }
 
                 return;
@@ -266,10 +297,18 @@ public sealed class SfmlGameRunner
                 && selectedEntity?.Kind == EntityKind.Bastion
                 && selectedEntity.OwnerId == localPlayer)
             {
-                if (TryGetNumberShortcut(key, out var orderIndex)
-                    && BastionOrderBarModel.TryGetCommand(orderIndex, out var orderCommand))
+                if (BastionOrderBarModel.TryGetCommandFromKey(key, out var orderCommand))
                 {
                     ApplyBastionOrderCommand(simulation, selectedEntity.Id, orderCommand, ref bastionPendingMode, patrolWaypoints);
+                    return;
+                }
+
+                if (TryGetNumberShortcut(key, out var bastionIndex)
+                    && TrySelectOwnedBastionByIndex(simulation, localPlayer, bastionIndex, ref selectedEntityId))
+                {
+                    recipePage = 0;
+                    templateUnitIndex = 0;
+                    ClearBastionPending();
                     return;
                 }
 
@@ -367,9 +406,12 @@ public sealed class SfmlGameRunner
 
                 var clickedEntity = simulation.World.GetTopEntityAt(tile.Value);
                 var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
-                if (ctrlPressed && selectedEntity?.Kind == EntityKind.Commander && clickedEntity is not null)
+                if (ctrlPressed
+                    && selectedEntity?.Kind == EntityKind.Commander
+                    && selectedEntity.OwnerId == localPlayer
+                    && clickedEntity is not null)
                 {
-                    simulation.TryCollectOutputBuffer(selectedEntity.Id, clickedEntity.Id);
+                    simulation.TryWithdrawFromHubOrOutput(selectedEntity.Id, clickedEntity.Id);
                 }
                 else if (isBuildMenuOpen && pendingBuildKind is not null && selectedEntity?.Kind == EntityKind.Commander)
                 {
@@ -397,8 +439,17 @@ public sealed class SfmlGameRunner
             else if (button == "Right")
             {
                 var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
-                if (selectedEntity?.Kind == EntityKind.Commander)
+                if (selectedEntity?.Kind == EntityKind.Commander && selectedEntity.OwnerId == localPlayer)
                 {
+                    var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
+                    var clickedEntity = simulation.World.GetTopEntityAt(tile.Value);
+                    if (ctrlPressed
+                        && clickedEntity is not null
+                        && simulation.TryDepositToHubOrInput(selectedEntity.Id, clickedEntity.Id))
+                    {
+                        return;
+                    }
+
                     simulation.TryIssueMoveCommand(selectedEntity.Id, tile.Value);
                     return;
                 }
@@ -969,7 +1020,7 @@ public sealed class SfmlGameRunner
 
         using var energy = new Text(font, $"Energy {player.PowerProduced}/{player.PowerDemand}", 14)
         {
-            FillColor = Color.White,
+            FillColor = player.PowerDemand > player.PowerProduced ? new Color(220, 70, 70) : Color.White,
             Position = new Vector2f(10f, 8f)
         };
         target.Draw(energy);
@@ -1064,9 +1115,22 @@ public sealed class SfmlGameRunner
                 lines.Add($"Queued: {(selected.QueuedBuildOrder is null ? "-" : $"{selected.QueuedBuildOrder.TargetKind}@{selected.QueuedBuildOrder.TargetPosition.X},{selected.QueuedBuildOrder.TargetPosition.Y}")}");
                 lines.Add("B: build menu");
                 lines.Add("Q: copy hovered building");
+                lines.Add("F1: select BMK + center");
                 lines.Add("RMB: move");
-                lines.Add("Ctrl+LMB building: collect output");
+                lines.Add("Ctrl+LMB: withdraw hub/output");
+                lines.Add("Ctrl+RMB: deposit hub/input");
                 lines.Add("Arrows/MMB/edge: pan camera");
+            }
+
+            if (IsCombatHudKind(selected.Kind))
+            {
+                var stats = MvpDefinitions.GetStats(selected.Kind);
+                lines.Add($"Projectile: {stats.ProjectileKind}");
+                lines.Add($"Vision: {stats.VisionRadius}");
+                lines.Add($"Damage: {stats.AttackDamage}");
+                lines.Add($"Fire rate: {stats.AttackCooldownTicks}t");
+                lines.Add($"Splash: {stats.SplashRadius}");
+                lines.Add($"Armor: {stats.Armor}");
             }
 
             if (selected.Kind == EntityKind.Assembler)
@@ -1095,7 +1159,8 @@ public sealed class SfmlGameRunner
                 var unitCount = selected.BastionTemplate.GetValueOrDefault(unitKind);
                 lines.Add($"Edit: {unitKind} = {unitCount}");
                 lines.Add("[/]: unit type  +/-: count");
-                lines.Add("1-4 / bar: bastion orders");
+                lines.Add("A/S/D/F: Attack/Scout/Defend/Patrol");
+                lines.Add("1-0: switch owned bastions");
                 var pendingHint = BastionOrderBarModel.PendingHint(bastionPendingMode, patrolWaypointCount);
                 if (!string.IsNullOrEmpty(pendingHint))
                 {
@@ -1424,6 +1489,43 @@ public sealed class SfmlGameRunner
             .Id;
     }
 
+    private static void CenterCameraOnWorldPosition(
+        WorldPosition worldPosition,
+        float playfieldWidth,
+        float playfieldHeight,
+        ref float cameraX,
+        ref float cameraY)
+    {
+        cameraX = (float)(worldPosition.X * TileSize) - playfieldWidth / 2f;
+        cameraY = (float)(worldPosition.Y * TileSize) - playfieldHeight / 2f;
+    }
+
+    private static bool TrySelectOwnedBastionByIndex(
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        int index,
+        ref int? selectedEntityId)
+    {
+        var bastions = simulation.World.Entities
+            .Where(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Bastion && entity.IsAlive)
+            .OrderBy(entity => entity.Id)
+            .ToList();
+        if (index < 0 || index >= bastions.Count)
+        {
+            return false;
+        }
+
+        selectedEntityId = bastions[index].Id;
+        return true;
+    }
+
+    private static bool IsCombatHudKind(EntityKind kind)
+    {
+        return kind == EntityKind.Commander
+            || MvpDefinitions.UnitKinds.Contains(kind)
+            || kind is EntityKind.MachineGunTurret or EntityKind.CannonTurret or EntityKind.AntiAirTurret;
+    }
+
     private static Direction RotateDirection(Direction direction, bool clockwise)
     {
         return clockwise
@@ -1676,7 +1778,7 @@ public sealed class SfmlGameRunner
                 };
                 target.Draw(glyph);
 
-                var badge = BastionOrderBarModel.ShortcutBadge(i);
+                var badge = BastionOrderBarModel.ShortcutBadge(command);
                 if (badge is not null)
                 {
                     using var keyBadge = new Text(font, badge)

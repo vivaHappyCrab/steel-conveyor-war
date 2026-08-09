@@ -20,12 +20,13 @@ public enum BastionPendingInputMode
 
 public static class BastionOrderBarModel
 {
+    /// <summary>Left-to-right bar order matching A/S/D/F hotkeys.</summary>
     public static readonly BastionOrderCommand[] Commands =
     [
-        BastionOrderCommand.ActiveDefense,
-        BastionOrderCommand.Patrol,
         BastionOrderCommand.Attack,
-        BastionOrderCommand.Scout
+        BastionOrderCommand.Scout,
+        BastionOrderCommand.ActiveDefense,
+        BastionOrderCommand.Patrol
     ];
 
     public static readonly EntityKind[] TemplateUnitKinds = MvpDefinitions.UnitKinds
@@ -49,16 +50,18 @@ public static class BastionOrderBarModel
         return command switch
         {
             BastionOrderCommand.ActiveDefense => "D",
-            BastionOrderCommand.Patrol => "P",
+            BastionOrderCommand.Patrol => "F",
             BastionOrderCommand.Attack => "A",
             BastionOrderCommand.Scout => "S",
             _ => "?"
         };
     }
 
+    public static string? ShortcutBadge(BastionOrderCommand command) => Glyph(command);
+
     public static string? ShortcutBadge(int catalogIndex)
     {
-        return catalogIndex is >= 0 and <= 3 ? (catalogIndex + 1).ToString() : null;
+        return TryGetCommand(catalogIndex, out var command) ? ShortcutBadge(command) : null;
     }
 
     public static bool TryGetCommand(int index, out BastionOrderCommand command)
@@ -71,6 +74,18 @@ public static class BastionOrderBarModel
 
         command = Commands[index];
         return true;
+    }
+
+    public static bool TryGetCommandFromKey(string key, out BastionOrderCommand command)
+    {
+        return key switch
+        {
+            "A" => SetCommand(BastionOrderCommand.Attack, out command),
+            "S" => SetCommand(BastionOrderCommand.Scout, out command),
+            "D" => SetCommand(BastionOrderCommand.ActiveDefense, out command),
+            "F" => SetCommand(BastionOrderCommand.Patrol, out command),
+            _ => SetCommand(default, out command, success: false)
+        };
     }
 
     public static BastionPendingInputMode PendingModeFor(BastionOrderCommand command)
@@ -129,5 +144,11 @@ public static class BastionOrderBarModel
                 $"Pending Patrol: LMB add wp ({patrolWaypointCount}/4), Enter/RMB confirm (2+), Esc cancel",
             _ => string.Empty
         };
+    }
+
+    private static bool SetCommand(BastionOrderCommand value, out BastionOrderCommand command, bool success = true)
+    {
+        command = value;
+        return success;
     }
 }

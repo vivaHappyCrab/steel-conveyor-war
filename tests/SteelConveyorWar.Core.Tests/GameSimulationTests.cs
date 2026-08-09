@@ -415,9 +415,20 @@ public class GameSimulationTests
         AdvanceTicks(simulation, 30);
 
         Assert.Equal(Direction.East, simulation.World.GetEntity(conveyorId)!.Direction);
-        Assert.True(simulation.TryRotateEntity(conveyorId, clockwise: true));
+        Assert.True(simulation.TryRotateEntity(conveyorId, new PlayerId(1), clockwise: true));
         Assert.Equal(Direction.South, simulation.World.GetEntity(conveyorId)!.Direction);
-        Assert.True(simulation.TryRotateEntity(conveyorId, clockwise: false));
+        Assert.True(simulation.TryRotateEntity(conveyorId, new PlayerId(1), clockwise: false));
+        Assert.Equal(Direction.East, simulation.World.GetEntity(conveyorId)!.Direction);
+    }
+
+    [Fact]
+    public void TryRotateEntity_RejectsEnemyOwnedDirectedBuilding()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Conveyor, NearBlue(simulation, 7, 0), out var conveyorId));
+        AdvanceTicks(simulation, 30);
+
+        Assert.False(simulation.TryRotateEntity(conveyorId, new PlayerId(2), clockwise: true));
         Assert.Equal(Direction.East, simulation.World.GetEntity(conveyorId)!.Direction);
     }
 
@@ -799,11 +810,137 @@ public class GameSimulationTests
         Assert.Equal(0, bastion.OutputBuffer.Count(ItemId.IronPlate));
     }
 
+    [Fact]
+    public void TryWithdrawFromHubOrOutput_WithdrawsHubInventory()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var hub = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Hub);
+        var initialIron = commander.Inventory.Count(ItemId.IronPlate);
+
+        Assert.True(simulation.AddItemToEntity(hub.Id, ItemId.IronPlate, 7));
+        Assert.True(simulation.TryWithdrawFromHubOrOutput(commander.Id, hub.Id));
+
+        Assert.Equal(initialIron + 7, commander.Inventory.Count(ItemId.IronPlate));
+        Assert.Equal(0, hub.Inventory.Count(ItemId.IronPlate));
+    }
+
+    [Fact]
+    public void TryWithdrawFromHubOrOutput_CollectsResourceOutputBuffer()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var initialOre = commander.Inventory.Count(ItemId.IronOre);
+
+        Assert.True(simulation.TryAddOutputItemToEntity(bastion.Id, ItemId.IronOre, 4));
+        Assert.True(simulation.TryWithdrawFromHubOrOutput(commander.Id, bastion.Id));
+
+        Assert.Equal(initialOre + 4, commander.Inventory.Count(ItemId.IronOre));
+        Assert.Equal(0, bastion.OutputBuffer.Count(ItemId.IronOre));
+    }
+
+    [Fact]
+    public void TryDepositToHubOrInput_DepositsIntoHub()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var hub = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Hub);
+        ClearInventory(commander.Inventory);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.CopperPlate, 6));
+        var hubBefore = hub.Inventory.Count(ItemId.CopperPlate);
+
+        Assert.True(simulation.TryDepositToHubOrInput(commander.Id, hub.Id));
+
+        Assert.Equal(0, commander.Inventory.Count(ItemId.CopperPlate));
+        Assert.Equal(hubBefore + 6, hub.Inventory.Count(ItemId.CopperPlate));
+    }
+
+    [Fact]
+    public void TryDepositToHubOrInput_DepositsIntoBuildingInput()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Laboratory, NearBlue(simulation, 5, -2), out var labId));
+        AdvanceTicks(simulation, 30);
+        var lab = simulation.World.GetEntity(labId)!;
+        Assert.True(simulation.TryIssueMoveCommand(commander.Id, lab.Position));
+        AdvanceTicks(simulation, 240);
+        ClearInventory(commander.Inventory);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronOre, 3));
+
+        Assert.True(simulation.TryDepositToHubOrInput(commander.Id, labId));
+
+        Assert.Equal(0, commander.Inventory.Count(ItemId.IronOre));
+        Assert.Equal(3, lab.InputBuffer.Count(ItemId.IronOre));
+    }
+
+    [Fact]
+    public void TryWithdrawFromHubOrOutput_FailsOutsideInteractRadius()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, NearBlue(simulation, 8, 0), out var farHubId));
+        AdvanceTicks(simulation, 30);
+        Assert.True(simulation.AddItemToEntity(farHubId, ItemId.IronPlate, 2));
+
+        Assert.False(simulation.TryWithdrawFromHubOrOutput(commander.Id, farHubId));
+        Assert.Equal(2, simulation.World.GetEntity(farHubId)!.Inventory.Count(ItemId.IronPlate));
+    }
+
+    [Fact]
+    public void TryWithdrawFromHubOrOutput_RejectsEnemyHub()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var enemyHub = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(2) && entity.Kind == EntityKind.Hub);
+        Assert.True(simulation.TryTeleportEntityForTests(commander.Id, enemyHub.Position));
+        Assert.True(simulation.AddItemToEntity(enemyHub.Id, ItemId.IronPlate, 5));
+
+        Assert.False(simulation.TryWithdrawFromHubOrOutput(commander.Id, enemyHub.Id));
+        Assert.Equal(5, enemyHub.Inventory.Count(ItemId.IronPlate));
+    }
+
+    [Fact]
+    public void TryDepositToHubOrInput_RejectsEnemyHub()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var enemyHub = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(2) && entity.Kind == EntityKind.Hub);
+        Assert.True(simulation.TryTeleportEntityForTests(commander.Id, enemyHub.Position));
+        ClearInventory(commander.Inventory);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.CopperPlate, 4));
+        var hubBefore = enemyHub.Inventory.Count(ItemId.CopperPlate);
+
+        Assert.False(simulation.TryDepositToHubOrInput(commander.Id, enemyHub.Id));
+        Assert.Equal(4, commander.Inventory.Count(ItemId.CopperPlate));
+        Assert.Equal(hubBefore, enemyHub.Inventory.Count(ItemId.CopperPlate));
+    }
+
+    [Fact]
+    public void EntityStats_CombatStubs_DefaultArmorProjectileSplash()
+    {
+        var stats = MvpDefinitions.GetStats(EntityKind.LightBot);
+        Assert.Equal(0, stats.Armor);
+        Assert.Equal(ProjectileKind.GroundToGround, stats.ProjectileKind);
+        Assert.Equal(0, stats.SplashRadius);
+        Assert.True(stats.VisionRadius > 0);
+        Assert.True(stats.AttackDamage > 0);
+    }
+
     private static void AdvanceTicks(GameSimulation simulation, int ticks)
     {
         for (var i = 0; i < ticks; i++)
         {
             simulation.AdvanceTick();
+        }
+    }
+
+    private static void ClearInventory(Inventory inventory)
+    {
+        foreach (var pair in inventory.Items.ToList())
+        {
+            Assert.True(inventory.TryRemove(pair.Key, pair.Value));
         }
     }
 
