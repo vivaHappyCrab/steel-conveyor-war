@@ -377,6 +377,7 @@ public sealed class GameSimulation
 
         research.ProgressWorkUnitsMutable[technologyId] = definition.Cost.EffortUnits;
         _researchSystem.EvaluatePendingCompletions(research);
+        SyncResolvedMaxHealthForPlayer(playerId);
         return research.CompletedTechnologies.Contains(technologyId);
     }
 
@@ -437,10 +438,7 @@ public sealed class GameSimulation
     public void ApplyResearchModifierForTests(PlayerId playerId, AddModifierEffect effect)
     {
         GetPlayer(playerId).Research.AppliedModifiersMutable.Add(effect);
-        foreach (var entity in World.Entities.Where(candidate => candidate.OwnerId == playerId && candidate.IsAlive))
-        {
-            SyncResolvedMaxHealth(entity);
-        }
+        SyncResolvedMaxHealthForPlayer(playerId);
     }
 
     /// <summary>
@@ -991,6 +989,22 @@ public sealed class GameSimulation
         }
     }
 
+    private void SyncResolvedMaxHealthForPlayer(PlayerId playerId)
+    {
+        foreach (var entity in World.Entities.Where(candidate => candidate.OwnerId == playerId && candidate.IsAlive))
+        {
+            SyncResolvedMaxHealth(entity);
+        }
+    }
+
+    private void SyncAllResolvedMaxHealth()
+    {
+        foreach (var player in _players)
+        {
+            SyncResolvedMaxHealthForPlayer(player.Id);
+        }
+    }
+
     private int ResolveAttackDamage(WorldEntity attacker, EntityStats baseline)
     {
         if (attacker.OwnerId is null)
@@ -1411,6 +1425,7 @@ public sealed class GameSimulation
             ghost.MaxHealth = stats.MaxHealth;
             ghost.Health = stats.MaxHealth;
             ConfigureEntityDefaults(ghost);
+            SyncResolvedMaxHealth(ghost);
         }
     }
 
@@ -1739,6 +1754,8 @@ public sealed class GameSimulation
     private void ProcessResearch()
     {
         _researchSystem.ProcessResearch(this, Tick);
+        // MaxHealth modifiers only land on completion; sync caps/HP for living entities.
+        SyncAllResolvedMaxHealth();
     }
 
     private int ApplyEnergyShortage(PlayerId playerId, int workTicks)

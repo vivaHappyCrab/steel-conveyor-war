@@ -148,6 +148,58 @@ public sealed class CombatArmorWallTests
         Assert.True(MvpDefinitions.GetStats(EntityKind.BasicTank).Armor > 0);
     }
 
+    [Fact]
+    public void TryForceCompleteResearch_ConcreteWalls_SyncsExistingEntityMaxHealth()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == playerId);
+        var baseline = MvpDefinitions.GetStats(EntityKind.Commander).MaxHealth;
+        Assert.Equal(baseline, commander.MaxHealth);
+
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.ConcreteWalls, confirmExclusive: true));
+
+        var expected = simulation.ResolveStat(
+            playerId,
+            ResearchStatIds.MaxHealth,
+            baseline,
+            EntityKind.Commander.ToString(),
+            minValue: 1);
+        Assert.True(expected > baseline);
+        Assert.Equal(expected, commander.MaxHealth);
+        Assert.Equal(expected, commander.Health);
+    }
+
+    [Fact]
+    public void CompleteGhostBuild_AppliesResearchedMaxHealth()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.ConcreteWalls, confirmExclusive: true));
+
+        var wallBaseline = MvpDefinitions.GetStats(EntityKind.Wall).MaxHealth;
+        var expected = simulation.ResolveStat(
+            playerId,
+            ResearchStatIds.MaxHealth,
+            wallBaseline,
+            EntityKind.Wall.ToString(),
+            minValue: 1);
+        Assert.True(expected > wallBaseline);
+
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == playerId);
+        var wallTile = new TilePosition(commander.Position.X + 2, commander.Position.Y);
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.Wall, wallTile, out var ghostId));
+        for (var i = 0; i < 30; i++)
+        {
+            simulation.AdvanceTick();
+        }
+
+        var wall = simulation.World.GetEntity(ghostId)!;
+        Assert.Equal(EntityKind.Wall, wall.Kind);
+        Assert.Equal(expected, wall.MaxHealth);
+        Assert.Equal(expected, wall.Health);
+    }
+
     private static bool PlaceAdjacent(GameSimulation simulation, WorldEntity entity, TilePosition near)
     {
         var candidates = new[]
