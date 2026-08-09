@@ -22,6 +22,7 @@ public sealed class SfmlGameRunner
     private const float HudTextStartY = 10f;
     private const float ResearchDoubleClickSeconds = 0.35f;
     private const float CombatShotLingerSeconds = 0.12f;
+    private const float DemolishHoldSeconds = 1f;
 
     private enum SidebarStorageKind
     {
@@ -75,6 +76,16 @@ public sealed class SfmlGameRunner
         var researchScrollY = 0f;
         var researchClickClock = new Clock();
         var font = TryLoadFont();
+        int? demolishHoldEntityId = null;
+        var demolishHoldElapsed = 0f;
+        var demolishHoldCommitted = false;
+
+        void ClearDemolishHold()
+        {
+            demolishHoldEntityId = null;
+            demolishHoldElapsed = 0f;
+            demolishHoldCommitted = false;
+        }
 
         void CloseResearchOverlay()
         {
@@ -249,6 +260,7 @@ public sealed class SfmlGameRunner
                 pendingBuildKind = null;
                 pendingDirection = Direction.East;
                 pendingRecipe = null;
+                ClearDemolishHold();
                 CloseBastionComposition();
                 ClearBastionPending();
                 return;
@@ -284,6 +296,16 @@ public sealed class SfmlGameRunner
                 pendingDirection = Direction.East;
                 pendingRecipe = null;
                 recipePage = 0;
+                ClearDemolishHold();
+                return;
+            }
+
+            if (key == "S"
+                && selectedEntity?.Kind == EntityKind.Commander
+                && selectedEntity.OwnerId == localPlayer)
+            {
+                simulation.TryStopCommander(selectedEntity.Id);
+                ClearDemolishHold();
                 return;
             }
 
@@ -786,6 +808,7 @@ public sealed class SfmlGameRunner
                     pendingBuildKind = null;
                     pendingDirection = Direction.East;
                     pendingRecipe = null;
+                    ClearDemolishHold();
                     ClearBastionPending();
                 }
             }
@@ -794,11 +817,30 @@ public sealed class SfmlGameRunner
                 var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
                 if (selectedEntity?.Kind == EntityKind.Commander && selectedEntity.OwnerId == localPlayer)
                 {
+                    if (isBuildMenuOpen)
+                    {
+                        // Build mode: RMB starts demolish hold on a valid target; empty/invalid = no-op (not move).
+                        var clickedEntity = simulation.World.GetTopEntityAt(tile.Value);
+                        if (clickedEntity is not null
+                            && simulation.IsDemolishableTarget(selectedEntity.Id, clickedEntity.Id))
+                        {
+                            demolishHoldEntityId = clickedEntity.Id;
+                            demolishHoldElapsed = 0f;
+                            demolishHoldCommitted = false;
+                        }
+                        else
+                        {
+                            ClearDemolishHold();
+                        }
+
+                        return;
+                    }
+
                     var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
-                    var clickedEntity = simulation.World.GetTopEntityAt(tile.Value);
+                    var clickedEntityMove = simulation.World.GetTopEntityAt(tile.Value);
                     if (ctrlPressed
-                        && clickedEntity is not null
-                        && simulation.TryDepositToHubOrInput(selectedEntity.Id, clickedEntity.Id))
+                        && clickedEntityMove is not null
+                        && simulation.TryDepositToHubOrInput(selectedEntity.Id, clickedEntityMove.Id))
                     {
                         return;
                     }
@@ -852,6 +894,11 @@ public sealed class SfmlGameRunner
             {
                 isMiddleDragging = false;
             }
+
+            if (args.Button.ToString() == "Right")
+            {
+                ClearDemolishHold();
+            }
         };
 
         var clock = new Clock();
@@ -865,6 +912,38 @@ public sealed class SfmlGameRunner
         {
             window.DispatchEvents();
             var frameDt = clock.Restart().AsSeconds();
+
+            if (isBuildMenuOpen
+                && demolishHoldEntityId is not null
+                && Mouse.IsButtonPressed(Mouse.Button.Right)
+                && selectedEntityId is not null)
+            {
+                var holdCommander = simulation.World.GetEntity(selectedEntityId.Value);
+                var mouseTile = TileFromScreen(Mouse.GetPosition(window));
+                var hoverTarget = mouseTile is null ? null : simulation.World.GetTopEntityAt(mouseTile.Value);
+                if (holdCommander?.Kind != EntityKind.Commander
+                    || holdCommander.OwnerId != localPlayer
+                    || hoverTarget is null
+                    || hoverTarget.Id != demolishHoldEntityId.Value
+                    || !simulation.IsDemolishableTarget(holdCommander.Id, hoverTarget.Id))
+                {
+                    ClearDemolishHold();
+                }
+                else if (!demolishHoldCommitted)
+                {
+                    demolishHoldElapsed += frameDt;
+                    if (demolishHoldElapsed >= DemolishHoldSeconds)
+                    {
+                        simulation.TryQueueCommanderDemolish(holdCommander.Id, demolishHoldEntityId.Value);
+                        demolishHoldCommitted = true;
+                    }
+                }
+            }
+            else if (!Mouse.IsButtonPressed(Mouse.Button.Right))
+            {
+                ClearDemolishHold();
+            }
+
             accumulator += frameDt;
             while (accumulator >= fixedDelta)
             {
@@ -1128,12 +1207,12 @@ public sealed class SfmlGameRunner
 
         foreach (var entity in visibleEntities.Where(entity => !IsUnitDrawKind(entity.Kind)))
         {
-            DrawEntity(target, entity, selectedEntityId == entity.Id);
+            DrawEntity(target, simulation, entity, selectedEntityId == entity.Id);
         }
 
         foreach (var entity in visibleEntities.Where(entity => IsUnitDrawKind(entity.Kind)))
         {
-            DrawEntity(target, entity, selectedEntityId == entity.Id);
+            DrawEntity(target, simulation, entity, selectedEntityId == entity.Id);
         }
 
         DrawCombatShots(target, combatShots);
@@ -1222,7 +1301,7 @@ public sealed class SfmlGameRunner
         return entity.OwnerId == localPlayer || simulation.GetVisibility(localPlayer, entity.Position) == VisibilityState.Visible;
     }
 
-    private static void DrawEntity(IRenderTarget target, WorldEntity entity, bool isSelected)
+    private static void DrawEntity(IRenderTarget target, GameSimulation simulation, WorldEntity entity, bool isSelected)
     {
         var drawKind = entity.Kind == EntityKind.GhostBuild && entity.BuildTargetKind is not null
             ? entity.BuildTargetKind.Value
@@ -1273,7 +1352,7 @@ public sealed class SfmlGameRunner
 
         if (entity.Kind is (EntityKind.Conveyor or EntityKind.UndergroundConveyor) && entity.ConveyorItems.Count > 0)
         {
-            DrawConveyorItems(target, entity.Position, entity.ConveyorItems);
+            DrawConveyorItems(target, entity, simulation.GetResolvedConveyorMoveTicks(entity));
         }
 
         if (entity.Kind == EntityKind.Inserter && entity.HeldItem is not null)
@@ -1448,16 +1527,35 @@ public sealed class SfmlGameRunner
         target.Draw(arrow);
     }
 
-    private static void DrawConveyorItems(IRenderTarget target, TilePosition position, IReadOnlyList<ConveyorItem> items)
+    private static void DrawConveyorItems(IRenderTarget target, WorldEntity conveyor, int moveTicks)
     {
+        var items = conveyor.ConveyorItems;
+        var (dirX, dirY) = conveyor.Direction switch
+        {
+            Direction.East => (1f, 0f),
+            Direction.West => (-1f, 0f),
+            Direction.South => (0f, 1f),
+            Direction.North => (0f, -1f),
+            _ => (1f, 0f)
+        };
+
+        var centerX = conveyor.Position.X * TileSize + TileSize / 2f;
+        var centerY = conveyor.Position.Y * TileSize + TileSize / 2f;
+
         for (var i = 0; i < items.Count && i < 2; i++)
         {
-            var offsetX = i == 0 ? -4f : 4f;
+            var t = moveTicks <= 0 ? 1f : Math.Clamp(items[i].ProgressTicks / (float)moveTicks, 0f, 1f);
+            // Slot bases at 25% / 75% along belt; progress advances within the slot band toward the exit edge.
+            var slotBase = 0.25f + 0.5f * i;
+            var along = Math.Clamp(slotBase + t * 0.45f, 0.08f, 0.92f);
+            var alongOffset = (along - 0.5f) * TileSize;
+            var posX = centerX + dirX * alongOffset;
+            var posY = centerY + dirY * alongOffset;
             using var marker = new CircleShape(TileSize * 0.16f)
             {
                 FillColor = GetItemColor(items[i].Item),
                 Origin = new Vector2f(TileSize * 0.16f, TileSize * 0.16f),
-                Position = new Vector2f(position.X * TileSize + TileSize / 2f + offsetX, position.Y * TileSize + TileSize / 2f)
+                Position = new Vector2f(posX, posY)
             };
             target.Draw(marker);
         }
@@ -1750,6 +1848,8 @@ public sealed class SfmlGameRunner
                 lines.Add($"World: {selected.WorldPosition.X:0.00},{selected.WorldPosition.Y:0.00}");
                 lines.Add($"Move target: {(selected.MoveTarget is null ? "-" : $"{selected.MoveTarget.Value.X},{selected.MoveTarget.Value.Y}")}");
                 lines.Add($"Queued: {(selected.QueuedBuildOrder is null ? "-" : $"{selected.QueuedBuildOrder.TargetKind}@{selected.QueuedBuildOrder.TargetPosition.X},{selected.QueuedBuildOrder.TargetPosition.Y}")}");
+                lines.Add($"DemolishQ: {(selected.QueuedDemolishOrder is null ? "-" : $"#{selected.QueuedDemolishOrder.TargetEntityId}")}");
+                lines.Add("S: stop");
                 lines.Add("B: build menu");
                 lines.Add("Q: copy hovered building");
                 lines.Add("F1: select BMK + center");
@@ -1894,6 +1994,8 @@ public sealed class SfmlGameRunner
 
             lines.Add("Bottom bar: pick building");
             lines.Add("LMB: place/queue build");
+            lines.Add("RMB hold 1s: demolish");
+            lines.Add("S: stop build/demolish/move");
         }
 
         var displayLines = new List<string>();
@@ -2727,27 +2829,61 @@ public sealed class SfmlGameRunner
             using var consumeTitle = new Text(font, "Energy Consumption", 13)
             {
                 FillColor = new Color(220, 220, 200),
-                Position = new Vector2f(panel.ConsumeGraphBounds.Left, panel.ConsumeGraphBounds.Top - 18f)
+                Position = new Vector2f(panel.ConsumeGraphBounds.Left, panel.ConsumeGraphBounds.Top - EnergyStatsPanelModel.GraphTitleGap)
             };
             target.Draw(consumeTitle);
             using var produceTitle = new Text(font, "Energy Production", 13)
             {
                 FillColor = new Color(220, 220, 200),
-                Position = new Vector2f(panel.ProduceGraphBounds.Left, panel.ProduceGraphBounds.Top - 18f)
+                Position = new Vector2f(panel.ProduceGraphBounds.Left, panel.ProduceGraphBounds.Top - EnergyStatsPanelModel.GraphTitleGap)
             };
             target.Draw(produceTitle);
         }
 
+        var sharedMax = 1;
+        foreach (var value in panel.Stats.DemandSeries)
+        {
+            sharedMax = Math.Max(sharedMax, value);
+        }
+
+        foreach (var value in panel.Stats.ProducedSeries)
+        {
+            sharedMax = Math.Max(sharedMax, value);
+        }
+
+        foreach (var row in panel.Stats.ConsumerRows)
+        {
+            foreach (var value in row.Series)
+            {
+                sharedMax = Math.Max(sharedMax, value);
+            }
+        }
+
+        foreach (var row in panel.Stats.ProducerRows)
+        {
+            foreach (var value in row.Series)
+            {
+                sharedMax = Math.Max(sharedMax, value);
+            }
+        }
+
+        var windowSeconds = (int)panel.SelectedInterval;
         DrawEnergyGraph(
             target,
+            font,
             panel.ConsumeGraphBounds,
             panel.Stats.DemandSeries,
-            panel.Stats.ConsumerRows.Select(row => (EnergyStatsPanelModel.ColorForKind(row.Kind, isProducer: false), row.Series)).ToArray());
+            panel.Stats.ConsumerRows.Select(row => (EnergyStatsPanelModel.ColorForKind(row.Kind, isProducer: false), row.Series)).ToArray(),
+            sharedMax,
+            windowSeconds);
         DrawEnergyGraph(
             target,
+            font,
             panel.ProduceGraphBounds,
             panel.Stats.ProducedSeries,
-            panel.Stats.ProducerRows.Select(row => (EnergyStatsPanelModel.ColorForKind(row.Kind, isProducer: true), row.Series)).ToArray());
+            panel.Stats.ProducerRows.Select(row => (EnergyStatsPanelModel.ColorForKind(row.Kind, isProducer: true), row.Series)).ToArray(),
+            sharedMax,
+            windowSeconds);
 
         DrawEnergyLegendColumn(
             target,
@@ -2778,9 +2914,12 @@ public sealed class SfmlGameRunner
 
     private static void DrawEnergyGraph(
         IRenderTarget target,
+        Font? font,
         FloatRect bounds,
         IReadOnlyList<int> totalSeries,
-        (Color Color, IReadOnlyList<int> Series)[] kindSeries)
+        (Color Color, IReadOnlyList<int> Series)[] kindSeries,
+        int maxValue,
+        int windowSeconds)
     {
         using var frame = new RectangleShape(new Vector2f(bounds.Width, bounds.Height))
         {
@@ -2791,26 +2930,56 @@ public sealed class SfmlGameRunner
         };
         target.Draw(frame);
 
-        var maxValue = 1;
-        foreach (var value in totalSeries)
-        {
-            maxValue = Math.Max(maxValue, value);
-        }
+        var plot = new FloatRect(
+            new Vector2f(bounds.Left + EnergyStatsPanelModel.AxisLeftPad, bounds.Top),
+            new Vector2f(
+                Math.Max(1f, bounds.Width - EnergyStatsPanelModel.AxisLeftPad),
+                Math.Max(1f, bounds.Height - EnergyStatsPanelModel.AxisBottomPad)));
 
-        foreach (var (_, series) in kindSeries)
+        if (font is not null)
         {
-            foreach (var value in series)
+            var yLabels = new[] { maxValue, maxValue / 2, 0 };
+            var yPositions = new[] { plot.Top + 2f, plot.Top + plot.Height * 0.5f - 6f, plot.Top + plot.Height - 14f };
+            for (var i = 0; i < yLabels.Length; i++)
             {
-                maxValue = Math.Max(maxValue, value);
+                using var label = new Text(font, yLabels[i].ToString(), 11)
+                {
+                    FillColor = new Color(180, 190, 200),
+                    Position = new Vector2f(bounds.Left + 2f, yPositions[i])
+                };
+                target.Draw(label);
+            }
+
+            var xLabels = new[] { "0", FormatEnergyWindowMid(windowSeconds), FormatEnergyWindowEnd(windowSeconds) };
+            var xPositions = new[]
+            {
+                plot.Left,
+                plot.Left + plot.Width * 0.5f - 12f,
+                plot.Left + plot.Width - 28f
+            };
+            for (var i = 0; i < xLabels.Length; i++)
+            {
+                using var label = new Text(font, xLabels[i], 11)
+                {
+                    FillColor = new Color(180, 190, 200),
+                    Position = new Vector2f(xPositions[i], plot.Top + plot.Height + 2f)
+                };
+                target.Draw(label);
             }
         }
 
-        DrawEnergyPolyline(target, bounds, totalSeries, maxValue, EnergyStatsPanelModel.TotalSeriesColor);
+        DrawEnergyPolyline(target, plot, totalSeries, maxValue, EnergyStatsPanelModel.TotalSeriesColor);
         foreach (var (color, series) in kindSeries)
         {
-            DrawEnergyPolyline(target, bounds, series, maxValue, color);
+            DrawEnergyPolyline(target, plot, series, maxValue, color);
         }
     }
+
+    private static string FormatEnergyWindowEnd(int windowSeconds) =>
+        windowSeconds >= 60 ? $"{windowSeconds / 60}m" : $"{windowSeconds}s";
+
+    private static string FormatEnergyWindowMid(int windowSeconds) =>
+        FormatEnergyWindowEnd(Math.Max(1, windowSeconds / 2));
 
     private static void DrawEnergyPolyline(
         IRenderTarget target,

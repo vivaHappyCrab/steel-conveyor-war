@@ -198,6 +198,7 @@ public sealed class GameSimulation
         ghostId = ghost.Id;
         World.AddEntity(ghost);
         commander.QueuedBuildOrder = null;
+        commander.QueuedDemolishOrder = null;
         return true;
     }
 
@@ -225,6 +226,7 @@ public sealed class GameSimulation
         }
 
         commander.QueuedBuildOrder = new CommanderBuildOrder(targetKind, position, direction, selectedItemRecipe);
+        commander.QueuedDemolishOrder = null;
         commander.IsGarrisoned = false;
         commander.MoveTarget = null;
         ResetMovementPath(commander);
@@ -260,9 +262,252 @@ public sealed class GameSimulation
 
         entity.MoveTarget = target;
         entity.QueuedBuildOrder = null;
+        entity.QueuedDemolishOrder = null;
         entity.IsGarrisoned = false;
         ResetMovementPath(entity);
         return true;
+    }
+
+    public bool TryStopCommander(int commanderId)
+    {
+        var commander = World.GetEntity(commanderId);
+        if (commander is null || commander.Kind != EntityKind.Commander || !commander.IsAlive)
+        {
+            return false;
+        }
+
+        commander.MoveTarget = null;
+        commander.QueuedBuildOrder = null;
+        commander.QueuedDemolishOrder = null;
+        ResetMovementPath(commander);
+        return true;
+    }
+
+    /// <summary>
+    /// True when the commander can demolish/queue-demolish the target (ownership, kind, alive).
+    /// </summary>
+    public bool IsDemolishableTarget(int commanderId, int targetEntityId)
+    {
+        var commander = World.GetEntity(commanderId);
+        var target = World.GetEntity(targetEntityId);
+        return TryResolveDemolishCostKind(commander, target, out _);
+    }
+
+    public bool TryQueueCommanderDemolish(int commanderId, int targetEntityId)
+    {
+        var commander = World.GetEntity(commanderId);
+        var target = World.GetEntity(targetEntityId);
+        if (!TryResolveDemolishCostKind(commander, target, out var costKind))
+        {
+            return false;
+        }
+
+        if (IsWithinBuildRadius(commander!, costKind, target!.Position))
+        {
+            return TryDemolishBuilding(commanderId, targetEntityId);
+        }
+
+        commander!.QueuedDemolishOrder = new CommanderDemolishOrder(targetEntityId);
+        commander.QueuedBuildOrder = null;
+        commander.IsGarrisoned = false;
+        commander.MoveTarget = null;
+        ResetMovementPath(commander);
+        return true;
+    }
+
+    public bool TryDemolishBuilding(int commanderId, int targetEntityId)
+    {
+        var commander = World.GetEntity(commanderId);
+        var target = World.GetEntity(targetEntityId);
+        if (!TryResolveDemolishCostKind(commander, target, out var costKind))
+        {
+            return false;
+        }
+
+        if (!IsWithinBuildRadius(commander!, costKind, target!.Position))
+        {
+            return false;
+        }
+
+        if (!MvpDefinitions.BuildCosts.TryGetValue(costKind, out var fullCost))
+        {
+            return false;
+        }
+
+        var transfer = new Dictionary<ItemId, int>();
+        CollectInventoryInto(transfer, target.Inventory);
+        CollectInventoryInto(transfer, target.InputBuffer);
+        CollectInventoryInto(transfer, target.OutputBuffer);
+        foreach (var slot in target.ConveyorItems)
+        {
+            AddTransferAmount(transfer, slot.Item, 1);
+        }
+
+        if (target.HeldItem is { } held)
+        {
+            AddTransferAmount(transfer, held, 1);
+        }
+
+        if (target.PendingOutputItem is { } pending)
+        {
+            AddTransferAmount(transfer, pending, Math.Max(1, target.PendingOutputAmount));
+        }
+
+        foreach (var pair in fullCost.OrderBy(entry => entry.Key))
+        {
+            var refund = pair.Value / 2;
+            if (refund > 0)
+            {
+                AddTransferAmount(transfer, pair.Key, refund);
+            }
+        }
+
+        target.Inventory.Clear();
+        target.InputBuffer.Clear();
+        target.OutputBuffer.Clear();
+        target.ConveyorItemsMutable.Clear();
+        target.HeldItem = null;
+        target.HeldTransferTicksRemaining = 0;
+        target.PendingOutputItem = null;
+        target.PendingOutputAmount = 1;
+        target.WorkTicksRemaining = 0;
+        target.WorkTicksTotal = 0;
+
+        DepositItemsToCommanderOrNearbyHubs(commander!, transfer);
+
+        target.Health = 0;
+        if (commander!.QueuedDemolishOrder?.TargetEntityId == targetEntityId)
+        {
+            commander.QueuedDemolishOrder = null;
+        }
+
+        return true;
+    }
+
+    public int GetResolvedConveyorMoveTicks(WorldEntity conveyor)
+    {
+        var moveTicks = MvpDefinitions.ConveyorMoveTicks;
+        if (conveyor.OwnerId is not null)
+        {
+            moveTicks = ResolveStat(conveyor.OwnerId.Value, ResearchStatIds.ConveyorMoveTicks, moveTicks);
+        }
+
+        return Math.Max(1, moveTicks);
+    }
+
+    private static bool TryResolveDemolishCostKind(WorldEntity? commander, WorldEntity? target, out EntityKind costKind)
+    {
+        costKind = default;
+        if (commander is null
+            || commander.Kind != EntityKind.Commander
+            || commander.OwnerId is null
+            || !commander.IsAlive
+            || target is null
+            || !target.IsAlive
+            || target.OwnerId != commander.OwnerId)
+        {
+            return false;
+        }
+
+        if (target.Kind == EntityKind.GhostBuild)
+        {
+            if (target.BuildTargetKind is not { } ghostTarget
+                || ghostTarget == EntityKind.Bastion
+                || !MvpDefinitions.BuildCosts.ContainsKey(ghostTarget))
+            {
+                return false;
+            }
+
+            costKind = ghostTarget;
+            return true;
+        }
+
+        if (target.Kind == EntityKind.Bastion
+            || target.Kind == EntityKind.Commander
+            || MvpDefinitions.UnitKinds.Contains(target.Kind)
+            || !MvpDefinitions.BuildCosts.ContainsKey(target.Kind))
+        {
+            return false;
+        }
+
+        costKind = target.Kind;
+        return true;
+    }
+
+    private static void CollectInventoryInto(Dictionary<ItemId, int> transfer, Inventory inventory)
+    {
+        foreach (var pair in inventory.Items)
+        {
+            AddTransferAmount(transfer, pair.Key, pair.Value);
+        }
+    }
+
+    private static void AddTransferAmount(Dictionary<ItemId, int> transfer, ItemId item, int amount)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        transfer[item] = transfer.GetValueOrDefault(item) + amount;
+    }
+
+    /// <summary>
+    /// Deposits into commander first (per-item stack cap), then owned hubs in interact radius by id.
+    /// Remaining amounts are discarded.
+    /// </summary>
+    private void DepositItemsToCommanderOrNearbyHubs(WorldEntity commander, IReadOnlyDictionary<ItemId, int> items)
+    {
+        if (items.Count == 0 || commander.OwnerId is null)
+        {
+            return;
+        }
+
+        var hubs = World.Entities
+            .Where(entity =>
+                entity.IsAlive
+                && entity.Kind == EntityKind.Hub
+                && entity.OwnerId == commander.OwnerId
+                && DistanceToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
+                    <= MvpDefinitions.CommanderInteractRadius)
+            .OrderBy(entity => entity.Id)
+            .ToList();
+
+        foreach (var pair in items.OrderBy(entry => entry.Key))
+        {
+            var left = pair.Value;
+            if (left <= 0)
+            {
+                continue;
+            }
+
+            var commanderRoom = MvpDefinitions.GetMaxStackSize(pair.Key) - commander.Inventory.Count(pair.Key);
+            if (commanderRoom > 0)
+            {
+                var toCommander = Math.Min(commanderRoom, left);
+                commander.Inventory.Add(pair.Key, toCommander);
+                left -= toCommander;
+            }
+
+            if (left <= 0)
+            {
+                continue;
+            }
+
+            var hubStacks = GetHubStorageStacks(commander.OwnerId);
+            foreach (var hub in hubs)
+            {
+                if (left <= 0)
+                {
+                    break;
+                }
+
+                while (left > 0 && hub.Inventory.TryAddWithinTotalStackLimit(pair.Key, 1, hubStacks))
+                {
+                    left--;
+                }
+            }
+        }
     }
 
     public bool TryStartResearch(PlayerId playerId, TechnologyId technology)
@@ -1053,6 +1298,7 @@ public sealed class GameSimulation
 
         Tick++;
         ProcessCommanderBuildOrders();
+        ProcessCommanderDemolishOrders();
         ProcessCommanderMoveCommands();
         CompleteGhostBuilds();
         UpdatePower();
@@ -1516,9 +1762,36 @@ public sealed class GameSimulation
         }
     }
 
+    private void ProcessCommanderDemolishOrders()
+    {
+        foreach (var commander in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Commander && entity.QueuedDemolishOrder is not null).ToList())
+        {
+            var order = commander.QueuedDemolishOrder!;
+            var target = World.GetEntity(order.TargetEntityId);
+            if (!TryResolveDemolishCostKind(commander, target, out var costKind))
+            {
+                commander.QueuedDemolishOrder = null;
+                continue;
+            }
+
+            if (IsWithinBuildRadius(commander, costKind, target!.Position))
+            {
+                TryDemolishBuilding(commander.Id, order.TargetEntityId);
+                continue;
+            }
+
+            MoveMobileEntityTowardTile(commander, target.Position);
+        }
+    }
+
     private void ProcessCommanderMoveCommands()
     {
-        foreach (var commander in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Commander && entity.MoveTarget is not null && entity.QueuedBuildOrder is null))
+        foreach (var commander in World.Entities.Where(entity =>
+                     entity.IsAlive
+                     && entity.Kind == EntityKind.Commander
+                     && entity.MoveTarget is not null
+                     && entity.QueuedBuildOrder is null
+                     && entity.QueuedDemolishOrder is null).ToList())
         {
             if (commander.Position == commander.MoveTarget && commander.CurrentWaypoint is null && commander.MovementPath.Count == 0)
             {
@@ -1910,8 +2183,14 @@ public sealed class GameSimulation
 
             if (entity.WorkTicksRemaining <= 0)
             {
-                entity.WorkTicksTotal = MvpDefinitions.MineWorkTicks;
-                entity.WorkTicksRemaining = MvpDefinitions.MineWorkTicks;
+                var cycleTicks = entity.Kind switch
+                {
+                    EntityKind.Mine => MvpDefinitions.OreMineWorkTicks,
+                    EntityKind.CoalMine => MvpDefinitions.CoalMineWorkTicks,
+                    _ => MvpDefinitions.MineWorkTicks
+                };
+                entity.WorkTicksTotal = cycleTicks;
+                entity.WorkTicksRemaining = cycleTicks;
             }
 
             entity.WorkTicksRemaining--;
@@ -2024,7 +2303,7 @@ public sealed class GameSimulation
                 }
 
                 smelter.ActiveSmeltRecipe = SmeltRecipeId.IronPlate;
-                StartItemRecipe(smelter, ItemId.IronOre, ItemId.IronPlate, 20);
+                StartItemRecipe(smelter, ItemId.IronOre, ItemId.IronPlate, 40);
                 return smelter.PendingOutputItem is not null;
 
             case SmeltRecipeId.CopperPlate:
@@ -2034,7 +2313,7 @@ public sealed class GameSimulation
                 }
 
                 smelter.ActiveSmeltRecipe = SmeltRecipeId.CopperPlate;
-                StartItemRecipe(smelter, ItemId.CopperOre, ItemId.CopperPlate, 20);
+                StartItemRecipe(smelter, ItemId.CopperOre, ItemId.CopperPlate, 40);
                 return smelter.PendingOutputItem is not null;
 
             case SmeltRecipeId.Steel:
@@ -2048,7 +2327,7 @@ public sealed class GameSimulation
                 smelter.ActiveSmeltRecipe = SmeltRecipeId.Steel;
                 smelter.PendingOutputItem = ItemId.Steel;
                 smelter.PendingOutputAmount = 1;
-                var steelTicks = 30;
+                var steelTicks = 60;
                 if (smelter.OwnerId is not null)
                 {
                     steelTicks = ResolveStat(smelter.OwnerId.Value, ResearchStatIds.SmelterWorkTicks, steelTicks);

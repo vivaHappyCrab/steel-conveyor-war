@@ -75,6 +75,8 @@ public sealed record CommanderBuildOrder(
     Direction Direction = Direction.East,
     ItemRecipeId? SelectedItemRecipe = null);
 
+public sealed record CommanderDemolishOrder(int TargetEntityId);
+
 public sealed record EntityStats(
     int MaxHealth,
     int AttackDamage = 0,
