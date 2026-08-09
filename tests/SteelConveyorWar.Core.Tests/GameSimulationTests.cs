@@ -162,6 +162,7 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 12);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 4);
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 2));
         Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank));
         simulation.AdvanceTick();
         Assert.True(simulation.World.GetEntity(factoryId)!.WorkTicksRemaining > 0);
@@ -324,11 +325,13 @@ public class GameSimulationTests
     }
 
     [Fact]
-    public void TrySetFactoryProduction_ManualRecipe_ContinuesAfterSpawn()
+    public void TrySetFactoryProduction_ManualRecipe_ContinuesAfterSpawn_WhileUnderTemplate()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
+        var playerId = new PlayerId(1);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 2));
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
@@ -345,8 +348,47 @@ public class GameSimulationTests
 
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
         AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
-        Assert.True(simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id) >= 2);
+        Assert.Equal(2, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id));
         Assert.Equal(EntityKind.BasicTank, simulation.World.GetEntity(factoryId)!.ProductionTargetKind);
+    }
+
+    [Fact]
+    public void TrySetFactoryProduction_ManualRecipe_PausesAtTemplateAndResumesAfterDeath()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 1));
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
+        AdvanceTicks(simulation, 30);
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
+        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 80);
+        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 40);
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank));
+        AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
+
+        Assert.Equal(1, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.OwnerId == playerId));
+        var factory = simulation.World.GetEntity(factoryId)!;
+        Assert.Equal(EntityKind.BasicTank, factory.ProductionTargetKind);
+        Assert.Equal(0, factory.WorkTicksRemaining);
+
+        // At cap: another full craft window must not create a second tank.
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
+        var ironBefore = factory.InputBuffer.Count(ItemId.IronPlate);
+        AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
+        factory = simulation.World.GetEntity(factoryId)!;
+        Assert.Equal(1, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.OwnerId == playerId));
+        Assert.Equal(0, factory.WorkTicksRemaining);
+        Assert.Equal(ironBefore, factory.InputBuffer.Count(ItemId.IronPlate));
+
+        var tank = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.BasicTank && entity.OwnerId == playerId);
+        simulation.DamageEntity(tank.Id, tank.Health);
+        AdvanceTicks(simulation, 1);
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
+        AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
+        Assert.Equal(1, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.OwnerId == playerId && entity.IsAlive));
     }
 
     [Fact]
@@ -454,9 +496,13 @@ public class GameSimulationTests
     public void TrySetFactoryProduction_RejectsOutputChangeWhileWorkInProgress()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
+        var playerId = new PlayerId(1);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 1));
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
         Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank));

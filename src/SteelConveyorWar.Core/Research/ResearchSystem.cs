@@ -251,7 +251,9 @@ public sealed class ResearchSystem
                     exclusive?.ConfirmationRequired == true && !research.ConfirmedExclusiveGroups.Contains(exclusive.Id),
                     trackId,
                     tech.Cost.SciencePacks,
-                    tech.Tags);
+                    tech.Tags,
+                    tech.DisplayName,
+                    tech.Description);
             })
             .ToList();
 

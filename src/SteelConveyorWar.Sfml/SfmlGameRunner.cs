@@ -11,7 +11,6 @@ public sealed class SfmlGameRunner
     private const float SidePanelWidth = 240f;
     private const float TopBarHeight = 36f;
     private const float MinimapSize = 140f;
-    private const float MinimapMargin = 8f;
     private const float EdgeScrollBand = 20f;
     private const float CameraPanSpeed = 420f;
     private const float BuildBarSlotSize = 48f;
@@ -22,6 +21,7 @@ public sealed class SfmlGameRunner
     private const float HudLineHeight = 18f;
     private const float HudTextStartY = 10f;
     private const float ResearchDoubleClickSeconds = 0.35f;
+    private const float CombatShotLingerSeconds = 0.12f;
 
     private enum SidebarStorageKind
     {
@@ -37,7 +37,7 @@ public sealed class SfmlGameRunner
         var windowWidth = display.Width;
         var windowHeight = display.Height;
         var panelX = Math.Max(0f, windowWidth - SidePanelWidth);
-        var panelTop = TopBarHeight + MinimapSize + (2f * MinimapMargin);
+        var panelTop = MinimapSize;
         var playfieldWidth = Math.Max(1f, panelX);
         var playfieldHeight = Math.Max(1f, windowHeight - TopBarHeight);
         var worldWidthPx = simulation.World.Size.Width * TileSize;
@@ -74,7 +74,7 @@ public sealed class SfmlGameRunner
 
         FloatRect GetMinimapBounds() =>
             new(
-                new Vector2f(windowWidth - MinimapSize - MinimapMargin, TopBarHeight + MinimapMargin),
+                new Vector2f(windowWidth - MinimapSize, 0f),
                 new Vector2f(MinimapSize, MinimapSize));
 
         bool IsOverMinimap(Vector2i screen)
@@ -88,6 +88,39 @@ public sealed class SfmlGameRunner
 
         bool IsOverSidePanel(Vector2i screen) =>
             screen.X >= panelX && screen.Y >= panelTop && !IsOverMinimap(screen);
+
+        TilePosition? TileFromMinimap(Vector2i screen)
+        {
+            if (!IsOverMinimap(screen))
+            {
+                return null;
+            }
+
+            var bounds = GetMinimapBounds();
+            var mapW = simulation.World.Size.Width;
+            var mapH = simulation.World.Size.Height;
+            if (mapW <= 0 || mapH <= 0)
+            {
+                return null;
+            }
+
+            var localX = (screen.X - bounds.Left) / bounds.Width;
+            var localY = (screen.Y - bounds.Top) / bounds.Height;
+            var tileX = (int)Math.Clamp(localX * mapW, 0, mapW - 1);
+            var tileY = (int)Math.Clamp(localY * mapH, 0, mapH - 1);
+            return new TilePosition(tileX, tileY);
+        }
+
+        void CenterCameraOnTile(TilePosition tile)
+        {
+            CenterCameraOnWorldPosition(
+                WorldPosition.FromTileCenter(tile),
+                playfieldWidth,
+                playfieldHeight,
+                ref cameraX,
+                ref cameraY);
+            ClampCamera();
+        }
 
         void ClearBastionPending()
         {
@@ -479,7 +512,57 @@ public sealed class SfmlGameRunner
                 return;
             }
 
-            if (IsOverSidePanel(mousePosition) || IsOverMinimap(mousePosition))
+            if (IsOverMinimap(mousePosition))
+            {
+                var minimapTile = TileFromMinimap(mousePosition);
+                if (minimapTile is null)
+                {
+                    return;
+                }
+
+                if (button == "Left")
+                {
+                    CenterCameraOnTile(minimapTile.Value);
+                    return;
+                }
+
+                if (button == "Right")
+                {
+                    var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
+                    if (selectedEntity?.Kind == EntityKind.Commander && selectedEntity.OwnerId == localPlayer)
+                    {
+                        var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
+                        var clickedEntity = simulation.World.GetTopEntityAt(minimapTile.Value);
+                        if (ctrlPressed
+                            && clickedEntity is not null
+                            && simulation.TryDepositToHubOrInput(selectedEntity.Id, clickedEntity.Id))
+                        {
+                            return;
+                        }
+
+                        simulation.TryIssueMoveCommand(selectedEntity.Id, minimapTile.Value);
+                        return;
+                    }
+
+                    if (TryHandleBastionPendingMapClick(
+                            simulation,
+                            selectedEntity,
+                            localPlayer,
+                            bastionPendingMode,
+                            patrolWaypoints,
+                            minimapTile.Value,
+                            confirmPatrol: true,
+                            out var consumedRight)
+                        && consumedRight)
+                    {
+                        ClearBastionPending();
+                    }
+                }
+
+                return;
+            }
+
+            if (IsOverSidePanel(mousePosition))
             {
                 return;
             }
@@ -630,6 +713,7 @@ public sealed class SfmlGameRunner
         var clock = new Clock();
         var accumulator = 0f;
         var fixedDelta = 1f / GameSimulation.TicksPerSecond;
+        var lingeringShots = new List<(CombatShotEvent Shot, float Remaining)>();
 
         var renderedFrames = 0;
 
@@ -641,7 +725,25 @@ public sealed class SfmlGameRunner
             while (accumulator >= fixedDelta)
             {
                 simulation.AdvanceTick();
+                foreach (var shot in simulation.CombatShotsThisTick)
+                {
+                    lingeringShots.Add((shot, CombatShotLingerSeconds));
+                }
+
                 accumulator -= fixedDelta;
+            }
+
+            for (var i = lingeringShots.Count - 1; i >= 0; i--)
+            {
+                var remaining = lingeringShots[i].Remaining - frameDt;
+                if (remaining <= 0f)
+                {
+                    lingeringShots.RemoveAt(i);
+                }
+                else
+                {
+                    lingeringShots[i] = (lingeringShots[i].Shot, remaining);
+                }
             }
 
             var mousePosition = Mouse.GetPosition(window);
@@ -724,6 +826,7 @@ public sealed class SfmlGameRunner
                     pendingDirection,
                     hoverTile,
                     patrolWaypoints,
+                    lingeringShots.Select(entry => entry.Shot).ToList(),
                     cameraX,
                     cameraY,
                     playfieldWidth,
@@ -732,7 +835,7 @@ public sealed class SfmlGameRunner
 
             window.SetView(window.DefaultView);
             DrawTopBar(window, simulation, localPlayer, font, playfieldWidth);
-            DrawMinimap(window, simulation, localPlayer, windowWidth);
+            DrawMinimap(window, simulation, localPlayer, windowWidth, cameraX, cameraY, playfieldWidth, playfieldHeight);
             DrawHud(
                 window,
                 simulation,
@@ -827,6 +930,7 @@ public sealed class SfmlGameRunner
         Direction pendingDirection,
         TilePosition? hoverTile,
         IReadOnlyList<TilePosition> patrolWaypoints,
+        IReadOnlyList<CombatShotEvent> combatShots,
         float cameraX,
         float cameraY,
         float playfieldWidth,
@@ -866,6 +970,8 @@ public sealed class SfmlGameRunner
             DrawEntity(target, entity, selectedEntityId == entity.Id);
         }
 
+        DrawCombatShots(target, combatShots);
+
         foreach (var waypoint in patrolWaypoints)
         {
             if (!world.IsInside(waypoint))
@@ -886,6 +992,27 @@ public sealed class SfmlGameRunner
         if (pendingBuildKind is not null && hoverTile is not null && world.IsInside(hoverTile.Value))
         {
             DrawGhostPreview(target, pendingBuildKind.Value, hoverTile.Value, pendingDirection);
+        }
+    }
+
+    private static void DrawCombatShots(IRenderTarget target, IReadOnlyList<CombatShotEvent> combatShots)
+    {
+        foreach (var shot in combatShots)
+        {
+            var color = shot.ProjectileKind switch
+            {
+                ProjectileKind.Ballistic => new Color(255, 200, 80),
+                ProjectileKind.AirToGround => new Color(120, 220, 255),
+                _ => new Color(255, 240, 160)
+            };
+            var from = ToScreen(shot.From);
+            var to = ToScreen(shot.To);
+            var line = new[]
+            {
+                new Vertex(from, color),
+                new Vertex(to, color)
+            };
+            target.Draw(line, PrimitiveType.Lines);
         }
     }
 
@@ -996,7 +1123,12 @@ public sealed class SfmlGameRunner
 
     private static void DrawMobileUnit(IRenderTarget target, WorldEntity entity, Vector2f center, Color color, Color ink)
     {
-        var radius = TileSize * 0.35f;
+        var radius = (float)(MvpDefinitions.GetCollisionSize(entity.Kind).Radius * TileSize);
+        if (radius < TileSize * 0.2f)
+        {
+            radius = TileSize * 0.2f;
+        }
+
         if (entity.Kind == EntityKind.Commander)
         {
             using var unit = new CircleShape(radius)
@@ -1073,7 +1205,11 @@ public sealed class SfmlGameRunner
     private static void DrawMobileSelection(IRenderTarget target, WorldEntity entity)
     {
         var center = ToScreen(entity.WorldPosition);
-        var radius = TileSize * 0.45f;
+        var radius = (float)(MvpDefinitions.GetCollisionSize(entity.Kind).Radius * TileSize) + TileSize * 0.1f;
+        if (radius < TileSize * 0.3f)
+        {
+            radius = TileSize * 0.3f;
+        }
         if (entity.Kind == EntityKind.Commander)
         {
             using var outline = new CircleShape(radius)
@@ -1212,7 +1348,15 @@ public sealed class SfmlGameRunner
         target.Draw(inventory);
     }
 
-    private static void DrawMinimap(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer, uint windowWidth)
+    private static void DrawMinimap(
+        IRenderTarget target,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        uint windowWidth,
+        float cameraX,
+        float cameraY,
+        float playfieldWidth,
+        float playfieldHeight)
     {
         var world = simulation.World;
         var mapW = world.Size.Width;
@@ -1222,12 +1366,8 @@ public sealed class SfmlGameRunner
             return;
         }
 
-        var left = windowWidth - MinimapSize - MinimapMargin;
-        var top = TopBarHeight + MinimapMargin;
-        if (left < MinimapMargin)
-        {
-            left = MinimapMargin;
-        }
+        var left = windowWidth - MinimapSize;
+        var top = 0f;
 
         using var frame = new RectangleShape(new Vector2f(MinimapSize, MinimapSize))
         {
@@ -1296,6 +1436,21 @@ public sealed class SfmlGameRunner
             pixel.FillColor = buildingColor;
             target.Draw(pixel);
         }
+
+        var viewLeft = cameraX / TileSize;
+        var viewTop = cameraY / TileSize;
+        var viewWidth = playfieldWidth / TileSize;
+        var viewHeight = playfieldHeight / TileSize;
+        using var viewport = new RectangleShape(new Vector2f(
+            Math.Max(2f, viewWidth * scaleX),
+            Math.Max(2f, viewHeight * scaleY)))
+        {
+            Position = new Vector2f(left + viewLeft * scaleX, top + viewTop * scaleY),
+            FillColor = Color.Transparent,
+            OutlineColor = new Color(255, 245, 180),
+            OutlineThickness = 1f
+        };
+        target.Draw(viewport);
     }
 
     private static Color GetMinimapTerrainColor(TerrainType terrain, VisibilityState visibility)
@@ -2247,12 +2402,23 @@ public sealed class SfmlGameRunner
 
         if (font is not null)
         {
-            using var title = new Text(font, $"Research [{tree.ProfileId}] tier={tree.CurrentTierId}", 14)
+            using var title = new Text(font, $"Исследования [{tree.ProfileId}] · {tree.CurrentTierId}", 14)
             {
                 FillColor = new Color(220, 230, 240),
                 Position = new Vector2f(tree.OverlayBounds.Left + 10f, tree.OverlayBounds.Top + 6f)
             };
             target.Draw(title);
+        }
+
+        var busColor = new Color(140, 160, 190);
+        foreach (var edge in tree.Edges)
+        {
+            var line = new[]
+            {
+                new Vertex(edge.From, busColor),
+                new Vertex(edge.To, busColor)
+            };
+            target.Draw(line, PrimitiveType.Lines);
         }
 
         foreach (var node in tree.Nodes)
@@ -2264,7 +2430,11 @@ public sealed class SfmlGameRunner
                 ResearchTreeNodeStatus.Active => new Color(70, 190, 210),
                 _ => new Color(180, 55, 55)
             };
-            var outline = tree.SelectedId == node.Id ? Color.White : new Color(20, 20, 24);
+            var outline = tree.SelectedId == node.Id
+                ? Color.White
+                : node.IsMandatory
+                    ? new Color(220, 200, 120)
+                    : new Color(20, 20, 24);
             using var icon = new RectangleShape(new Vector2f(node.Bounds.Width, node.Bounds.Height))
             {
                 Position = new Vector2f(node.Bounds.Left, node.Bounds.Top),
@@ -2279,9 +2449,17 @@ public sealed class SfmlGameRunner
                 using var glyph = new Text(font, node.Symbol, 16)
                 {
                     FillColor = Color.White,
-                    Position = new Vector2f(node.Bounds.Left + 11f, node.Bounds.Top + 6f)
+                    Position = new Vector2f(node.Bounds.Left + 14f, node.Bounds.Top + 10f)
                 };
                 target.Draw(glyph);
+
+                var label = node.DisplayName.Length > 18 ? node.DisplayName[..17] + "…" : node.DisplayName;
+                using var name = new Text(font, label, 11)
+                {
+                    FillColor = new Color(210, 220, 230),
+                    Position = new Vector2f(node.Bounds.Left - 4f, node.Bounds.Top + node.Bounds.Height + 1f)
+                };
+                target.Draw(name);
             }
         }
 

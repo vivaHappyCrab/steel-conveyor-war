@@ -71,14 +71,15 @@ This document records architecture and game-design decisions made while implemen
 - Progress is stored per technology and is not reset when switching projects.
 - Completing a gate automatically unlocks the next tier (or records the T3 milestone without opening T3 content).
 - Effects use integer basis-point modifiers (`AddModifier`) plus `UnlockContent` / `GrantCapability` / `CompleteMilestone`.
-- Embedded `MvpResearchCatalog` remains the parity fallback; `eng/ExportResearchCatalog` regenerates `config/research.json` from it.
+- Embedded `MvpResearchCatalog` remains the parity fallback; `eng/ExportResearchCatalog` regenerates `config/research.json` from it. Technologies carry player-facing `DisplayName` / `Description` (Russian via `ResearchDisplayNames`); SFML research overlay lays out gate candidates as a bus graph (mandatory row → shared bus → next tier; optionals hang off the bus).
 
 ## Bastions And Combat
 
-- Bastions own desired unit templates (sum capped; research can raise capacity). Factories do **not** store bastion assignment. Autofill picks a missing unit kind across **all** owned bastion templates; spawned units assign to the lowest bastion Id that still needs that kind. Live supply (assigned living units + attributed in-flight factory production) is exposed via `GetBastionUnitSupply`. SFML shows a center composition overlay for tier-unlocked unit kinds with live/max and +/- wired to `TrySetBastionTemplate`.
-- Produced units inherit the Bastion's current order (Scout filter applies). Manual factory recipes keep producing after spawn; autofill clears and re-picks deficits.
+- Bastions own desired unit templates (sum capped; research can raise capacity). Factories do **not** store bastion assignment. Autofill picks a missing unit kind across **all** owned bastion templates; spawned units assign to the lowest bastion Id that still needs that kind (no overshoot fallback). Live supply (assigned living units + attributed in-flight factory production) is exposed via `GetBastionUnitSupply`. SFML shows a center composition overlay for tier-unlocked unit kinds with live/max and +/- wired to `TrySetBastionTemplate`.
+- Produced units inherit the Bastion's current order (Scout filter applies). Manual factory recipes stay selected after spawn but **do not start** a new craft while player-wide kind supply ≥ summed templates for that kind or total army supply ≥ template capacity (idle wait); autofill clears and re-picks deficits.
 - Active defense garrisons units inside the Bastion; threats in Bastion vision trigger a sortie. Bastion death kills assigned units.
-- Combat uses deterministic Euclidean range, cooldown, and **formula C** damage: `max(1, AttackDamage - Armor) * Resistance(projectile, targetCategory)` with basis-point integer math (`CombatDamage` / `MvpDefinitions.GetResistanceBasisPoints`). HP is clamped to ≥ 0.
+- Combat uses deterministic Euclidean range, cooldown, and **formula C** damage: `max(1, AttackDamage - Armor) * Resistance(projectile, targetCategory)` with basis-point integer math (`CombatDamage` / `MvpDefinitions.GetResistanceBasisPoints`). HP is clamped to ≥ 0. Each landed shot appends a presentation-only `CombatShotEvent` (not hashed) for SFML tracers.
+- Mobile units collide with buildings (circle vs footprint) and with other mobile units (circle–circle). Draw silhouettes scale from `GetCollisionSize`.
 - `EntityStats` includes Armor, `ProjectileKind` (`GroundToGround` | `Ballistic` | `AirToGround`), and `SplashRadius` (0 = single target). MG turrets/bots/БМК are G2G; cannon/rocket/medium tank are Ballistic; AA turret/bot are AirToGround. Splash applies in the same `ProcessCombat` pass to enemies near the primary target (ordered by entity id).
 - Walls/SteelWalls block **GroundToGround** damage to allied **ground** units (БМК + `UnitKinds` except Scout) when a Bresenham LoS tile between attacker and target holds a Wall/SteelWall owned by a player with the same `TeamId` as the target. Ballistic and AirToGround ignore walls. Buildings and walls as targets still take full formula-C damage.
 - Research modifiers (`ResearchStatIds.AttackDamage` / `Armor` / `AttackCooldownTicks` / `MaxHealth`, plus existing `VisionRadius`) flow through `ResolveStat` / `AddModifierEffect`. `ProcessCombat` and FoW/HP sync use resolved values (MaxHealth delta adjusts current HP when the cap changes).
@@ -93,7 +94,7 @@ This document records architecture and game-design decisions made while implemen
 - Bastion vision radius is elevated relative to other buildings.
 - Combat attack range uses the same Euclidean tile check for determinism.
 - Tech signatures are aggregated into map zones from **non-allied** entities and expose intensity without exact building identity.
-- SFML draws a **display-only FoW minimap** (top-right of the playfield, left of the side panel): explored/visible terrain + resource patches; live entity markers (blue=own / red=enemy / magenta(255,0,255)=ally) use the same Visible gate as the main playfield so Explored does not leak current enemy/ally positions; unknown tiles stay hidden.
+- SFML draws a FoW minimap flush top-right of the window: explored/visible terrain + resource patches; live entity markers (blue=own / red=enemy / magenta(255,0,255)=ally) use the same Visible gate as the main playfield so Explored does not leak current enemy/ally positions; unknown tiles stay hidden. A viewport rectangle shows the current camera; LMB recenters the camera; RMB issues the same world orders as playfield RMB on the mapped tile.
 
 ## Map And Session Lifetime
 

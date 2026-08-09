@@ -34,7 +34,9 @@ public static class MvpResearchCatalog
                 tier,
                 new ResearchCostDefinition(effort, [new SciencePackCost(pack, 1)]),
                 effects.ToList(),
-                tags));
+                tags,
+                ResearchDisplayNames.GetDisplayName(id),
+                ResearchDisplayNames.GetDescription(id, tags)));
         }
 
         // T1 mandatory B/C-style pillars (also used by hybrid)

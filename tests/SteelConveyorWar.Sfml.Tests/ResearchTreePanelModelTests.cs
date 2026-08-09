@@ -16,15 +16,19 @@ public sealed class ResearchTreePanelModelTests
         var tree = ResearchTreePanelModel.FromSnapshot(snapshot, bounds, selectedId: null);
 
         Assert.NotEmpty(tree.Nodes);
+        Assert.NotEmpty(tree.Edges);
         Assert.Contains(tree.Nodes, node => node.Status == ResearchTreeNodeStatus.Available);
+        Assert.Contains(tree.Nodes, node => node.IsMandatory);
+        Assert.Contains(tree.Nodes, node => !string.IsNullOrWhiteSpace(node.DisplayName) && !node.DisplayName.Contains("technology.", StringComparison.Ordinal));
         Assert.False(tree.CanStartSelected);
         Assert.False(tree.CanCancelSelected);
 
         var pick = tree.Nodes[0];
         var withSelection = ResearchTreePanelModel.FromSnapshot(snapshot, bounds, pick.Id);
         Assert.Equal(pick.Id, withSelection.SelectedId);
-        Assert.Contains(withSelection.ToDetailLines(), line => line.Contains("Tech:", StringComparison.Ordinal));
-        Assert.Contains(withSelection.ToDetailLines(), line => line.Contains("Effort:", StringComparison.Ordinal));
+        Assert.Contains(withSelection.ToDetailLines(), line => line == pick.DisplayName);
+        Assert.Contains(withSelection.ToDetailLines(), line => line.StartsWith("Прогресс:", StringComparison.Ordinal));
+        Assert.Contains(withSelection.ToDetailLines(), line => line.Contains(pick.Description, StringComparison.Ordinal));
     }
 
     [Fact]
