@@ -66,6 +66,8 @@ public sealed class SfmlGameRunner
         var patrolWaypoints = new List<TilePosition>();
         var sidebarStorageHits = new List<SidebarStorageHit>();
         var isResearchOverlayOpen = false;
+        var isEnergyOverlayOpen = false;
+        var energySelectedInterval = EnergyStatsWindowKind.Seconds30;
         TechnologyId? researchSelectedId = null;
         TechnologyId? researchLastClickId = null;
         var researchLastClickSeconds = -1f;
@@ -79,6 +81,11 @@ public sealed class SfmlGameRunner
             researchSelectedId = null;
             researchLastClickId = null;
             researchScrollY = 0f;
+        }
+
+        void CloseEnergyOverlay()
+        {
+            isEnergyOverlayOpen = false;
         }
 
         float ClampResearchScroll(ResearchTreePanelModel tree) =>
@@ -191,9 +198,24 @@ public sealed class SfmlGameRunner
                 return;
             }
 
+            if (key == "Escape" && isEnergyOverlayOpen)
+            {
+                CloseEnergyOverlay();
+                return;
+            }
+
             if (key == "Escape" && isResearchOverlayOpen)
             {
                 CloseResearchOverlay();
+                return;
+            }
+
+            if (key == "Escape"
+                && selectedEntity?.Kind == EntityKind.Bastion
+                && selectedEntity.OwnerId == localPlayer)
+            {
+                selectedEntityId = null;
+                ClearBastionPending();
                 return;
             }
 
@@ -317,6 +339,7 @@ public sealed class SfmlGameRunner
 
             if (key == "T")
             {
+                CloseEnergyOverlay();
                 if (isResearchOverlayOpen)
                 {
                     CloseResearchOverlay();
@@ -330,6 +353,21 @@ public sealed class SfmlGameRunner
                 return;
             }
 
+            if (key == "P")
+            {
+                CloseResearchOverlay();
+                if (isEnergyOverlayOpen)
+                {
+                    CloseEnergyOverlay();
+                }
+                else
+                {
+                    isEnergyOverlayOpen = true;
+                }
+
+                return;
+            }
+
             if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Assembler && TryGetRecipeShortcut(key, out var recipeId))
             {
                 simulation.TrySetAssemblerRecipe(selectedEntity.Id, recipeId);
@@ -337,7 +375,7 @@ public sealed class SfmlGameRunner
                 return;
             }
 
-            if (!isResearchOverlayOpen && !isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Laboratory && TryGetNumberShortcut(key, out var researchIndex))
+            if (!isResearchOverlayOpen && !isEnergyOverlayOpen && !isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Laboratory && TryGetNumberShortcut(key, out var researchIndex))
             {
                 var ownerId = selectedEntity.OwnerId ?? localPlayer;
                 var panel = ResearchPanelModel.FromSnapshot(simulation.GetResearchSnapshot(ownerId), recipePage);
@@ -443,8 +481,38 @@ public sealed class SfmlGameRunner
                 return;
             }
 
+            if (isEnergyOverlayOpen && button == "Left")
+            {
+                var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
+                var stats = simulation.GetPlayer(localPlayer).EnergyStats.Query((int)energySelectedInterval);
+                var panel = EnergyStatsPanelModel.Build(
+                    stats,
+                    energySelectedInterval,
+                    windowWidth,
+                    windowHeight,
+                    panelX,
+                    bottomReserved);
+                if (panel.HitExit(mousePosition))
+                {
+                    CloseEnergyOverlay();
+                    return;
+                }
+
+                if (panel.TryHitInterval(mousePosition, out var interval))
+                {
+                    energySelectedInterval = interval;
+                    return;
+                }
+
+                if (panel.ContainsOverlay(mousePosition))
+                {
+                    return;
+                }
+            }
+
             if (isResearchOverlayOpen && button == "Left")
             {
+                CloseEnergyOverlay();
                 var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
                 var overlayBounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
                 var snapshot = simulation.GetResearchSnapshot(localPlayer);
@@ -582,10 +650,25 @@ public sealed class SfmlGameRunner
             var selectedForBar = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
             if (button == "Left"
                 && !isBuildMenuOpen
+                && !isResearchOverlayOpen
+                && !isEnergyOverlayOpen
                 && selectedForBar?.Kind == EntityKind.Bastion
                 && selectedForBar.OwnerId == localPlayer)
             {
+                var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
                 var compositionSlots = BastionCompositionPanelModel.BuildSlots(simulation, selectedForBar);
+                if (BastionCompositionPanelModel.HitExit(
+                        mousePosition,
+                        windowWidth,
+                        windowHeight,
+                        panelX,
+                        bottomReserved))
+                {
+                    selectedEntityId = null;
+                    ClearBastionPending();
+                    return;
+                }
+
                 if (BastionCompositionPanelModel.TryPickAdjust(
                         mousePosition,
                         windowWidth,
@@ -893,7 +976,20 @@ public sealed class SfmlGameRunner
                 isResearchOverlayOpen,
                 researchSelectedId,
                 sidebarStorageHits);
-            if (isResearchOverlayOpen)
+            if (isEnergyOverlayOpen)
+            {
+                var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
+                var stats = simulation.GetPlayer(localPlayer).EnergyStats.Query((int)energySelectedInterval);
+                var energyPanel = EnergyStatsPanelModel.Build(
+                    stats,
+                    energySelectedInterval,
+                    windowWidth,
+                    windowHeight,
+                    panelX,
+                    bottomReserved);
+                DrawEnergyStatsOverlay(window, energyPanel, font, mousePosition);
+            }
+            else if (isResearchOverlayOpen)
             {
                 var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
                 var overlayBounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
@@ -921,7 +1017,7 @@ public sealed class SfmlGameRunner
                     panelX,
                     mousePosition);
             }
-            else if (!isResearchOverlayOpen)
+            else if (!isResearchOverlayOpen && !isEnergyOverlayOpen)
             {
                 var selectedForOrders = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
                 if (selectedForOrders?.Kind == EntityKind.Bastion && selectedForOrders.OwnerId == localPlayer)
@@ -1646,7 +1742,7 @@ public sealed class SfmlGameRunner
             if (selected.Kind == EntityKind.Assembler)
             {
                 lines.Add($"Recipe: {(selected.SelectedItemRecipe?.ToString() ?? "none")}");
-                lines.Add("1-5: set assembler recipe");
+                lines.Add("1-4: set assembler recipe");
             }
 
             if (selected.Kind == EntityKind.Smelter)
@@ -2273,8 +2369,7 @@ public sealed class SfmlGameRunner
             ItemId.CrudeOil or ItemId.Fuel => new Color(90, 60, 130),
             ItemId.Steel => new Color(140, 150, 160),
             ItemId.IronGear => new Color(170, 170, 150),
-            ItemId.CopperWire => new Color(230, 135, 65),
-            ItemId.Circuit => new Color(80, 190, 100),
+            ItemId.Composite => new Color(80, 190, 100),
             ItemId.SciencePackT1 => new Color(80, 180, 255),
             ItemId.SciencePackT2 => new Color(255, 180, 80),
             _ => Color.White
@@ -2286,10 +2381,9 @@ public sealed class SfmlGameRunner
         return key switch
         {
             "Num1" => SetRecipe(ItemRecipeId.IronGear, out recipeId),
-            "Num2" => SetRecipe(ItemRecipeId.CopperWire, out recipeId),
-            "Num3" => SetRecipe(ItemRecipeId.Circuit, out recipeId),
-            "Num4" => SetRecipe(ItemRecipeId.SciencePackT1, out recipeId),
-            "Num5" => SetRecipe(ItemRecipeId.SciencePackT2, out recipeId),
+            "Num2" => SetRecipe(ItemRecipeId.Composite, out recipeId),
+            "Num3" => SetRecipe(ItemRecipeId.SciencePackT1, out recipeId),
+            "Num4" => SetRecipe(ItemRecipeId.SciencePackT2, out recipeId),
             _ => SetRecipe(default, out recipeId, success: false)
         };
     }
@@ -2556,6 +2650,221 @@ public sealed class SfmlGameRunner
         target.Draw(text);
     }
 
+    private static void DrawEnergyStatsOverlay(
+        IRenderTarget target,
+        EnergyStatsPanelModel panel,
+        Font? font,
+        Vector2i mousePosition)
+    {
+        using var backdrop = new RectangleShape(new Vector2f(panel.OverlayBounds.Width, panel.OverlayBounds.Height))
+        {
+            Position = new Vector2f(panel.OverlayBounds.Left, panel.OverlayBounds.Top),
+            FillColor = new Color(12, 16, 24, 230),
+            OutlineColor = new Color(110, 140, 180),
+            OutlineThickness = 1f
+        };
+        target.Draw(backdrop);
+
+        if (font is not null)
+        {
+            using var title = new Text(font, "Energy statistics", 14)
+            {
+                FillColor = new Color(230, 230, 210),
+                Position = new Vector2f(panel.OverlayBounds.Left + 12f, panel.OverlayBounds.Top + 8f)
+            };
+            target.Draw(title);
+        }
+
+        DrawUiButton(target, font, panel.ExitButtonBounds, "Exit", new Color(70, 80, 100));
+
+        for (var i = 0; i < panel.IntervalButtonBounds.Count; i++)
+        {
+            var kind = EnergyStatsPanelModel.IntervalOptions[i];
+            var selected = kind == panel.SelectedInterval;
+            DrawUiButton(
+                target,
+                font,
+                panel.IntervalButtonBounds[i],
+                EnergyStatsPanelModel.IntervalLabel(kind),
+                selected ? new Color(70, 110, 160) : new Color(50, 58, 72));
+        }
+
+        if (font is not null)
+        {
+            using var consumeTitle = new Text(font, "Energy Consumption", 13)
+            {
+                FillColor = new Color(220, 220, 200),
+                Position = new Vector2f(panel.ConsumeGraphBounds.Left, panel.ConsumeGraphBounds.Top - 18f)
+            };
+            target.Draw(consumeTitle);
+            using var produceTitle = new Text(font, "Energy Production", 13)
+            {
+                FillColor = new Color(220, 220, 200),
+                Position = new Vector2f(panel.ProduceGraphBounds.Left, panel.ProduceGraphBounds.Top - 18f)
+            };
+            target.Draw(produceTitle);
+        }
+
+        DrawEnergyGraph(
+            target,
+            panel.ConsumeGraphBounds,
+            panel.Stats.DemandSeries,
+            panel.Stats.ConsumerRows.Select(row => (EnergyStatsPanelModel.ColorForKind(row.Kind, isProducer: false), row.Series)).ToArray());
+        DrawEnergyGraph(
+            target,
+            panel.ProduceGraphBounds,
+            panel.Stats.ProducedSeries,
+            panel.Stats.ProducerRows.Select(row => (EnergyStatsPanelModel.ColorForKind(row.Kind, isProducer: true), row.Series)).ToArray());
+
+        DrawEnergyLegendColumn(
+            target,
+            font,
+            panel.ConsumerRows,
+            panel.ConsumeTotalLabel,
+            panel.ConsumeGraphBounds.Left,
+            panel.ConsumeGraphBounds.Top + panel.ConsumeGraphBounds.Height + 12f);
+        DrawEnergyLegendColumn(
+            target,
+            font,
+            panel.ProducerRows,
+            panel.ProduceTotalLabel,
+            panel.ProduceGraphBounds.Left,
+            panel.ProduceGraphBounds.Top + panel.ProduceGraphBounds.Height + 12f);
+
+        var tip = panel.TooltipAt(mousePosition);
+        if (tip is not null && font is not null)
+        {
+            using var tipText = new Text(font, tip, 13)
+            {
+                FillColor = Color.White,
+                Position = new Vector2f(mousePosition.X + 14f, mousePosition.Y + 14f)
+            };
+            target.Draw(tipText);
+        }
+    }
+
+    private static void DrawEnergyGraph(
+        IRenderTarget target,
+        FloatRect bounds,
+        IReadOnlyList<int> totalSeries,
+        (Color Color, IReadOnlyList<int> Series)[] kindSeries)
+    {
+        using var frame = new RectangleShape(new Vector2f(bounds.Width, bounds.Height))
+        {
+            Position = new Vector2f(bounds.Left, bounds.Top),
+            FillColor = new Color(20, 26, 34, 220),
+            OutlineColor = new Color(90, 110, 140),
+            OutlineThickness = 1f
+        };
+        target.Draw(frame);
+
+        var maxValue = 1;
+        foreach (var value in totalSeries)
+        {
+            maxValue = Math.Max(maxValue, value);
+        }
+
+        foreach (var (_, series) in kindSeries)
+        {
+            foreach (var value in series)
+            {
+                maxValue = Math.Max(maxValue, value);
+            }
+        }
+
+        DrawEnergyPolyline(target, bounds, totalSeries, maxValue, EnergyStatsPanelModel.TotalSeriesColor);
+        foreach (var (color, series) in kindSeries)
+        {
+            DrawEnergyPolyline(target, bounds, series, maxValue, color);
+        }
+    }
+
+    private static void DrawEnergyPolyline(
+        IRenderTarget target,
+        FloatRect bounds,
+        IReadOnlyList<int> series,
+        int maxValue,
+        Color color)
+    {
+        if (series.Count < 2)
+        {
+            return;
+        }
+
+        var vertexArray = new VertexArray(PrimitiveType.LineStrip);
+        for (var i = 0; i < series.Count; i++)
+        {
+            var x = bounds.Left + i / (float)(series.Count - 1) * bounds.Width;
+            var y = bounds.Top + bounds.Height - series[i] / (float)maxValue * (bounds.Height - 4f) - 2f;
+            vertexArray.Append(new Vertex(new Vector2f(x, y), color));
+        }
+
+        target.Draw(vertexArray);
+    }
+
+    private static void DrawEnergyLegendColumn(
+        IRenderTarget target,
+        Font? font,
+        IReadOnlyList<EnergyStatsLegendRow> rows,
+        string totalLabel,
+        float totalLeft,
+        float fallbackTop)
+    {
+        foreach (var row in rows)
+        {
+            using var icon = new RectangleShape(new Vector2f(row.IconBounds.Width, row.IconBounds.Height))
+            {
+                Position = new Vector2f(row.IconBounds.Left, row.IconBounds.Top),
+                FillColor = new Color(40, 50, 65),
+                OutlineColor = new Color(120, 140, 170),
+                OutlineThickness = 1f
+            };
+            target.Draw(icon);
+
+            if (font is not null)
+            {
+                using var glyph = new Text(font, row.Glyph, 12)
+                {
+                    FillColor = Color.White,
+                    Position = new Vector2f(row.IconBounds.Left + 5f, row.IconBounds.Top + 2f)
+                };
+                target.Draw(glyph);
+            }
+
+            using var colorBar = new RectangleShape(new Vector2f(row.ColorBounds.Width, row.ColorBounds.Height))
+            {
+                Position = new Vector2f(row.ColorBounds.Left, row.ColorBounds.Top),
+                FillColor = row.SeriesColor
+            };
+            target.Draw(colorBar);
+
+            if (font is not null)
+            {
+                using var value = new Text(font, $"{row.AveragePerTick:0.##}/t", 12)
+                {
+                    FillColor = new Color(220, 230, 240),
+                    Position = new Vector2f(row.ValueBounds.Left, row.ValueBounds.Top + 4f)
+                };
+                target.Draw(value);
+            }
+        }
+
+        if (font is null)
+        {
+            return;
+        }
+
+        var totalY = rows.Count == 0
+            ? fallbackTop
+            : rows[^1].IconBounds.Top + rows[^1].IconBounds.Height + 10f;
+        using var total = new Text(font, totalLabel, 13)
+        {
+            FillColor = EnergyStatsPanelModel.TotalSeriesColor,
+            Position = new Vector2f(totalLeft, totalY)
+        };
+        target.Draw(total);
+    }
+
     private static void ApplyBastionOrderCommand(
         GameSimulation simulation,
         int bastionId,
@@ -2624,18 +2933,15 @@ public sealed class SfmlGameRunner
         Vector2i mousePosition)
     {
         var slots = BastionCompositionPanelModel.BuildSlots(simulation, bastion);
-        if (slots.Length == 0)
-        {
-            return;
-        }
-
+        var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
         var bounds = BastionCompositionPanelModel.GetPanelBounds(
             windowWidth,
             windowHeight,
             panelX,
-            slots.Length,
+            bottomReserved,
             out var contentX,
             out var contentY);
+        var exitBounds = BastionCompositionPanelModel.GetExitButtonBounds(bounds);
         using var backdrop = new RectangleShape(new Vector2f(bounds.Width, bounds.Height))
         {
             Position = new Vector2f(bounds.Left, bounds.Top),
@@ -2651,17 +2957,19 @@ public sealed class SfmlGameRunner
             {
                 CharacterSize = 14,
                 FillColor = new Color(230, 230, 210),
-                Position = new Vector2f(bounds.Left + BastionCompositionPanelModel.PanelPadding, bounds.Top + 4f)
+                Position = new Vector2f(bounds.Left + BastionCompositionPanelModel.PanelPadding, bounds.Top + 8f)
             };
             target.Draw(title);
         }
+
+        DrawUiButton(target, font, exitBounds, "Exit", new Color(70, 80, 100));
 
         string? tooltip = null;
         for (var i = 0; i < slots.Length; i++)
         {
             var slot = slots[i];
             var slotBounds = BastionCompositionPanelModel.GetSlotBounds(contentX, contentY, i);
-            var selected = i == Math.Clamp(templateUnitIndex, 0, slots.Length - 1);
+            var selected = slots.Length > 0 && i == Math.Clamp(templateUnitIndex, 0, Math.Max(0, slots.Length - 1));
             using var frame = new RectangleShape(new Vector2f(slotBounds.Width, slotBounds.Height))
             {
                 Position = new Vector2f(slotBounds.Left, slotBounds.Top),

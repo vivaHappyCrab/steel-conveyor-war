@@ -619,7 +619,7 @@ public sealed class GameSimulation
         unit.Order = ResolveOrderForUnit(unit.Kind, bastionOrder);
         if (unit.Order.Kind == BastionOrderKind.Defend)
         {
-            // Stay home / garrison unless Defend active defense ungarrisons them.
+            // Defend stations on the bastion perimeter; ProcessBastions clears leftover garrison.
             return;
         }
 
@@ -631,7 +631,6 @@ public sealed class GameSimulation
         return bastionOrder.Kind switch
         {
             BastionOrderKind.Scout when unitKind != EntityKind.Scout => new BastionOrder(BastionOrderKind.Defend),
-            BastionOrderKind.AttackArea when unitKind == EntityKind.Scout => new BastionOrder(BastionOrderKind.Defend),
             _ => bastionOrder
         };
     }
@@ -1764,21 +1763,42 @@ public sealed class GameSimulation
             player.PowerDemand = 0;
         }
 
+        var producedByPlayer = _players.ToDictionary(player => player.Id, _ => new Dictionary<EntityKind, int>());
+        var demandByPlayer = _players.ToDictionary(player => player.Id, _ => new Dictionary<EntityKind, int>());
+
         foreach (var entity in World.Entities.Where(entity => entity.IsAlive && entity.OwnerId is not null))
         {
             var player = GetPlayer(entity.OwnerId!.Value);
-            player.PowerProduced += entity.Kind switch
+            var produced = entity.Kind switch
             {
                 EntityKind.SolarPanel => MvpDefinitions.PowerProduction.GetValueOrDefault(EntityKind.SolarPanel),
                 EntityKind.CoalPlant when entity.InputBuffer.TryRemove(ItemId.Coal, 1) => MvpDefinitions.PowerProduction.GetValueOrDefault(EntityKind.CoalPlant),
                 _ => 0
             };
-            player.PowerDemand += MvpDefinitions.GetPowerDemand(entity.Kind);
+            if (produced > 0)
+            {
+                player.PowerProduced += produced;
+                var producedMap = producedByPlayer[player.Id];
+                producedMap[entity.Kind] = producedMap.GetValueOrDefault(entity.Kind) + produced;
+            }
+
+            var demand = MvpDefinitions.GetPowerDemand(entity.Kind);
+            if (demand > 0)
+            {
+                player.PowerDemand += demand;
+                var demandMap = demandByPlayer[player.Id];
+                demandMap[entity.Kind] = demandMap.GetValueOrDefault(entity.Kind) + demand;
+            }
         }
 
         foreach (var player in _players)
         {
             FillEnergyBuffersEmptiestFirst(player);
+            player.EnergyStats.Record(
+                player.PowerProduced,
+                player.PowerDemand,
+                producedByPlayer[player.Id],
+                demandByPlayer[player.Id]);
         }
     }
 
@@ -2631,38 +2651,17 @@ public sealed class GameSimulation
         {
             TryCompleteBastionOrder(bastion);
 
-            var units = World.Entities
-                .Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && MvpDefinitions.UnitKinds.Contains(entity.Kind))
-                .OrderBy(entity => entity.Id)
-                .ToList();
-
-            // Home units keep Defend while bastion is Scout/AttackArea; garrison them,
-            // but sortie only during active bastion Defend.
-            var allowSortie = bastion.Order.Kind == BastionOrderKind.Defend;
-            var threat = allowSortie
-                ? FindNearestEnemyInRange(bastion, GetBastionVisionRadius(bastion))
-                : null;
-
-            foreach (var unit in units)
+            // Active defense stations on the perimeter (visible, FoW); never snap-garrison.
+            // Clear any leftover garrison so Defend units can path/sortie and contribute vision.
+            foreach (var unit in World.Entities
+                         .Where(entity =>
+                             entity.IsAlive
+                             && entity.AssignedBastionId == bastion.Id
+                             && MvpDefinitions.UnitKinds.Contains(entity.Kind)
+                             && entity.Order.Kind == BastionOrderKind.Defend)
+                         .OrderBy(entity => entity.Id))
             {
-                if (unit.Order.Kind != BastionOrderKind.Defend)
-                {
-                    continue;
-                }
-
-                if (threat is not null)
-                {
-                    unit.IsGarrisoned = false;
-                    continue;
-                }
-
-                if (unit.Position.IsWithinEuclideanRange(bastion.Position, 1))
-                {
-                    unit.Position = bastion.Position;
-                    unit.WorldPosition = WorldPosition.FromTileCenter(bastion.Position);
-                    ResetMovementPath(unit);
-                    unit.IsGarrisoned = true;
-                }
+                unit.IsGarrisoned = false;
             }
         }
     }
@@ -2805,7 +2804,7 @@ public sealed class GameSimulation
                 return null;
             }
 
-            // Sortie only for active bastion Defend; Scout/AttackArea home units stay put.
+            // Sortie only for active bastion Defend; Scout/AttackArea home units hold perimeter.
             if (bastion.Order.Kind == BastionOrderKind.Defend)
             {
                 var visionRadius = GetBastionVisionRadius(bastion);
@@ -2816,7 +2815,7 @@ public sealed class GameSimulation
                 }
             }
 
-            return bastion.Position;
+            return GetDefendStandTile(bastion, unit);
         }
 
         if (unit.AssignedBastionId is not null)
@@ -2825,6 +2824,59 @@ public sealed class GameSimulation
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Stable perimeter slot for a Defend unit: free tiles around the bastion footprint, assigned by unit id order.
+    /// </summary>
+    private TilePosition GetDefendStandTile(WorldEntity bastion, WorldEntity unit)
+    {
+        var slots = GetBastionPerimeterTiles(bastion)
+            .Where(tile => IsGroundPassable(unit, tile))
+            .OrderBy(tile => tile.Y)
+            .ThenBy(tile => tile.X)
+            .ToList();
+        if (slots.Count == 0)
+        {
+            return bastion.Position;
+        }
+
+        var defenders = World.Entities
+            .Where(entity =>
+                entity.IsAlive
+                && entity.AssignedBastionId == bastion.Id
+                && MvpDefinitions.UnitKinds.Contains(entity.Kind)
+                && entity.Order.Kind == BastionOrderKind.Defend)
+            .OrderBy(entity => entity.Id)
+            .ToList();
+        var index = defenders.FindIndex(entity => entity.Id == unit.Id);
+        if (index < 0)
+        {
+            index = 0;
+        }
+
+        return slots[index % slots.Count];
+    }
+
+    private static IEnumerable<TilePosition> GetBastionPerimeterTiles(WorldEntity bastion)
+    {
+        var footprint = MvpDefinitions.GetFootprint(bastion.Kind);
+        var minX = bastion.Position.X - 1;
+        var maxX = bastion.Position.X + footprint.Width;
+        var minY = bastion.Position.Y - 1;
+        var maxY = bastion.Position.Y + footprint.Height;
+
+        for (var x = minX; x <= maxX; x++)
+        {
+            yield return new TilePosition(x, minY);
+            yield return new TilePosition(x, maxY);
+        }
+
+        for (var y = minY + 1; y <= maxY - 1; y++)
+        {
+            yield return new TilePosition(minX, y);
+            yield return new TilePosition(maxX, y);
+        }
     }
 
     private bool MoveMobileEntityTowardTile(WorldEntity entity, TilePosition target)
@@ -3088,6 +3140,12 @@ public sealed class GameSimulation
                 continue;
             }
 
+            // Moving units ignore unit↔unit collision (radius effectively 0); stopped units keep full size.
+            if (IsMobileEntityMoving(mover) || IsMobileEntityMoving(entity))
+            {
+                continue;
+            }
+
             var otherRadius = MvpDefinitions.GetCollisionSize(entity.Kind).Radius;
             if (otherRadius <= 0)
             {
@@ -3112,6 +3170,24 @@ public sealed class GameSimulation
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// True when a mobile entity has active movement (waypoint, path, or move target) and is not garrisoned.
+    /// </summary>
+    private static bool IsMobileEntityMoving(WorldEntity entity)
+    {
+        if (entity.IsGarrisoned)
+        {
+            return false;
+        }
+
+        if (entity.CurrentWaypoint is not null || entity.MovementPath.Count > 0)
+        {
+            return true;
+        }
+
+        return entity.MoveTarget is not null && entity.MoveTarget.Value != entity.Position;
     }
 
     private static bool CircleIntersectsEntityFootprint(WorldPosition position, double radius, WorldEntity obstacle)

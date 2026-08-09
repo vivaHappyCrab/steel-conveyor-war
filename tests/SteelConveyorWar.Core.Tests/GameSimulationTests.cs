@@ -626,10 +626,10 @@ public class GameSimulationTests
             NearBlue(simulation, 2, 4),
             out var assemblerGhostId,
             Direction.East,
-            ItemRecipeId.CopperWire));
-        Assert.Equal(ItemRecipeId.CopperWire, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
+            ItemRecipeId.Composite));
+        Assert.Equal(ItemRecipeId.Composite, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
         AdvanceTicks(simulation, 30);
-        Assert.Equal(ItemRecipeId.CopperWire, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
+        Assert.Equal(ItemRecipeId.Composite, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
     }
 
     [Fact]
@@ -930,17 +930,14 @@ public class GameSimulationTests
         ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.IronGear, (ItemId.IronPlate, 2));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.IronGear));
 
-        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.CopperWire, (ItemId.CopperPlate, 1));
-        Assert.Equal(2, assembler.OutputBuffer.Count(ItemId.CopperWire));
-
-        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.Circuit, (ItemId.IronPlate, 1), (ItemId.CopperWire, 2));
-        Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.Circuit));
+        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.Composite, (ItemId.IronPlate, 1), (ItemId.CopperPlate, 1));
+        Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.Composite));
 
         ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT1, (ItemId.IronGear, 1), (ItemId.CopperPlate, 1));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.SciencePackT1));
 
         UnlockTier2ForTests(simulation, new PlayerId(1));
-        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT2, (ItemId.Circuit, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1));
+        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT2, (ItemId.Composite, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.SciencePackT2));
     }
 
