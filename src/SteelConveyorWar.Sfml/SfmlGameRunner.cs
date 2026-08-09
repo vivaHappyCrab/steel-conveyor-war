@@ -21,6 +21,7 @@ public sealed class SfmlGameRunner
     private const int HudWrapCharacters = 32;
     private const float HudLineHeight = 18f;
     private const float HudTextStartY = 10f;
+    private const float ResearchDoubleClickSeconds = 0.35f;
 
     private enum SidebarStorageKind
     {
@@ -36,6 +37,7 @@ public sealed class SfmlGameRunner
         var windowWidth = display.Width;
         var windowHeight = display.Height;
         var panelX = Math.Max(0f, windowWidth - SidePanelWidth);
+        var panelTop = TopBarHeight + MinimapSize + (2f * MinimapMargin);
         var playfieldWidth = Math.Max(1f, panelX);
         var playfieldHeight = Math.Max(1f, windowHeight - TopBarHeight);
         var worldWidthPx = simulation.World.Size.Width * TileSize;
@@ -63,7 +65,29 @@ public sealed class SfmlGameRunner
         var bastionPendingMode = BastionPendingInputMode.None;
         var patrolWaypoints = new List<TilePosition>();
         var sidebarStorageHits = new List<SidebarStorageHit>();
+        var isResearchOverlayOpen = false;
+        TechnologyId? researchSelectedId = null;
+        TechnologyId? researchLastClickId = null;
+        var researchLastClickSeconds = -1f;
+        var researchClickClock = new Clock();
         var font = TryLoadFont();
+
+        FloatRect GetMinimapBounds() =>
+            new(
+                new Vector2f(windowWidth - MinimapSize - MinimapMargin, TopBarHeight + MinimapMargin),
+                new Vector2f(MinimapSize, MinimapSize));
+
+        bool IsOverMinimap(Vector2i screen)
+        {
+            var bounds = GetMinimapBounds();
+            return screen.X >= bounds.Left
+                && screen.Y >= bounds.Top
+                && screen.X < bounds.Left + bounds.Width
+                && screen.Y < bounds.Top + bounds.Height;
+        }
+
+        bool IsOverSidePanel(Vector2i screen) =>
+            screen.X >= panelX && screen.Y >= panelTop && !IsOverMinimap(screen);
 
         void ClearBastionPending()
         {
@@ -119,6 +143,14 @@ public sealed class SfmlGameRunner
             if (key == "Escape" && bastionPendingMode != BastionPendingInputMode.None)
             {
                 ClearBastionPending();
+                return;
+            }
+
+            if (key == "Escape" && isResearchOverlayOpen)
+            {
+                isResearchOverlayOpen = false;
+                researchSelectedId = null;
+                researchLastClickId = null;
                 return;
             }
 
@@ -240,6 +272,18 @@ public sealed class SfmlGameRunner
                 return;
             }
 
+            if (key == "T")
+            {
+                isResearchOverlayOpen = !isResearchOverlayOpen;
+                if (!isResearchOverlayOpen)
+                {
+                    researchSelectedId = null;
+                    researchLastClickId = null;
+                }
+
+                return;
+            }
+
             if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Assembler && TryGetRecipeShortcut(key, out var recipeId))
             {
                 simulation.TrySetAssemblerRecipe(selectedEntity.Id, recipeId);
@@ -247,7 +291,7 @@ public sealed class SfmlGameRunner
                 return;
             }
 
-            if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Laboratory && TryGetNumberShortcut(key, out var researchIndex))
+            if (!isResearchOverlayOpen && !isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Laboratory && TryGetNumberShortcut(key, out var researchIndex))
             {
                 var ownerId = selectedEntity.OwnerId ?? localPlayer;
                 var panel = ResearchPanelModel.FromSnapshot(simulation.GetResearchSnapshot(ownerId), recipePage);
@@ -259,26 +303,6 @@ public sealed class SfmlGameRunner
                         entry.Id,
                         confirmExclusive: entry.RequiresExclusiveConfirmation,
                         preferredTrackId: entry.TrackId);
-                }
-
-                return;
-            }
-
-            if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Laboratory && key == "T")
-            {
-                var ownerId = selectedEntity.OwnerId ?? localPlayer;
-                var snapshot = simulation.GetResearchSnapshot(ownerId);
-                var panel = ResearchPanelModel.FromSnapshot(snapshot, recipePage);
-                if (panel.SupportsAllocationToggle)
-                {
-                    var cycle = snapshot.Tracks.FirstOrDefault(track => track.Id.Contains("cycle", StringComparison.OrdinalIgnoreCase)) ?? snapshot.Tracks[0];
-                    var tactical = snapshot.Tracks.FirstOrDefault(track => track.Id != cycle.Id) ?? snapshot.Tracks[^1];
-                    var fullCycle = cycle.AllocationBasisPoints >= 10_000;
-                    simulation.TrySetTrackAllocation(ownerId, new Dictionary<string, int>
-                    {
-                        [cycle.Id] = fullCycle ? 7_000 : 10_000,
-                        [tactical.Id] = fullCycle ? 3_000 : 0
-                    });
                 }
 
                 return;
@@ -297,12 +321,6 @@ public sealed class SfmlGameRunner
                         simulation.TrySetFactoryProduction(selectedEntity.Id, recipes[factoryRecipeIndex].OutputKind);
                     }
 
-                    return;
-                }
-
-                if (key is "N" or "Tab")
-                {
-                    TryCycleFactoryAssignedBastion(simulation, selectedEntity, localPlayer);
                     return;
                 }
             }
@@ -379,7 +397,77 @@ public sealed class SfmlGameRunner
                 return;
             }
 
-            if (mousePosition.X >= panelX
+            if (isResearchOverlayOpen && button == "Left")
+            {
+                var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
+                var overlayBounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
+                var snapshot = simulation.GetResearchSnapshot(localPlayer);
+                var tree = ResearchTreePanelModel.FromSnapshot(snapshot, overlayBounds, researchSelectedId);
+
+                if (tree.HitExit(mousePosition))
+                {
+                    isResearchOverlayOpen = false;
+                    researchSelectedId = null;
+                    researchLastClickId = null;
+                    return;
+                }
+
+                if (tree.HitAllocation(mousePosition))
+                {
+                    ToggleResearchAllocation(simulation, localPlayer);
+                    return;
+                }
+
+                if (tree.HitAction(mousePosition))
+                {
+                    if (researchSelectedId is not null)
+                    {
+                        if (tree.CanCancelSelected)
+                        {
+                            simulation.TryCancelResearch(localPlayer, researchSelectedId.Value);
+                        }
+                        else if (tree.CanStartSelected)
+                        {
+                            var node = tree.SelectedNode;
+                            simulation.TrySelectResearch(
+                                localPlayer,
+                                researchSelectedId.Value,
+                                confirmExclusive: node?.RequiresExclusiveConfirmation == true,
+                                preferredTrackId: node?.TrackId);
+                        }
+                    }
+
+                    return;
+                }
+
+                if (tree.TryPickNode(mousePosition, out var techId))
+                {
+                    var now = researchClickClock.ElapsedTime.AsSeconds();
+                    var isDouble = researchLastClickId == techId
+                        && now - researchLastClickSeconds <= ResearchDoubleClickSeconds;
+                    researchSelectedId = techId;
+                    researchLastClickId = techId;
+                    researchLastClickSeconds = now;
+                    if (isDouble)
+                    {
+                        var node = tree.Nodes.First(n => n.Id == techId);
+                        simulation.TrySelectResearch(
+                            localPlayer,
+                            techId,
+                            confirmExclusive: node.RequiresExclusiveConfirmation,
+                            preferredTrackId: node.TrackId);
+                    }
+
+                    return;
+                }
+
+                if (tree.ContainsOverlay(mousePosition))
+                {
+                    return;
+                }
+            }
+
+            if (IsOverSidePanel(mousePosition)
                 && TryHandleSidebarStorageClick(
                     simulation,
                     localPlayer,
@@ -391,7 +479,7 @@ public sealed class SfmlGameRunner
                 return;
             }
 
-            if (mousePosition.X >= panelX)
+            if (IsOverSidePanel(mousePosition) || IsOverMinimap(mousePosition))
             {
                 return;
             }
@@ -644,7 +732,7 @@ public sealed class SfmlGameRunner
 
             window.SetView(window.DefaultView);
             DrawTopBar(window, simulation, localPlayer, font, playfieldWidth);
-            DrawMinimap(window, simulation, localPlayer, playfieldWidth);
+            DrawMinimap(window, simulation, localPlayer, windowWidth);
             DrawHud(
                 window,
                 simulation,
@@ -662,7 +750,21 @@ public sealed class SfmlGameRunner
                 windowWidth,
                 windowHeight,
                 panelX,
+                panelTop,
+                isResearchOverlayOpen,
+                researchSelectedId,
                 sidebarStorageHits);
+            if (isResearchOverlayOpen)
+            {
+                var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
+                var overlayBounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
+                var tree = ResearchTreePanelModel.FromSnapshot(
+                    simulation.GetResearchSnapshot(localPlayer),
+                    overlayBounds,
+                    researchSelectedId);
+                DrawResearchTreeOverlay(window, tree, font);
+            }
+
             if (isBuildMenuOpen)
             {
                 DrawBuildBar(
@@ -679,7 +781,7 @@ public sealed class SfmlGameRunner
                     panelX,
                     mousePosition);
             }
-            else
+            else if (!isResearchOverlayOpen)
             {
                 var selectedForOrders = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
                 if (selectedForOrders?.Kind == EntityKind.Bastion && selectedForOrders.OwnerId == localPlayer)
@@ -750,13 +852,17 @@ public sealed class SfmlGameRunner
 
         DrawTechSignatures(target, simulation.GetTechSignatureHotspots(localPlayer));
 
-        foreach (var entity in world.Entities.Where(entity => entity.IsAlive && !entity.IsGarrisoned))
-        {
-            if (!IsVisibleToLocalPlayer(simulation, localPlayer, entity))
-            {
-                continue;
-            }
+        var visibleEntities = world.Entities
+            .Where(entity => entity.IsAlive && !entity.IsGarrisoned && IsVisibleToLocalPlayer(simulation, localPlayer, entity))
+            .ToList();
 
+        foreach (var entity in visibleEntities.Where(entity => !IsUnitDrawKind(entity.Kind)))
+        {
+            DrawEntity(target, entity, selectedEntityId == entity.Id);
+        }
+
+        foreach (var entity in visibleEntities.Where(entity => IsUnitDrawKind(entity.Kind)))
+        {
             DrawEntity(target, entity, selectedEntityId == entity.Id);
         }
 
@@ -1106,7 +1212,7 @@ public sealed class SfmlGameRunner
         target.Draw(inventory);
     }
 
-    private static void DrawMinimap(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer, float playfieldWidth)
+    private static void DrawMinimap(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer, uint windowWidth)
     {
         var world = simulation.World;
         var mapW = world.Size.Width;
@@ -1116,7 +1222,7 @@ public sealed class SfmlGameRunner
             return;
         }
 
-        var left = playfieldWidth - MinimapSize - MinimapMargin;
+        var left = windowWidth - MinimapSize - MinimapMargin;
         var top = TopBarHeight + MinimapMargin;
         if (left < MinimapMargin)
         {
@@ -1239,9 +1345,12 @@ public sealed class SfmlGameRunner
         uint windowWidth,
         uint windowHeight,
         float panelX,
+        float panelTop,
+        bool isResearchOverlayOpen,
+        TechnologyId? researchSelectedId,
         List<SidebarStorageHit> sidebarStorageHits)
     {
-        DrawPanel(target, windowWidth, windowHeight, panelX);
+        DrawPanel(target, windowWidth, windowHeight, panelX, panelTop);
         sidebarStorageHits.Clear();
         if (font is null)
         {
@@ -1250,6 +1359,27 @@ public sealed class SfmlGameRunner
 
         var lines = new List<string>();
         var lineItemTags = new Dictionary<int, (ItemId Item, SidebarStorageKind Kind)>();
+        var textStartY = panelTop + HudTextStartY;
+
+        if (isResearchOverlayOpen)
+        {
+            var bottomReserved = BuildBarSlotSize + BuildBarBottomMargin + 8f;
+            var overlayBounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
+            var tree = ResearchTreePanelModel.FromSnapshot(
+                simulation.GetResearchSnapshot(localPlayer),
+                overlayBounds,
+                researchSelectedId);
+            lines.AddRange(tree.ToDetailLines());
+            if (tree.SupportsAllocationToggle)
+            {
+                lines.Add("Alloc: use overlay Alloc button");
+            }
+
+            var displayResearchLines = WrapHudLines(lines, HudWrapCharacters).ToList();
+            DrawTextLines(target, font, displayResearchLines, panelX, textStartY);
+            return;
+        }
+
         var selected = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
         if (selected is not null)
         {
@@ -1302,6 +1432,7 @@ public sealed class SfmlGameRunner
                 lines.Add("B: build menu");
                 lines.Add("Q: copy hovered building");
                 lines.Add("F1: select BMK + center");
+                lines.Add("T: research tree");
                 lines.Add("RMB: move");
                 lines.Add("Ctrl+LMB: withdraw hub/output");
                 lines.Add("Ctrl+RMB: deposit hub/input");
@@ -1333,11 +1464,9 @@ public sealed class SfmlGameRunner
 
             if (MvpDefinitions.FactoryKinds.Contains(selected.Kind))
             {
-                lines.Add($"Assigned bastion: {(selected.AssignedBastionId?.ToString() ?? "-")}");
                 lines.Add($"Manual produce: {(selected.IsManualProductionTarget ? "yes" : "no")}");
                 lines.Add($"Recipe: {(selected.ProductionTargetKind?.ToString() ?? "none")}");
                 lines.Add("1-N: set factory recipe");
-                lines.Add("N/Tab: cycle assigned bastion");
             }
 
             if (selected.Kind == EntityKind.Bastion)
@@ -1367,16 +1496,24 @@ public sealed class SfmlGameRunner
                 }
             }
 
+            if (selected.Kind == EntityKind.Laboratory)
+            {
+                lines.Add("T: open research tree");
+            }
+
             AddRecipeLines(lines, GetRecipeLines(selected, simulation, localPlayer, recipePage), recipePage: 0);
 
-            lines.Add("Inventory:");
-            if (selected.Kind == EntityKind.Hub)
+            if (MvpDefinitions.HasPlayerInventory(selected.Kind))
             {
-                AddInventoryLinesWithHits(lines, lineItemTags, selected.Inventory, SidebarStorageKind.Input);
-            }
-            else
-            {
-                AddInventoryLines(lines, selected.Inventory);
+                lines.Add("Inventory:");
+                if (selected.Kind == EntityKind.Hub)
+                {
+                    AddHubInventoryLinesWithHits(lines, lineItemTags, selected.Inventory, SidebarStorageKind.Input);
+                }
+                else
+                {
+                    AddInventoryLines(lines, selected.Inventory);
+                }
             }
 
             if (selected.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter)
@@ -1399,10 +1536,21 @@ public sealed class SfmlGameRunner
                 lines.Add($"Transfer: {selected.HeldTransferTicksRemaining}/{MvpDefinitions.InserterTransferTicks}");
             }
 
-            if (selected.InputBuffer.Items.Count > 0 || selected.OutputBuffer.Items.Count > 0 || IsBufferedBuildingForUi(selected.Kind))
+            if (selected.InputBuffer.Items.Count > 0
+                || selected.OutputBuffer.Items.Count > 0
+                || IsBufferedBuildingForUi(selected.Kind)
+                || TryGetRecipeInputNeeds(selected, simulation, localPlayer, out _))
             {
                 lines.Add("Input:");
-                AddInventoryLinesWithHits(lines, lineItemTags, selected.InputBuffer, SidebarStorageKind.Input);
+                if (TryGetRecipeInputNeeds(selected, simulation, localPlayer, out var needs))
+                {
+                    AddRecipeInputLinesWithHits(lines, lineItemTags, selected.InputBuffer, needs);
+                }
+                else
+                {
+                    AddInventoryLinesWithHits(lines, lineItemTags, selected.InputBuffer, SidebarStorageKind.Input);
+                }
+
                 lines.Add("Output:");
                 AddInventoryLinesWithHits(lines, lineItemTags, selected.OutputBuffer, SidebarStorageKind.Output);
             }
@@ -1435,7 +1583,7 @@ public sealed class SfmlGameRunner
             if (lineItemTags.TryGetValue(rawIndex, out var tag) && displayLines.Count < MaxHudLines)
             {
                 var bounds = new FloatRect(
-                    new Vector2f(panelX + 4f, HudTextStartY + displayLines.Count * HudLineHeight),
+                    new Vector2f(panelX + 4f, textStartY + displayLines.Count * HudLineHeight),
                     new Vector2f(panelWidth - 8f, HudLineHeight));
                 sidebarStorageHits.Add(new SidebarStorageHit(bounds, tag.Item, tag.Kind));
             }
@@ -1443,10 +1591,10 @@ public sealed class SfmlGameRunner
             displayLines.AddRange(wrappedChunk);
         }
 
-        DrawTextLines(target, font, displayLines, panelX);
+        DrawTextLines(target, font, displayLines, panelX, textStartY);
         if (selected is not null)
         {
-            DrawBuildingProgressBars(target, selected, panelX, windowWidth);
+            DrawBuildingProgressBars(target, selected, panelX, panelTop, windowWidth);
         }
     }
 
@@ -1467,6 +1615,152 @@ public sealed class SfmlGameRunner
             var lineIndex = lines.Count;
             lines.Add($"  {item.Key}: {item.Value}/{MvpDefinitions.GetMaxStackSize(item.Key)}");
             lineItemTags[lineIndex] = (item.Key, kind);
+        }
+    }
+
+    private static void AddHubInventoryLinesWithHits(
+        List<string> lines,
+        Dictionary<int, (ItemId Item, SidebarStorageKind Kind)> lineItemTags,
+        Inventory inventory,
+        SidebarStorageKind kind)
+    {
+        if (inventory.Items.Count == 0)
+        {
+            lines.Add("  -");
+            return;
+        }
+
+        var lineBudget = 12;
+        foreach (var item in inventory.Items.OrderBy(pair => pair.Key))
+        {
+            var maxStack = MvpDefinitions.GetMaxStackSize(item.Key);
+            var remaining = item.Value;
+            if (remaining <= 0)
+            {
+                continue;
+            }
+
+            while (remaining > 0 && lineBudget > 0)
+            {
+                var stack = Math.Min(maxStack, remaining);
+                var lineIndex = lines.Count;
+                lines.Add($"  {item.Key}: {stack}/{maxStack}");
+                lineItemTags[lineIndex] = (item.Key, kind);
+                remaining -= stack;
+                lineBudget--;
+            }
+
+            if (lineBudget <= 0)
+            {
+                break;
+            }
+        }
+    }
+
+    private static void AddRecipeInputLinesWithHits(
+        List<string> lines,
+        Dictionary<int, (ItemId Item, SidebarStorageKind Kind)> lineItemTags,
+        Inventory inputBuffer,
+        IReadOnlyDictionary<ItemId, int> needs)
+    {
+        if (needs.Count == 0)
+        {
+            lines.Add("  -");
+            return;
+        }
+
+        foreach (var need in needs.OrderBy(pair => pair.Key))
+        {
+            var count = inputBuffer.Count(need.Key);
+            var lineIndex = lines.Count;
+            lines.Add($"  {need.Key}: {count}/{need.Value}");
+            lineItemTags[lineIndex] = (need.Key, SidebarStorageKind.Input);
+        }
+    }
+
+    private static bool TryGetRecipeInputNeeds(
+        WorldEntity selected,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        out IReadOnlyDictionary<ItemId, int> needs)
+    {
+        switch (selected.Kind)
+        {
+            case EntityKind.Assembler when selected.SelectedItemRecipe is not null
+                && MvpDefinitions.ItemRecipes.TryGetValue(selected.SelectedItemRecipe.Value, out var itemRecipe):
+                needs = itemRecipe.Inputs;
+                return true;
+
+            case EntityKind.Smelter when selected.ActiveSmeltRecipe is not null:
+                needs = selected.ActiveSmeltRecipe.Value switch
+                {
+                    SmeltRecipeId.IronPlate => new Dictionary<ItemId, int> { [ItemId.IronOre] = 1 },
+                    SmeltRecipeId.CopperPlate => new Dictionary<ItemId, int> { [ItemId.CopperOre] = 1 },
+                    SmeltRecipeId.Steel => new Dictionary<ItemId, int> { [ItemId.IronPlate] = 2, [ItemId.Coal] = 1 },
+                    _ => new Dictionary<ItemId, int>()
+                };
+                return needs.Count > 0;
+
+            case EntityKind.TankFactory:
+            case EntityKind.DroneCenter:
+                if (selected.ProductionTargetKind is not null
+                    && MvpDefinitions.ProductionRecipes.TryGetValue(selected.ProductionTargetKind.Value, out var unitRecipe))
+                {
+                    needs = unitRecipe.Inputs;
+                    return true;
+                }
+
+                needs = new Dictionary<ItemId, int>();
+                return false;
+
+            case EntityKind.Laboratory:
+            {
+                var ownerId = selected.OwnerId ?? localPlayer;
+                var snapshot = simulation.GetResearchSnapshot(ownerId);
+                TechnologyId? activeId = null;
+                foreach (var track in snapshot.Tracks.OrderBy(track => track.Id, StringComparer.Ordinal))
+                {
+                    if (track.ActiveSerialTarget is not null)
+                    {
+                        activeId = track.ActiveSerialTarget;
+                        break;
+                    }
+                }
+
+                if (activeId is null)
+                {
+                    foreach (var track in snapshot.Tracks.OrderBy(track => track.Id, StringComparer.Ordinal))
+                    {
+                        if (track.ProjectWeights.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        activeId = track.ProjectWeights.Keys.OrderBy(id => id.Value, StringComparer.Ordinal).First();
+                        break;
+                    }
+                }
+
+                if (activeId is null)
+                {
+                    needs = new Dictionary<ItemId, int>();
+                    return false;
+                }
+
+                var tech = snapshot.Technologies.FirstOrDefault(t => t.Id == activeId);
+                if (tech is null || tech.SciencePacks.Count == 0)
+                {
+                    needs = new Dictionary<ItemId, int>();
+                    return false;
+                }
+
+                needs = tech.SciencePacks.ToDictionary(pack => pack.Item, pack => pack.Amount);
+                return true;
+            }
+
+            default:
+                needs = new Dictionary<ItemId, int>();
+                return false;
         }
     }
 
@@ -1525,11 +1819,16 @@ public sealed class SfmlGameRunner
         return false;
     }
 
-    private static void DrawBuildingProgressBars(IRenderTarget target, WorldEntity selected, float panelX, uint windowWidth)
+    private static void DrawBuildingProgressBars(
+        IRenderTarget target,
+        WorldEntity selected,
+        float panelX,
+        float panelTop,
+        uint windowWidth)
     {
         var barX = panelX + 8f;
         var barWidth = Math.Max(40f, windowWidth - panelX - 16f);
-        var barY = 4f;
+        var barY = panelTop + 4f;
 
         if (selected.EnergyBufferCapacity > 0)
         {
@@ -1581,11 +1880,11 @@ public sealed class SfmlGameRunner
         target.Draw(bar);
     }
 
-    private static void DrawPanel(IRenderTarget target, uint windowWidth, uint windowHeight, float panelX)
+    private static void DrawPanel(IRenderTarget target, uint windowWidth, uint windowHeight, float panelX, float panelTop)
     {
-        using var panel = new RectangleShape(new Vector2f(windowWidth - panelX, windowHeight))
+        using var panel = new RectangleShape(new Vector2f(windowWidth - panelX, windowHeight - panelTop))
         {
-            Position = new Vector2f(panelX, 0),
+            Position = new Vector2f(panelX, panelTop),
             FillColor = new Color(12, 16, 22, 230),
             OutlineColor = new Color(80, 95, 120),
             OutlineThickness = 1f
@@ -1712,14 +2011,14 @@ public sealed class SfmlGameRunner
         return string.Join(", ", cost.Select(pair => $"{pair.Value} {pair.Key}"));
     }
 
-    private static void DrawTextLines(IRenderTarget target, Font font, IReadOnlyList<string> lines, float panelX)
+    private static void DrawTextLines(IRenderTarget target, Font font, IReadOnlyList<string> lines, float panelX, float startY)
     {
         for (var i = 0; i < lines.Count && i < MaxHudLines; i++)
         {
             using var text = new Text(font, lines[i], 12)
             {
                 FillColor = Color.White,
-                Position = new Vector2f(panelX + 8f, 10f + i * 18f)
+                Position = new Vector2f(panelX + 8f, startY + i * HudLineHeight)
             };
             target.Draw(text);
         }
@@ -1913,24 +2212,114 @@ public sealed class SfmlGameRunner
             .OrderBy(recipe => (int)recipe.OutputKind);
     }
 
-    private static void TryCycleFactoryAssignedBastion(GameSimulation simulation, WorldEntity factory, PlayerId localPlayer)
+    private static bool IsUnitDrawKind(EntityKind kind) =>
+        MvpDefinitions.UnitKinds.Contains(kind) || kind == EntityKind.Commander;
+
+    private static void ToggleResearchAllocation(GameSimulation simulation, PlayerId playerId)
     {
-        var bastions = simulation.World.Entities
-            .Where(entity => entity.IsAlive && entity.OwnerId == localPlayer && entity.Kind == EntityKind.Bastion)
-            .OrderBy(entity => entity.Id)
-            .Select(entity => entity.Id)
-            .ToList();
-        if (bastions.Count == 0)
+        var snapshot = simulation.GetResearchSnapshot(playerId);
+        if (snapshot.Tracks.Count < 2 || !snapshot.Tracks.Any(track => track.PlayerAdjustableAllocation))
         {
             return;
         }
 
-        var currentIndex = factory.AssignedBastionId is null
-            ? -1
-            : bastions.IndexOf(factory.AssignedBastionId.Value);
-        var nextIndex = (currentIndex + 1) % bastions.Count;
-        // Bastion cycle must not flip autofill → manual via TrySetFactoryProduction.
-        simulation.TryAssignFactoryBastion(factory.Id, bastions[nextIndex]);
+        var cycle = snapshot.Tracks.FirstOrDefault(track => track.Id.Contains("cycle", StringComparison.OrdinalIgnoreCase))
+            ?? snapshot.Tracks[0];
+        var tactical = snapshot.Tracks.FirstOrDefault(track => track.Id != cycle.Id) ?? snapshot.Tracks[^1];
+        var fullCycle = cycle.AllocationBasisPoints >= 10_000;
+        simulation.TrySetTrackAllocation(playerId, new Dictionary<string, int>
+        {
+            [cycle.Id] = fullCycle ? 7_000 : 10_000,
+            [tactical.Id] = fullCycle ? 3_000 : 0
+        });
+    }
+
+    private static void DrawResearchTreeOverlay(IRenderTarget target, ResearchTreePanelModel tree, Font? font)
+    {
+        using var backdrop = new RectangleShape(new Vector2f(tree.OverlayBounds.Width, tree.OverlayBounds.Height))
+        {
+            Position = new Vector2f(tree.OverlayBounds.Left, tree.OverlayBounds.Top),
+            FillColor = new Color(8, 12, 18, 230),
+            OutlineColor = new Color(100, 120, 150),
+            OutlineThickness = 1f
+        };
+        target.Draw(backdrop);
+
+        if (font is not null)
+        {
+            using var title = new Text(font, $"Research [{tree.ProfileId}] tier={tree.CurrentTierId}", 14)
+            {
+                FillColor = new Color(220, 230, 240),
+                Position = new Vector2f(tree.OverlayBounds.Left + 10f, tree.OverlayBounds.Top + 6f)
+            };
+            target.Draw(title);
+        }
+
+        foreach (var node in tree.Nodes)
+        {
+            var fill = node.Status switch
+            {
+                ResearchTreeNodeStatus.Completed => new Color(50, 110, 210),
+                ResearchTreeNodeStatus.Available => new Color(50, 170, 80),
+                ResearchTreeNodeStatus.Active => new Color(70, 190, 210),
+                _ => new Color(180, 55, 55)
+            };
+            var outline = tree.SelectedId == node.Id ? Color.White : new Color(20, 20, 24);
+            using var icon = new RectangleShape(new Vector2f(node.Bounds.Width, node.Bounds.Height))
+            {
+                Position = new Vector2f(node.Bounds.Left, node.Bounds.Top),
+                FillColor = fill,
+                OutlineColor = outline,
+                OutlineThickness = tree.SelectedId == node.Id ? 2f : 1f
+            };
+            target.Draw(icon);
+
+            if (font is not null)
+            {
+                using var glyph = new Text(font, node.Symbol, 16)
+                {
+                    FillColor = Color.White,
+                    Position = new Vector2f(node.Bounds.Left + 11f, node.Bounds.Top + 6f)
+                };
+                target.Draw(glyph);
+            }
+        }
+
+        DrawUiButton(target, font, tree.ExitButtonBounds, "Exit", new Color(70, 80, 100));
+        var actionEnabled = tree.CanStartSelected || tree.CanCancelSelected;
+        DrawUiButton(
+            target,
+            font,
+            tree.ActionButtonBounds,
+            tree.ActionButtonLabel,
+            actionEnabled ? new Color(60, 120, 80) : new Color(50, 55, 65));
+        if (tree.SupportsAllocationToggle)
+        {
+            DrawUiButton(target, font, tree.AllocationButtonBounds, "Alloc cycle/tact", new Color(70, 90, 130));
+        }
+    }
+
+    private static void DrawUiButton(IRenderTarget target, Font? font, FloatRect bounds, string label, Color fill)
+    {
+        using var button = new RectangleShape(new Vector2f(bounds.Width, bounds.Height))
+        {
+            Position = new Vector2f(bounds.Left, bounds.Top),
+            FillColor = fill,
+            OutlineColor = new Color(140, 160, 190),
+            OutlineThickness = 1f
+        };
+        target.Draw(button);
+        if (font is null)
+        {
+            return;
+        }
+
+        using var text = new Text(font, label, 12)
+        {
+            FillColor = Color.White,
+            Position = new Vector2f(bounds.Left + 8f, bounds.Top + 5f)
+        };
+        target.Draw(text);
     }
 
     private static void ApplyBastionOrderCommand(
