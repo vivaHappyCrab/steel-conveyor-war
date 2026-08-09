@@ -7,6 +7,10 @@ public sealed class GameSimulation
     private readonly List<PlayerState> _players;
     private readonly ResearchSystem _researchSystem;
     private readonly List<CombatShotEvent> _combatShotsThisTick = new();
+    private readonly Dictionary<PlayerId, int> _tickPowerProduced = new();
+    private readonly Dictionary<PlayerId, int> _tickPowerConsumed = new();
+    private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickProducedByKind = new();
+    private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickConsumedByKind = new();
     private int _nextEntityId = 1;
 
     private GameSimulation(
@@ -104,6 +108,7 @@ public sealed class GameSimulation
             options.Entities);
         simulation.CreateStartingEntities();
         simulation.UpdatePower();
+        simulation.RecordEnergyStatsSample();
         simulation.UpdateFogOfWar();
         simulation.UpdateTechSignatures();
         return simulation;
@@ -967,7 +972,10 @@ public sealed class GameSimulation
 
     /// <summary>
     /// Drains this tick's power demand from the building buffer. Returns false when the building
-    /// cannot afford to run (no demand configured is treated as success / unpowered-free).
+    /// <summary>
+    /// Drains <see cref="MvpDefinitions.GetPowerDemand"/> from the building buffer when it can afford to run.
+    /// Returns false when the buffer is too low (work must pause). No demand configured → success (unpowered-free).
+    /// Successful drains accumulate into this tick's energy-stats consumption sample.
     /// </summary>
     public bool TryConsumeBuildingEnergy(WorldEntity building)
     {
@@ -983,6 +991,19 @@ public sealed class GameSimulation
         }
 
         building.EnergyBuffer -= demand;
+        if (building.OwnerId is not null)
+        {
+            var ownerId = building.OwnerId.Value;
+            _tickPowerConsumed[ownerId] = _tickPowerConsumed.GetValueOrDefault(ownerId) + demand;
+            if (!_tickConsumedByKind.TryGetValue(ownerId, out var byKind))
+            {
+                byKind = new Dictionary<EntityKind, int>();
+                _tickConsumedByKind[ownerId] = byKind;
+            }
+
+            byKind[building.Kind] = byKind.GetValueOrDefault(building.Kind) + demand;
+        }
+
         return true;
     }
 
@@ -1047,6 +1068,7 @@ public sealed class GameSimulation
         ProcessCombat();
         CascadeBastionDeaths();
         ProcessRepairOutOfCombat();
+        RecordEnergyStatsSample();
         CheckVictory();
         World.RemoveDead();
         UpdateFogOfWar();
@@ -1757,14 +1779,13 @@ public sealed class GameSimulation
 
     private void UpdatePower()
     {
+        ResetEnergyTickAccumulators();
+
         foreach (var player in _players)
         {
             player.PowerProduced = 0;
             player.PowerDemand = 0;
         }
-
-        var producedByPlayer = _players.ToDictionary(player => player.Id, _ => new Dictionary<EntityKind, int>());
-        var demandByPlayer = _players.ToDictionary(player => player.Id, _ => new Dictionary<EntityKind, int>());
 
         foreach (var entity in World.Entities.Where(entity => entity.IsAlive && entity.OwnerId is not null))
         {
@@ -1778,27 +1799,49 @@ public sealed class GameSimulation
             if (produced > 0)
             {
                 player.PowerProduced += produced;
-                var producedMap = producedByPlayer[player.Id];
+                _tickPowerProduced[player.Id] = _tickPowerProduced.GetValueOrDefault(player.Id) + produced;
+                var producedMap = _tickProducedByKind[player.Id];
                 producedMap[entity.Kind] = producedMap.GetValueOrDefault(entity.Kind) + produced;
             }
 
-            var demand = MvpDefinitions.GetPowerDemand(entity.Kind);
-            if (demand > 0)
-            {
-                player.PowerDemand += demand;
-                var demandMap = demandByPlayer[player.Id];
-                demandMap[entity.Kind] = demandMap.GetValueOrDefault(entity.Kind) + demand;
-            }
+            // HUD demand = installed consumer rating (not actual drain this tick).
+            player.PowerDemand += MvpDefinitions.GetPowerDemand(entity.Kind);
         }
 
         foreach (var player in _players)
         {
             FillEnergyBuffersEmptiestFirst(player);
+        }
+    }
+
+    private void ResetEnergyTickAccumulators()
+    {
+        _tickPowerProduced.Clear();
+        _tickPowerConsumed.Clear();
+        _tickProducedByKind.Clear();
+        _tickConsumedByKind.Clear();
+        foreach (var player in _players)
+        {
+            _tickProducedByKind[player.Id] = new Dictionary<EntityKind, int>();
+            _tickConsumedByKind[player.Id] = new Dictionary<EntityKind, int>();
+            _tickPowerProduced[player.Id] = 0;
+            _tickPowerConsumed[player.Id] = 0;
+        }
+    }
+
+    /// <summary>
+    /// Records this tick's production and <b>actual</b> buffer drains into presentation-only energy history.
+    /// Must run after all <see cref="TryConsumeBuildingEnergy"/> call sites for the tick.
+    /// </summary>
+    private void RecordEnergyStatsSample()
+    {
+        foreach (var player in _players)
+        {
             player.EnergyStats.Record(
-                player.PowerProduced,
-                player.PowerDemand,
-                producedByPlayer[player.Id],
-                demandByPlayer[player.Id]);
+                _tickPowerProduced.GetValueOrDefault(player.Id),
+                _tickPowerConsumed.GetValueOrDefault(player.Id),
+                _tickProducedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>(),
+                _tickConsumedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>());
         }
     }
 

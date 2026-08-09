@@ -1140,6 +1140,38 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void EnergyStats_RecordsActualDrain_NotInstalledDemandWhenStarved()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Assembler, NearBlue(simulation, 5, -2), out var assemblerId));
+        AdvanceTicks(simulation, 30);
+
+        var solar = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.SolarPanel);
+        Assert.True(simulation.TrySetEntityHealthForTests(solar.Id, 0));
+
+        Assert.True(simulation.TrySetAssemblerRecipe(assemblerId, ItemRecipeId.IronGear));
+        simulation.AddItemToEntity(assemblerId, ItemId.IronPlate, 4);
+        var demand = MvpDefinitions.GetPowerDemand(EntityKind.Assembler);
+        Assert.True(demand > 0);
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
+        simulation.AdvanceTick(); // start craft (no drain yet)
+        Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
+        simulation.AdvanceTick(); // drain while progressing
+        var working = simulation.GetPlayer(new PlayerId(1)).EnergyStats.Query(10);
+        Assert.Equal(demand, working.DemandSeries[^1]);
+        var assemblerWorking = working.ConsumerRows.Single(row => row.Kind == EntityKind.Assembler);
+        Assert.Equal(demand, assemblerWorking.Series[^1]);
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
+        simulation.AdvanceTick();
+        var starved = simulation.GetPlayer(new PlayerId(1)).EnergyStats.Query(10);
+        Assert.Equal(0, starved.DemandSeries[^1]);
+        Assert.DoesNotContain(starved.ConsumerRows, row => row.Kind == EntityKind.Assembler && row.Series[^1] > 0);
+        Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
+    }
+
+    [Fact]
     public void Mine_DrivesWorkTicksAndConsumesEnergyOnCycleComplete()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);

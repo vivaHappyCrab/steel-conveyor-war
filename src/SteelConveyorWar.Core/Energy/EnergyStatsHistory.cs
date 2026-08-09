@@ -38,13 +38,13 @@ public sealed class EnergyStatsHistory
 
     public void Record(
         int totalProduced,
-        int totalDemand,
+        int totalConsumed,
         IReadOnlyDictionary<EntityKind, int> producedByKind,
-        IReadOnlyDictionary<EntityKind, int> demandByKind)
+        IReadOnlyDictionary<EntityKind, int> consumedByKind)
     {
         var index = _next;
         _totalProduced[index] = totalProduced;
-        _totalDemand[index] = totalDemand;
+        _totalDemand[index] = totalConsumed;
 
         for (var i = 0; i < ProducerKinds.Length; i++)
         {
@@ -53,7 +53,7 @@ public sealed class EnergyStatsHistory
 
         for (var i = 0; i < ConsumerKinds.Length; i++)
         {
-            _demandByKind[i, index] = demandByKind.GetValueOrDefault(ConsumerKinds[i]);
+            _demandByKind[i, index] = consumedByKind.GetValueOrDefault(ConsumerKinds[i]);
         }
 
         _next = (index + 1) % Capacity;
