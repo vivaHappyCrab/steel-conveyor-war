@@ -971,8 +971,6 @@ public sealed class GameSimulation
     }
 
     /// <summary>
-    /// Drains this tick's power demand from the building buffer. Returns false when the building
-    /// <summary>
     /// Drains <see cref="MvpDefinitions.GetPowerDemand"/> from the building buffer when it can afford to run.
     /// Returns false when the buffer is too low (work must pause). No demand configured → success (unpowered-free).
     /// Successful drains accumulate into this tick's energy-stats consumption sample.
