@@ -489,7 +489,15 @@ public sealed class GameSimulation
         var currentSum = bastion.BastionTemplate.Values.Sum();
         var previous = bastion.BastionTemplate.GetValueOrDefault(unitKind);
         var proposedSum = currentSum - previous + count;
-        if (proposedSum > GetBastionTemplateCapacity(bastion.OwnerId.Value))
+        // Player-wide template budget (not per-bastion): other owned bastions count against the same cap.
+        var otherBastionSum = World.Entities
+            .Where(entity =>
+                entity.IsAlive
+                && entity.OwnerId == bastion.OwnerId
+                && entity.Kind == EntityKind.Bastion
+                && entity.Id != bastionId)
+            .Sum(entity => entity.BastionTemplate.Values.Sum());
+        if (otherBastionSum + proposedSum > GetBastionTemplateCapacity(bastion.OwnerId.Value))
         {
             return false;
         }
@@ -2305,7 +2313,13 @@ public sealed class GameSimulation
                 factory.WorkTicksRemaining--;
                 if (factory.WorkTicksRemaining == 0)
                 {
-                    SpawnProducedUnit(factory, factory.ProductionTargetKind.Value);
+                    if (!TrySpawnProducedUnit(factory, factory.ProductionTargetKind.Value))
+                    {
+                        // Keep craft in-flight until a free collision tile appears; do not drop the unit.
+                        factory.WorkTicksRemaining = 1;
+                        continue;
+                    }
+
                     factory.WorkTicksTotal = 0;
                     if (!factory.IsManualProductionTarget)
                     {
@@ -2534,14 +2548,19 @@ public sealed class GameSimulation
         return unitKind == EntityKind.Scout ? factoryKind == EntityKind.DroneCenter : factoryKind == EntityKind.TankFactory;
     }
 
-    private void SpawnProducedUnit(WorldEntity factory, EntityKind unitKind)
+    private bool TrySpawnProducedUnit(WorldEntity factory, EntityKind unitKind)
     {
         if (factory.OwnerId is null)
         {
-            return;
+            return false;
         }
 
-        var unit = CreateEntity(unitKind, FindSpawnTileNear(factory, unitKind), factory.OwnerId);
+        if (!TryFindSpawnTileNear(factory, unitKind, out var spawnTile))
+        {
+            return false;
+        }
+
+        var unit = CreateEntity(unitKind, spawnTile, factory.OwnerId);
         var bastionId = ChooseSpawnBastionId(factory.OwnerId.Value, unitKind);
         unit.AssignedBastionId = bastionId;
         if (bastionId is not null)
@@ -2554,6 +2573,7 @@ public sealed class GameSimulation
         }
 
         World.AddEntity(unit);
+        return true;
     }
 
     /// <summary>
@@ -2585,7 +2605,7 @@ public sealed class GameSimulation
         return null;
     }
 
-    private TilePosition FindSpawnTileNear(WorldEntity factory, EntityKind unitKind)
+    private bool TryFindSpawnTileNear(WorldEntity factory, EntityKind unitKind, out TilePosition spawnTile)
     {
         var footprint = MvpDefinitions.GetFootprint(factory.Kind);
         for (var ring = 1; ring <= 6; ring++)
@@ -2616,12 +2636,14 @@ public sealed class GameSimulation
                 var probe = new WorldEntity(-1, unitKind, tile, factory.OwnerId);
                 if (IsGroundPassable(probe, tile) && CanOccupyWorldPosition(probe, probe.WorldPosition))
                 {
-                    return tile;
+                    spawnTile = tile;
+                    return true;
                 }
             }
         }
 
-        return factory.Position;
+        spawnTile = default;
+        return false;
     }
 
     private void ProcessBastions()
