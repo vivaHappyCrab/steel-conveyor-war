@@ -278,56 +278,51 @@ public sealed class CombatBastionTests
     }
 
     [Fact]
-    public void ProcessBastions_Defend_StationsAtPerimeter()
+    public void ProcessBastions_Defend_GarrisonsAdjacentUnit()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         var tank = ProduceTankForBastion(simulation, bastion.Id);
-        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, new TilePosition(bastion.Position.X + 8, bastion.Position.Y)));
+        Assert.True(PlaceAdjacent(simulation, tank, bastion.Position));
 
         Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
-        AdvanceTicks(simulation, 200);
+        simulation.AdvanceTick();
 
         tank = simulation.World.GetEntity(tank.Id)!;
-        Assert.False(tank.IsGarrisoned);
+        Assert.True(tank.IsGarrisoned);
         Assert.Equal(BastionOrderKind.Defend, tank.Order.Kind);
-        Assert.True(IsAdjacentToBastionFootprint(bastion, tank.Position));
-        Assert.Contains(simulation.World.GetEntitiesAt(tank.Position), entity => entity.Id == tank.Id);
     }
 
     [Fact]
-    public void ProcessBastions_Defend_SortiesWhenEnemyInVision()
+    public void ProcessBastions_Defend_UngarrisonsWhenEnemyInVision()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         var tank = ProduceTankForBastion(simulation, bastion.Id);
+        Assert.True(PlaceAdjacent(simulation, tank, bastion.Position));
         Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
-        AdvanceTicks(simulation, 200);
-        tank = simulation.World.GetEntity(tank.Id)!;
-        Assert.False(tank.IsGarrisoned);
-        Assert.True(IsAdjacentToBastionFootprint(bastion, tank.Position));
-        var standPosition = tank.Position;
+        simulation.AdvanceTick();
+        Assert.True(simulation.World.GetEntity(tank.Id)!.IsGarrisoned);
 
         var enemy = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
         Assert.True(simulation.TryTeleportEntityForTests(
             enemy.Id,
             new TilePosition(bastion.Position.X + 3, bastion.Position.Y)));
 
-        AdvanceTicks(simulation, 30);
-        tank = simulation.World.GetEntity(tank.Id)!;
-        Assert.False(tank.IsGarrisoned);
-        Assert.True(tank.Position != standPosition || tank.CurrentWaypoint is not null || tank.MovementPath.Count > 0);
+        simulation.AdvanceTick();
+        Assert.False(simulation.World.GetEntity(tank.Id)!.IsGarrisoned);
     }
 
     [Fact]
-    public void BastionDeath_KillsAssignedUnits()
+    public void BastionDeath_KillsAssignedGarrisonedUnits()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         var tank = ProduceTankForBastion(simulation, bastion.Id);
+        Assert.True(PlaceAdjacent(simulation, tank, bastion.Position));
         Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
-        AdvanceTicks(simulation, 80);
-        Assert.False(simulation.World.GetEntity(tank.Id)!.IsGarrisoned);
+        simulation.AdvanceTick();
+        Assert.True(simulation.World.GetEntity(tank.Id)!.IsGarrisoned);
 
         var tankId = tank.Id;
         var bastionId = bastion.Id;
@@ -379,31 +374,29 @@ public sealed class CombatBastionTests
     }
 
     [Fact]
-    public void ProcessBastions_Scout_StationsHomeCombatUnitsAndDoesNotSortie()
+    public void ProcessBastions_Scout_GarrisonsHomeCombatUnitsAndDoesNotSortie()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         var tank = ProduceTankForBastion(simulation, bastion.Id);
+        Assert.True(PlaceAdjacent(simulation, tank, bastion.Position));
         var scoutTarget = new TilePosition(bastion.Position.X + 4, bastion.Position.Y);
         Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Scout, scoutTarget)));
         Assert.Equal(BastionOrderKind.Defend, tank.Order.Kind);
 
-        AdvanceTicks(simulation, 200);
+        simulation.AdvanceTick();
         tank = simulation.World.GetEntity(tank.Id)!;
-        Assert.False(tank.IsGarrisoned);
-        Assert.True(IsAdjacentToBastionFootprint(bastion, tank.Position));
-        var standPosition = tank.Position;
+        Assert.True(tank.IsGarrisoned);
 
         var enemy = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
         Assert.True(simulation.TryTeleportEntityForTests(
             enemy.Id,
             new TilePosition(bastion.Position.X + 3, bastion.Position.Y)));
 
-        AdvanceTicks(simulation, 30);
+        simulation.AdvanceTick();
         tank = simulation.World.GetEntity(tank.Id)!;
-        Assert.False(tank.IsGarrisoned);
-        Assert.Equal(standPosition, tank.Position);
-        Assert.True(tank.Position.ManhattanDistance(enemy.Position) >= standPosition.ManhattanDistance(enemy.Position));
+        Assert.True(tank.IsGarrisoned);
+        Assert.Equal(bastion.Position, tank.Position);
     }
 
     [Fact]
@@ -426,18 +419,18 @@ public sealed class CombatBastionTests
     }
 
     [Fact]
-    public void ProcessBastions_Defend_StationedUnitContributesVision()
+    public void GarrisonedUnit_DoesNotOccupyTiles()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         var tank = ProduceTankForBastion(simulation, bastion.Id);
+        Assert.True(PlaceAdjacent(simulation, tank, bastion.Position));
         Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
-        AdvanceTicks(simulation, 200);
+        simulation.AdvanceTick();
 
         tank = simulation.World.GetEntity(tank.Id)!;
-        Assert.False(tank.IsGarrisoned);
-        Assert.Contains(simulation.World.GetEntitiesAt(tank.Position), entity => entity.Id == tank.Id);
-        Assert.Equal(VisibilityState.Visible, simulation.GetVisibility(new PlayerId(1), tank.Position));
+        Assert.True(tank.IsGarrisoned);
+        Assert.DoesNotContain(simulation.World.GetEntitiesAt(bastion.Position), entity => entity.Id == tank.Id);
     }
 
     private static WorldEntity ProduceScoutForBastion(GameSimulation simulation, int bastionId)
@@ -508,24 +501,6 @@ public sealed class CombatBastionTests
 
         var position = candidates.First(candidate => candidate.X >= 0 && candidate.Y >= 0);
         return simulation.TryTeleportEntityForTests(entity.Id, position);
-    }
-
-    private static bool IsAdjacentToBastionFootprint(WorldEntity bastion, TilePosition position)
-    {
-        var footprint = MvpDefinitions.GetFootprint(bastion.Kind);
-        var minX = bastion.Position.X - 1;
-        var maxX = bastion.Position.X + footprint.Width;
-        var minY = bastion.Position.Y - 1;
-        var maxY = bastion.Position.Y + footprint.Height;
-        var onRing =
-            (position.X >= minX && position.X <= maxX && (position.Y == minY || position.Y == maxY))
-            || (position.Y > minY && position.Y < maxY && (position.X == minX || position.X == maxX));
-        var insideFootprint =
-            position.X >= bastion.Position.X
-            && position.X < bastion.Position.X + footprint.Width
-            && position.Y >= bastion.Position.Y
-            && position.Y < bastion.Position.Y + footprint.Height;
-        return onRing && !insideFootprint;
     }
 
     private static void AdvanceTicks(GameSimulation simulation, int ticks)

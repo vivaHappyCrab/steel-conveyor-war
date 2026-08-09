@@ -619,7 +619,7 @@ public sealed class GameSimulation
         unit.Order = ResolveOrderForUnit(unit.Kind, bastionOrder);
         if (unit.Order.Kind == BastionOrderKind.Defend)
         {
-            // Defend stations on the bastion perimeter; ProcessBastions clears leftover garrison.
+            // Stay home / garrison unless Defend active defense ungarrisons them.
             return;
         }
 
@@ -2651,17 +2651,38 @@ public sealed class GameSimulation
         {
             TryCompleteBastionOrder(bastion);
 
-            // Active defense stations on the perimeter (visible, FoW); never snap-garrison.
-            // Clear any leftover garrison so Defend units can path/sortie and contribute vision.
-            foreach (var unit in World.Entities
-                         .Where(entity =>
-                             entity.IsAlive
-                             && entity.AssignedBastionId == bastion.Id
-                             && MvpDefinitions.UnitKinds.Contains(entity.Kind)
-                             && entity.Order.Kind == BastionOrderKind.Defend)
-                         .OrderBy(entity => entity.Id))
+            var units = World.Entities
+                .Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && MvpDefinitions.UnitKinds.Contains(entity.Kind))
+                .OrderBy(entity => entity.Id)
+                .ToList();
+
+            // Home units keep Defend while bastion is Scout/AttackArea; garrison them,
+            // but sortie only during active bastion Defend.
+            var allowSortie = bastion.Order.Kind == BastionOrderKind.Defend;
+            var threat = allowSortie
+                ? FindNearestEnemyInRange(bastion, GetBastionVisionRadius(bastion))
+                : null;
+
+            foreach (var unit in units)
             {
-                unit.IsGarrisoned = false;
+                if (unit.Order.Kind != BastionOrderKind.Defend)
+                {
+                    continue;
+                }
+
+                if (threat is not null)
+                {
+                    unit.IsGarrisoned = false;
+                    continue;
+                }
+
+                if (unit.Position.IsWithinEuclideanRange(bastion.Position, 1))
+                {
+                    unit.Position = bastion.Position;
+                    unit.WorldPosition = WorldPosition.FromTileCenter(bastion.Position);
+                    ResetMovementPath(unit);
+                    unit.IsGarrisoned = true;
+                }
             }
         }
     }
@@ -2804,7 +2825,7 @@ public sealed class GameSimulation
                 return null;
             }
 
-            // Sortie only for active bastion Defend; Scout/AttackArea home units hold perimeter.
+            // Sortie only for active bastion Defend; Scout/AttackArea home units stay put.
             if (bastion.Order.Kind == BastionOrderKind.Defend)
             {
                 var visionRadius = GetBastionVisionRadius(bastion);
@@ -2815,7 +2836,7 @@ public sealed class GameSimulation
                 }
             }
 
-            return GetDefendStandTile(bastion, unit);
+            return bastion.Position;
         }
 
         if (unit.AssignedBastionId is not null)
@@ -2824,59 +2845,6 @@ public sealed class GameSimulation
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Stable perimeter slot for a Defend unit: free tiles around the bastion footprint, assigned by unit id order.
-    /// </summary>
-    private TilePosition GetDefendStandTile(WorldEntity bastion, WorldEntity unit)
-    {
-        var slots = GetBastionPerimeterTiles(bastion)
-            .Where(tile => IsGroundPassable(unit, tile))
-            .OrderBy(tile => tile.Y)
-            .ThenBy(tile => tile.X)
-            .ToList();
-        if (slots.Count == 0)
-        {
-            return bastion.Position;
-        }
-
-        var defenders = World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && entity.AssignedBastionId == bastion.Id
-                && MvpDefinitions.UnitKinds.Contains(entity.Kind)
-                && entity.Order.Kind == BastionOrderKind.Defend)
-            .OrderBy(entity => entity.Id)
-            .ToList();
-        var index = defenders.FindIndex(entity => entity.Id == unit.Id);
-        if (index < 0)
-        {
-            index = 0;
-        }
-
-        return slots[index % slots.Count];
-    }
-
-    private static IEnumerable<TilePosition> GetBastionPerimeterTiles(WorldEntity bastion)
-    {
-        var footprint = MvpDefinitions.GetFootprint(bastion.Kind);
-        var minX = bastion.Position.X - 1;
-        var maxX = bastion.Position.X + footprint.Width;
-        var minY = bastion.Position.Y - 1;
-        var maxY = bastion.Position.Y + footprint.Height;
-
-        for (var x = minX; x <= maxX; x++)
-        {
-            yield return new TilePosition(x, minY);
-            yield return new TilePosition(x, maxY);
-        }
-
-        for (var y = minY + 1; y <= maxY - 1; y++)
-        {
-            yield return new TilePosition(minX, y);
-            yield return new TilePosition(maxX, y);
-        }
     }
 
     private bool MoveMobileEntityTowardTile(WorldEntity entity, TilePosition target)
