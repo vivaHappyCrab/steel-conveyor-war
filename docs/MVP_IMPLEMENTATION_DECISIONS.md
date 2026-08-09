@@ -28,11 +28,12 @@ This document records architecture and game-design decisions made while implemen
 
 ## Construction
 
-- БМК is the only builder-facing entity. Commander build APIs spend resources from the БМК inventory and create or queue ghost builds.
+- БМК is the only builder-facing entity. Commander build APIs create or queue ghost builds.
+- Ghost-build costs are paid by `TryPlaceGhostBuildFromCommander`: commander inventory first, then any **remaining** items from owned hubs within `CommanderInteractRadius` (Euclidean distance from commander world position to the hub footprint — same radius/check as Ctrl withdraw/deposit). Eligible hubs are spent in ascending entity-id order. Payment is all-or-nothing: if commander + in-radius hubs cannot cover the full cost, nothing is removed.
+- Construction-drone / construction-ticks research only shortens ghost build duration; drones do **not** pull materials from hubs.
 - T1 construction completes after a fixed number of ticks. T2 construction drones are represented by the same ghost-build model and can be expanded later without changing placement commands.
-- Costs are paid from the player's shared inventory for now. Hubs exist as world entities and logistics buffers, but they are not yet the only source of construction materials.
-- Player inventory is kept as broader faction state for later logistics/network rules.
-- If a build target is outside the БМК build radius, the core stores a queued build order and moves the БМК toward the target until placement becomes legal.
+- Player inventory remains broader faction state for later logistics/network rules; hubs are world logistics buffers and can fund BMK placement when in interact range.
+- If a build target is outside the БМК build radius, the core stores a queued build order and moves the БМК toward the target until placement becomes legal (payment still runs at placement time via the same commander/hub rule).
 - Building footprint is part of core placement rules: mines, laboratories and resource extractors are `2x2`; Bastions and military factories are `3x3`; other entities default to `1x1`.
 
 ## Economy And Logistics
@@ -70,7 +71,7 @@ This document records architecture and game-design decisions made while implemen
 
 ## Bastions And Combat
 
-- Bastions own desired unit templates (sum capped; research can raise capacity). Assigned factories can auto-pick missing units from the template.
+- Bastions own desired unit templates (sum capped; research can raise capacity). Assigned factories can auto-pick missing units from the template. Live supply (assigned living units + in-flight factory production) is exposed via `GetBastionUnitSupply`. SFML shows a center composition overlay for tier-unlocked unit kinds with live/max and +/- wired to `TrySetBastionTemplate`.
 - Produced units inherit the Bastion's current order (Scout filter applies). Manual factory recipes keep producing after spawn; autofill clears and re-picks deficits.
 - Active defense garrisons units inside the Bastion; threats in Bastion vision trigger a sortie. Bastion death kills assigned units.
 - Combat uses deterministic Euclidean range, cooldown, and **formula C** damage: `max(1, AttackDamage - Armor) * Resistance(projectile, targetCategory)` with basis-point integer math (`CombatDamage` / `MvpDefinitions.GetResistanceBasisPoints`). HP is clamped to ≥ 0.
@@ -95,7 +96,7 @@ This document records architecture and game-design decisions made while implemen
 - Terrain generation uses a local `System.Random` seeded with `RandomSeed` to jitter patch centers/radii on the left half, then mirrors resource tiles to the right for PvP fairness. Grass remains the default fill. The RNG is not kept for later ticks.
 - Starting Fe/Cu patches sit near each base; coal/oil patches sit farther toward the half-map center. Ore fill uses **Chebyshev** distance so each patch AABB is at least **4×4** (radius ≥ 2 → 5×5).
 - Each side starts with БМК, Bastion, Hub, and **one SolarPanel** on grass at Chebyshev distance 1 from the bastion footprint (no resource overlap).
-- SFML camera pans with **arrow keys**, **MMB drag**, and **edge-scroll** on the playfield (not WASD). **F1** selects the local БМК and centers the camera. With a bastion selected, **A/S/D/F** issue Attack/Scout/Defend/Patrol and **1–0** switch among owned bastions. World draw is clipped to the playfield; the top bar shows energy + BMK inventory (energy text turns red when `PowerDemand > PowerProduced`); the side panel wraps HUD text including combat stubs (projectile/vision/damage/fire rate/splash/armor). Buildings (except belts/inserters) and units use geometric pictograms; unit silhouettes are circle (БМК) / square (ground) / triangle (Scout).
+- SFML camera pans with **arrow keys**, **MMB drag**, and **edge-scroll** on the playfield (not WASD). **F1** selects the local БМК and centers the camera. With a bastion selected, **A/S/D/F** issue Attack/Scout/Defend/Patrol and **1–0** switch among owned bastions; a **center composition overlay** shows tier-unlocked unit stubs with live/max and +/- template controls. World draw is clipped to the playfield; the top bar shows energy + BMK inventory (energy text turns red when `PowerDemand > PowerProduced`); the side panel wraps HUD text including combat stubs (projectile/vision/damage/fire rate/splash/armor). Buildings (except belts/inserters) and units use geometric pictograms; unit silhouettes are circle (БМК) / square (ground) / triangle (Scout).
 - Terrain and entity layout currently live only for the process lifetime of one match. Exiting the client discards the in-memory grid; the next session regenerates from the same seed + generation parameters.
 - `RandomSeed` is accepted from `GameCreationOptions` / `config/game.json` (`simulation.defaultRandomSeed`) and consumed by starting terrain generation (reproducibility covered by `MapGenerationTests`).
 - Desired post-MVP reproducibility prefers **seed + generation parameters → regenerate** over opaque map blobs (better for lockstep / fairness than shipping terrain files).

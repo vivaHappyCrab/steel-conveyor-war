@@ -61,4 +61,34 @@ public class BuildMenuCatalogTests
             },
             BastionOrderBarModel.Commands);
     }
+
+    [Fact]
+    public void BastionCompositionPanelModel_GlyphAndCountLabel()
+    {
+        Assert.Equal("T", BastionCompositionPanelModel.Glyph(EntityKind.BasicTank));
+        Assert.Equal("L", BastionCompositionPanelModel.Glyph(EntityKind.LightBot));
+        Assert.Equal("2/5", BastionCompositionPanelModel.CountLabel(2, 5));
+    }
+
+    [Fact]
+    public void BastionCompositionPanelModel_UnlockedUnitKinds_StartsWithBaselineTank()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var unlocked = BastionCompositionPanelModel.UnlockedUnitKinds(simulation, new PlayerId(1));
+        Assert.Contains(EntityKind.BasicTank, unlocked);
+        Assert.DoesNotContain(EntityKind.LightBot, unlocked);
+    }
+
+    [Fact]
+    public void BastionCompositionPanelModel_BuildSlots_ExposesLiveAndTemplateMax()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 3));
+        var slots = BastionCompositionPanelModel.BuildSlots(simulation, bastion);
+        var tank = Assert.Single(slots, slot => slot.UnitKind == EntityKind.BasicTank);
+        Assert.Equal(0, tank.LiveCount);
+        Assert.Equal(3, tank.TemplateMax);
+        Assert.Equal("T", tank.Glyph);
+    }
 }
