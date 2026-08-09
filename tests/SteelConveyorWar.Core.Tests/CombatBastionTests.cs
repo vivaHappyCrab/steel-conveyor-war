@@ -139,12 +139,17 @@ public sealed class CombatBastionTests
         var defender = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
         Assert.True(PlaceAdjacent(simulation, attacker, defender.Position));
 
-        var stats = MvpDefinitions.GetStats(EntityKind.Commander);
+        var expectedDamage = simulation.ComputeCombatDamageForTests(attacker.Id, defender.Id);
+        var expectedCooldown = simulation.ResolveStat(
+            attacker.OwnerId!.Value,
+            ResearchStatIds.AttackCooldownTicks,
+            MvpDefinitions.GetStats(EntityKind.Commander).AttackCooldownTicks,
+            EntityKind.Commander.ToString());
         var healthBefore = defender.Health;
         simulation.AdvanceTick();
 
-        Assert.Equal(healthBefore - stats.AttackDamage, defender.Health);
-        Assert.Equal(stats.AttackCooldownTicks, attacker.AttackCooldownRemaining);
+        Assert.Equal(healthBefore - expectedDamage, defender.Health);
+        Assert.Equal(expectedCooldown, attacker.AttackCooldownRemaining);
     }
 
     [Fact]
@@ -158,9 +163,10 @@ public sealed class CombatBastionTests
         Assert.True(simulation.TryTeleportEntityForTests(defender.Id, new TilePosition(11, 11)));
 
         var healthBefore = defender.Health;
+        var expectedDamage = simulation.ComputeCombatDamageForTests(attacker.Id, defender.Id);
         simulation.AdvanceTick();
 
-        Assert.Equal(healthBefore - MvpDefinitions.GetStats(EntityKind.Commander).AttackDamage, defender.Health);
+        Assert.Equal(healthBefore - expectedDamage, defender.Health);
         Assert.True(attacker.Position.IsWithinEuclideanRange(defender.Position, 3));
         Assert.Equal(2, attacker.Position.ManhattanDistance(defender.Position));
     }
@@ -186,9 +192,8 @@ public sealed class CombatBastionTests
         var attacker = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
         var defender = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
         Assert.True(PlaceAdjacent(simulation, attacker, defender.Position));
-        Assert.True(simulation.TrySetEntityHealthForTests(
-            defender.Id,
-            MvpDefinitions.GetStats(EntityKind.Commander).AttackDamage));
+        var lethal = simulation.ComputeCombatDamageForTests(attacker.Id, defender.Id);
+        Assert.True(simulation.TrySetEntityHealthForTests(defender.Id, lethal));
 
         simulation.AdvanceTick();
 
@@ -282,9 +287,8 @@ public sealed class CombatBastionTests
 
         var enemy = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
         Assert.True(PlaceAdjacent(simulation, enemy, bastion.Position));
-        Assert.True(simulation.TrySetEntityHealthForTests(
-            bastion.Id,
-            MvpDefinitions.GetStats(EntityKind.Commander).AttackDamage));
+        var lethal = simulation.ComputeCombatDamageForTests(enemy.Id, bastion.Id);
+        Assert.True(simulation.TrySetEntityHealthForTests(bastion.Id, lethal));
 
         var tankId = tank.Id;
         var bastionId = bastion.Id;

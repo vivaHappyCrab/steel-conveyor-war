@@ -103,5 +103,17 @@ public enum BastionOrderKind
 
 public enum ProjectileKind
 {
-    GroundToGround = 0
+    GroundToGround = 0,
+    Ballistic = 1,
+    AirToGround = 2
+}
+
+/// <summary>
+/// Coarse target class for resistance lookup (ProjectileKind × category).
+/// </summary>
+public enum CombatTargetCategory
+{
+    Unit = 0,
+    Building = 1,
+    Wall = 2
 }

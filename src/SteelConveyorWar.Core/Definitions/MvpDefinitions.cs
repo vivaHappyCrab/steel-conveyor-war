@@ -151,6 +151,57 @@ public static class MvpDefinitions
         return !UnitKinds.Contains(kind) && kind != EntityKind.Commander && !IsPassableLogistic(kind);
     }
 
+    public static bool IsWallKind(EntityKind kind) => kind is EntityKind.Wall or EntityKind.SteelWall;
+
+    /// <summary>
+    /// Ground units that can receive Wall/SteelWall G2G cover. Scout is treated as air (no cover).
+    /// Alliances (#41) are not modeled yet — cover uses same <see cref="PlayerId"/> as the wall owner.
+    /// </summary>
+    public static bool IsGroundUnitForWallCover(EntityKind kind)
+    {
+        if (kind == EntityKind.Scout || IsWallKind(kind))
+        {
+            return false;
+        }
+
+        return kind == EntityKind.Commander || UnitKinds.Contains(kind);
+    }
+
+    public static CombatTargetCategory GetCombatTargetCategory(EntityKind kind)
+    {
+        if (IsWallKind(kind))
+        {
+            return CombatTargetCategory.Wall;
+        }
+
+        if (kind == EntityKind.Commander || UnitKinds.Contains(kind))
+        {
+            return CombatTargetCategory.Unit;
+        }
+
+        return CombatTargetCategory.Building;
+    }
+
+    /// <summary>
+    /// Resistance multipliers in basis points (10_000 = 1.0) for ProjectileKind × target category.
+    /// </summary>
+    public static int GetResistanceBasisPoints(ProjectileKind projectileKind, CombatTargetCategory targetCategory)
+    {
+        return (projectileKind, targetCategory) switch
+        {
+            (ProjectileKind.GroundToGround, CombatTargetCategory.Unit) => 10_000,
+            (ProjectileKind.GroundToGround, CombatTargetCategory.Building) => 9_000,
+            (ProjectileKind.GroundToGround, CombatTargetCategory.Wall) => 7_000,
+            (ProjectileKind.Ballistic, CombatTargetCategory.Unit) => 10_000,
+            (ProjectileKind.Ballistic, CombatTargetCategory.Building) => 11_000,
+            (ProjectileKind.Ballistic, CombatTargetCategory.Wall) => 13_000,
+            (ProjectileKind.AirToGround, CombatTargetCategory.Unit) => 11_000,
+            (ProjectileKind.AirToGround, CombatTargetCategory.Building) => 5_000,
+            (ProjectileKind.AirToGround, CombatTargetCategory.Wall) => 4_000,
+            _ => 10_000
+        };
+    }
+
     public static readonly IReadOnlyDictionary<EntityKind, ProductionRecipe> ProductionRecipes =
         new Dictionary<EntityKind, ProductionRecipe>
         {
@@ -192,28 +243,29 @@ public static class MvpDefinitions
     {
         return kind switch
         {
-            EntityKind.Commander => new EntityStats(300, 10, 3, 25, 8, 7),
-            EntityKind.Bastion => new EntityStats(450, VisionRadius: 12),
-            EntityKind.Hub => new EntityStats(150, VisionRadius: 4),
-            EntityKind.Mine or EntityKind.CoalMine or EntityKind.OilWell => new EntityStats(120, VisionRadius: 3),
-            EntityKind.Smelter or EntityKind.Refinery => new EntityStats(120, VisionRadius: 3),
-            EntityKind.Assembler => new EntityStats(130, VisionRadius: 3),
-            EntityKind.SolarPanel or EntityKind.CoalPlant => new EntityStats(90, VisionRadius: 3),
-            EntityKind.TankFactory or EntityKind.DroneCenter or EntityKind.Laboratory => new EntityStats(160, VisionRadius: 4),
-            EntityKind.Wall => new EntityStats(180, VisionRadius: 1),
-            EntityKind.SteelWall => new EntityStats(320, VisionRadius: 1),
-            EntityKind.MachineGunTurret => new EntityStats(130, 8, 5, 10, VisionRadius: 6),
-            EntityKind.CannonTurret => new EntityStats(170, 24, 6, 25, VisionRadius: 7),
-            EntityKind.AntiAirTurret => new EntityStats(140, 14, 6, 15, VisionRadius: 7),
-            EntityKind.LightBot => new EntityStats(35, 5, 1, 18, 5, 4),
-            EntityKind.BasicTank => new EntityStats(90, 14, 3, 24, 9, 5),
-            EntityKind.Scout => new EntityStats(25, 0, 0, 30, 3, 10),
-            EntityKind.MediumBot => new EntityStats(60, 10, 1, 16, 4, 5),
-            EntityKind.MediumTank => new EntityStats(150, 24, 4, 28, 10, 6),
-            EntityKind.AntiAirBot => new EntityStats(70, 10, 4, 16, 6, 6),
-            EntityKind.RocketLauncher => new EntityStats(75, 32, 7, 36, 12, 6),
+            EntityKind.Commander => new EntityStats(300, 10, 3, 25, 8, 7, Armor: 2, ProjectileKind: ProjectileKind.GroundToGround),
+            EntityKind.Bastion => new EntityStats(450, VisionRadius: 12, Armor: 4),
+            EntityKind.Hub => new EntityStats(150, VisionRadius: 4, Armor: 1),
+            EntityKind.Mine or EntityKind.CoalMine or EntityKind.OilWell => new EntityStats(120, VisionRadius: 3, Armor: 1),
+            EntityKind.Smelter or EntityKind.Refinery => new EntityStats(120, VisionRadius: 3, Armor: 1),
+            EntityKind.Assembler => new EntityStats(130, VisionRadius: 3, Armor: 1),
+            EntityKind.SolarPanel or EntityKind.CoalPlant => new EntityStats(90, VisionRadius: 3, Armor: 1),
+            EntityKind.TankFactory or EntityKind.DroneCenter or EntityKind.Laboratory => new EntityStats(160, VisionRadius: 4, Armor: 2),
+            EntityKind.Wall => new EntityStats(180, VisionRadius: 1, Armor: 8),
+            EntityKind.SteelWall => new EntityStats(320, VisionRadius: 1, Armor: 14),
+            EntityKind.MachineGunTurret => new EntityStats(130, 8, 5, 10, VisionRadius: 6, Armor: 2, ProjectileKind: ProjectileKind.GroundToGround),
+            EntityKind.CannonTurret => new EntityStats(170, 24, 6, 25, VisionRadius: 7, Armor: 4, ProjectileKind: ProjectileKind.Ballistic, SplashRadius: 1),
+            EntityKind.AntiAirTurret => new EntityStats(140, 14, 6, 15, VisionRadius: 7, Armor: 2, ProjectileKind: ProjectileKind.AirToGround),
+            EntityKind.LightBot => new EntityStats(35, 5, 1, 18, 5, 4, Armor: 0, ProjectileKind: ProjectileKind.GroundToGround),
+            EntityKind.BasicTank => new EntityStats(90, 14, 3, 24, 9, 5, Armor: 3, ProjectileKind: ProjectileKind.GroundToGround),
+            EntityKind.Scout => new EntityStats(25, 0, 0, 30, 3, 10, Armor: 0),
+            EntityKind.MediumBot => new EntityStats(60, 10, 1, 16, 4, 5, Armor: 1, ProjectileKind: ProjectileKind.GroundToGround),
+            EntityKind.MediumTank => new EntityStats(150, 24, 4, 28, 10, 6, Armor: 5, ProjectileKind: ProjectileKind.Ballistic, SplashRadius: 1),
+            EntityKind.AntiAirBot => new EntityStats(70, 10, 4, 16, 6, 6, Armor: 1, ProjectileKind: ProjectileKind.AirToGround),
+            EntityKind.RocketLauncher => new EntityStats(75, 32, 7, 36, 12, 6, Armor: 0, ProjectileKind: ProjectileKind.Ballistic, SplashRadius: 2),
             EntityKind.GhostBuild => new EntityStats(20, VisionRadius: 0),
-            _ => new EntityStats(60, VisionRadius: 2)
+            EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter => new EntityStats(40, VisionRadius: 1, Armor: 0),
+            _ => new EntityStats(60, VisionRadius: 2, Armor: 1)
         };
     }
 

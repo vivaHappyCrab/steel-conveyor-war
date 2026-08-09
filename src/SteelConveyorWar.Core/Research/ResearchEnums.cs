@@ -43,6 +43,10 @@ public static class ResearchStatIds
     public const string EnergyShortagePenalty = "stat.energy.shortage-penalty";
     public const string BastionTemplateCapacity = "stat.bastion.template-capacity";
     public const string MaxBastions = "stat.bastion.max-count";
+    public const string AttackDamage = "stat.combat.attack-damage";
+    public const string Armor = "stat.combat.armor";
+    public const string AttackCooldownTicks = "stat.combat.attack-cooldown-ticks";
+    public const string MaxHealth = "stat.combat.max-health";
 }
 
 public static class ResearchCapabilityIds
