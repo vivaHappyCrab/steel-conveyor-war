@@ -235,6 +235,45 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void TryPlaceGhostBuildFromCommander_AppliesDirectionAndAssemblerRecipe()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Conveyor,
+            new TilePosition(7, 14),
+            out var conveyorGhostId,
+            Direction.North));
+        Assert.Equal(Direction.North, simulation.World.GetEntity(conveyorGhostId)!.Direction);
+        AdvanceTicks(simulation, 30);
+        Assert.Equal(Direction.North, simulation.World.GetEntity(conveyorGhostId)!.Direction);
+
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Assembler,
+            new TilePosition(2, 18),
+            out var assemblerGhostId,
+            Direction.East,
+            ItemRecipeId.CopperWire));
+        Assert.Equal(ItemRecipeId.CopperWire, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
+        AdvanceTicks(simulation, 30);
+        Assert.Equal(ItemRecipeId.CopperWire, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
+    }
+
+    [Fact]
+    public void Inventory_AffordableSets_UsesBottleneckFromCommanderStock()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var mineCost = MvpDefinitions.BuildCosts[EntityKind.Mine];
+        var expected = commander.Inventory.AffordableSets(mineCost);
+        Assert.True(expected >= 1);
+        Assert.Equal(commander.Inventory.Count(ItemId.IronPlate) / mineCost[ItemId.IronPlate], expected);
+    }
+
+    [Fact]
     public void TryQueueCommanderBuild_MovesCommanderUntilTargetIsInBuildRadius()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);

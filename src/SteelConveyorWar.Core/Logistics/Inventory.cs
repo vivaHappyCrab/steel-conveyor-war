@@ -44,6 +44,28 @@ public sealed class Inventory
         return costs.All(cost => Has(cost.Key, cost.Value));
     }
 
+    /// <summary>How many full cost sets this inventory can pay (0 if any required item is missing).</summary>
+    public int AffordableSets(IReadOnlyDictionary<ItemId, int> costs)
+    {
+        if (costs.Count == 0)
+        {
+            return 0;
+        }
+
+        var affordable = int.MaxValue;
+        foreach (var cost in costs)
+        {
+            if (cost.Value <= 0)
+            {
+                continue;
+            }
+
+            affordable = Math.Min(affordable, Count(cost.Key) / cost.Value);
+        }
+
+        return affordable == int.MaxValue ? 0 : affordable;
+    }
+
     public bool TryRemove(ItemId item, int amount)
     {
         if (!Has(item, amount))

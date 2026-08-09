@@ -50,7 +50,11 @@ public sealed record BastionOrder(BastionOrderKind Kind, TilePosition? Target = 
 
 public sealed record TechSignatureHotspot(int ZoneX, int ZoneY, int Intensity);
 
-public sealed record CommanderBuildOrder(EntityKind TargetKind, TilePosition TargetPosition);
+public sealed record CommanderBuildOrder(
+    EntityKind TargetKind,
+    TilePosition TargetPosition,
+    Direction Direction = Direction.East,
+    ItemRecipeId? SelectedItemRecipe = null);
 
 public sealed record EntityStats(int MaxHealth, int AttackDamage = 0, int AttackRange = 0, int AttackCooldownTicks = 30, int MoveEveryTicks = 10, int VisionRadius = 4);
 
