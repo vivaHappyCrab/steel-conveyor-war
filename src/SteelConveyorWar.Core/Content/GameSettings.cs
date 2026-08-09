@@ -16,6 +16,7 @@ public sealed record GameSettings(
     int DefaultRandomSeed,
     string ResearchContentFile,
     string ResearchProfileId,
+    string MapContentFile,
     WindowSettings Window)
 {
     public static GameSettings Default { get; } = new(
@@ -26,5 +27,6 @@ public sealed record GameSettings(
         DefaultRandomSeed: 42,
         ResearchContentFile: "research.json",
         ResearchProfileId: ResearchProfileIds.MvpB,
+        MapContentFile: "maps/default.json",
         Window: WindowSettings.Default);
 }

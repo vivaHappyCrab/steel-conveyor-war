@@ -155,7 +155,7 @@ public static class MvpDefinitions
 
     /// <summary>
     /// Ground units that can receive Wall/SteelWall G2G cover. Scout is treated as air (no cover).
-    /// Alliances (#41) are not modeled yet — cover uses same <see cref="PlayerId"/> as the wall owner.
+    /// Allied wall cover uses same <see cref="PlayerState.TeamId"/> as the target (map-config alliances).
     /// </summary>
     public static bool IsGroundUnitForWallCover(EntityKind kind)
     {

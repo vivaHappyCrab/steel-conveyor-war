@@ -5,16 +5,20 @@ public sealed class PlayerState
     private readonly VisibilityState[,] _visibility;
     private readonly List<TechSignatureHotspot> _techSignatures = new();
 
-    public PlayerState(PlayerId id, string name, WorldSize worldSize)
+    public PlayerState(PlayerId id, string name, WorldSize worldSize, int teamId)
     {
         Id = id;
         Name = name;
+        TeamId = teamId;
         _visibility = new VisibilityState[worldSize.Width, worldSize.Height];
     }
 
     public PlayerId Id { get; }
 
     public string Name { get; }
+
+    /// <summary>Static alliance id for the match. Same TeamId = allied (no FF, shared vision).</summary>
+    public int TeamId { get; }
 
     public Inventory Inventory { get; } = new();
 

@@ -19,13 +19,15 @@ var gameSettings = GameSettingsLoader.Parse(File.ReadAllText(gameConfigPath));
 var catalog = LoadRequiredJson(configDirectory, gameSettings.ResearchContentFile, ResearchContentLoader.Parse, "research catalog");
 var tiles = LoadRequiredJson(configDirectory, "tiles.json", TileContentLoader.Parse, "tile catalog");
 var entities = LoadRequiredJson(configDirectory, "entities.json", EntityContentLoader.Parse, "entity catalog");
+var map = LoadRequiredJson(configDirectory, gameSettings.MapContentFile, MapSettingsLoader.Parse, "map settings");
 
 var options = new GameCreationOptions(
     gameSettings.DefaultRandomSeed,
     gameSettings.ResearchProfileId,
     catalog,
     tiles,
-    entities);
+    entities,
+    map);
 
 var simulation = GameSimulation.CreateNewGame(options);
 var display = new SfmlDisplayOptions(

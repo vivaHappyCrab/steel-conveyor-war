@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "mapId": "default",
+  "players": [
+    { "id": 1, "name": "Blue", "teamId": 1 },
+    { "id": 2, "name": "Red", "teamId": 2 }
+  ]
+}

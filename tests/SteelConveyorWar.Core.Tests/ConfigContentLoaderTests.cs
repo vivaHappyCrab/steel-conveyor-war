@@ -12,6 +12,7 @@ public sealed class ConfigContentLoaderTests
         Assert.Equal(42, settings.DefaultRandomSeed);
         Assert.Equal("research.json", settings.ResearchContentFile);
         Assert.Equal(ResearchProfileIds.MvpB, settings.ResearchProfileId);
+        Assert.Equal("maps/default.json", settings.MapContentFile);
         Assert.True(settings.Window.Width > 0);
         Assert.True(settings.Window.Height > 0);
         Assert.False(string.IsNullOrWhiteSpace(settings.Window.Title));
