@@ -275,6 +275,7 @@ public sealed class ResearchSystem
 
     private void ProcessPlayerResearch(GameSimulation simulation, PlayerState player, long tick)
     {
+        _ = tick;
         var research = player.Research;
         research.EnsureTracks(_profile);
 
@@ -283,35 +284,54 @@ public sealed class ResearchSystem
             .OrderBy(entity => entity.Id)
             .ToList();
 
-        if (labs.Count > 0 && tick % LabCycleTicks == 0)
+        var activeProjects = CollectActiveProjects(research);
+        var packConsumptions = 0;
+
+        foreach (var lab in labs)
         {
-            var activeProjects = CollectActiveProjects(research);
-            if (activeProjects.Count > 0)
+            if (activeProjects.Count == 0)
             {
-                var packConsumptions = 0;
-                foreach (var lab in labs)
-                {
-                    if (!activeProjects.Any(project => CanAfford(lab, project.Definition)))
-                    {
-                        continue;
-                    }
-
-                    if (!simulation.TryConsumeBuildingEnergy(lab))
-                    {
-                        continue;
-                    }
-
-                    if (TryConsumePackForAnyActiveProject(lab, research, activeProjects))
-                    {
-                        packConsumptions++;
-                    }
-                }
-
-                if (packConsumptions > 0)
-                {
-                    DistributeWork(research, activeProjects, packConsumptions);
-                }
+                lab.WorkTicksRemaining = 0;
+                lab.WorkTicksTotal = 0;
+                continue;
             }
+
+            if (!activeProjects.Any(project => CanAfford(lab, project.Definition)))
+            {
+                lab.WorkTicksRemaining = 0;
+                lab.WorkTicksTotal = 0;
+                continue;
+            }
+
+            if (lab.WorkTicksRemaining <= 0)
+            {
+                lab.WorkTicksTotal = LabCycleTicks;
+                lab.WorkTicksRemaining = LabCycleTicks;
+            }
+
+            lab.WorkTicksRemaining--;
+            if (lab.WorkTicksRemaining > 0)
+            {
+                continue;
+            }
+
+            if (!simulation.TryConsumeBuildingEnergy(lab))
+            {
+                lab.WorkTicksTotal = 0;
+                continue;
+            }
+
+            if (TryConsumePackForAnyActiveProject(lab, research, activeProjects))
+            {
+                packConsumptions++;
+            }
+
+            lab.WorkTicksTotal = 0;
+        }
+
+        if (packConsumptions > 0)
+        {
+            DistributeWork(research, activeProjects, packConsumptions);
         }
 
         EvaluateCompletions(research);

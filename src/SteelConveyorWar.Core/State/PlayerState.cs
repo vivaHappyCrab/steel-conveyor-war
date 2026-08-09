@@ -32,9 +32,6 @@ public sealed class PlayerState
 
     public int PowerDemand { get; internal set; }
 
-    /// <summary>Deterministic round-robin cursor for filling building energy buffers.</summary>
-    public int EnergyRoundRobinIndex { get; internal set; }
-
     public IReadOnlyList<TechSignatureHotspot> TechSignatures => _techSignatures.AsReadOnly();
 
     public VisibilityState GetVisibility(TilePosition position)

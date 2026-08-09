@@ -100,24 +100,7 @@ public class GameSimulationTests
     }
 
     [Fact]
-    public void Factory_ProducesUnitForAssignedBastion()
-    {
-        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
-        AdvanceTicks(simulation, 30);
-
-        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
-        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
-        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
-        AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
-
-        Assert.Contains(simulation.World.Entities, entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id);
-    }
-
-    [Fact]
-    public void BastionTemplate_AssignedFactoryAutofillsMissingUnits()
+    public void Factory_ProducesUnitAssignedToDeficitBastion()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
@@ -128,8 +111,25 @@ public class GameSimulationTests
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
         Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 1));
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, null));
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank));
+        Assert.Null(simulation.World.GetEntity(factoryId)!.AssignedBastionId);
+        AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
+
+        Assert.Contains(simulation.World.Entities, entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id);
+    }
+
+    [Fact]
+    public void BastionTemplate_FactoryAutofillsMissingUnitsAcrossBastions()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
+        AdvanceTicks(simulation, 30);
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
+        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
+        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 1));
         AdvanceTicks(simulation, 70);
 
         Assert.Contains(simulation.World.Entities, entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id);
@@ -162,7 +162,7 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 12);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 4);
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank));
         simulation.AdvanceTick();
         Assert.True(simulation.World.GetEntity(factoryId)!.WorkTicksRemaining > 0);
         Assert.Equal(1, simulation.GetBastionUnitSupply(bastion.Id, EntityKind.BasicTank));
@@ -334,12 +334,13 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 40);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 20);
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank));
         AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
 
         var factory = simulation.World.GetEntity(factoryId)!;
         Assert.Equal(EntityKind.BasicTank, factory.ProductionTargetKind);
         Assert.True(factory.IsManualProductionTarget);
+        Assert.Null(factory.AssignedBastionId);
         Assert.Equal(1, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id));
 
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
@@ -360,7 +361,7 @@ public class GameSimulationTests
     }
 
     [Fact]
-    public void TrySetFactoryProduction_RecipeOnly_PreservesAssignedBastion()
+    public void TrySetFactoryProduction_IgnoresBastionIdArgument()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
@@ -368,17 +369,19 @@ public class GameSimulationTests
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
-        Assert.Equal(bastion.Id, simulation.World.GetEntity(factoryId)!.AssignedBastionId);
+        var factory = simulation.World.GetEntity(factoryId)!;
+        Assert.Equal(EntityKind.BasicTank, factory.ProductionTargetKind);
+        Assert.Null(factory.AssignedBastionId);
+        Assert.True(factory.IsManualProductionTarget);
 
         Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.LightBot));
-        var factory = simulation.World.GetEntity(factoryId)!;
+        factory = simulation.World.GetEntity(factoryId)!;
         Assert.Equal(EntityKind.LightBot, factory.ProductionTargetKind);
-        Assert.Equal(bastion.Id, factory.AssignedBastionId);
-        Assert.True(factory.IsManualProductionTarget);
+        Assert.Null(factory.AssignedBastionId);
     }
 
     [Fact]
-    public void TryAssignFactoryBastion_PreservesAutofillMode()
+    public void TryAssignFactoryBastion_IsObsoleteNoOp()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerId = new PlayerId(1);
@@ -386,37 +389,8 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
-        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 1));
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, null));
-        Assert.False(simulation.World.GetEntity(factoryId)!.IsManualProductionTarget);
-
-        UnlockTier2ForTests(simulation, playerId);
-        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.AdditionalBastions));
-        var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
-        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
-            commander.Id,
-            EntityKind.Bastion,
-            NearBlue(simulation, 8, -4),
-            out var secondBastionGhostId));
-        AdvanceTicks(simulation, 30);
-        var secondBastion = simulation.World.GetEntity(secondBastionGhostId)!;
-        Assert.Equal(EntityKind.Bastion, secondBastion.Kind);
-
-        // Idle autofill with no inputs leaves a sticky deficit pick; reassignment must clear it.
-        AdvanceTicks(simulation, 1);
-        Assert.Equal(EntityKind.BasicTank, simulation.World.GetEntity(factoryId)!.ProductionTargetKind);
-        Assert.True(simulation.TryAssignFactoryBastion(factoryId, secondBastion.Id));
-        var factory = simulation.World.GetEntity(factoryId)!;
-        Assert.Equal(secondBastion.Id, factory.AssignedBastionId);
-        Assert.False(factory.IsManualProductionTarget);
-        Assert.Null(factory.ProductionTargetKind);
-
-        Assert.True(simulation.TryAssignFactoryBastion(factoryId, bastion.Id));
-        factory = simulation.World.GetEntity(factoryId)!;
-        Assert.Equal(bastion.Id, factory.AssignedBastionId);
-        Assert.False(factory.IsManualProductionTarget);
-        Assert.Null(factory.ProductionTargetKind);
+        Assert.False(simulation.TryAssignFactoryBastion(factoryId, bastion.Id));
+        Assert.Null(simulation.World.GetEntity(factoryId)!.AssignedBastionId);
     }
 
     [Fact]
@@ -435,8 +409,6 @@ public class GameSimulationTests
             Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
             simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
             simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
-            Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
-            Assert.True(simulation.TrySetFactoryProduction(factoryId, null));
         }
 
         AdvanceTicks(simulation, 70);
@@ -458,8 +430,6 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 40);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 20);
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, null));
 
         AdvanceTicks(simulation, 70);
         Assert.Contains(simulation.World.Entities, entity =>
@@ -468,29 +438,28 @@ public class GameSimulationTests
     }
 
     [Fact]
-    public void TrySetFactoryProduction_RejectsForeignBastionAssignment()
+    public void TrySetFactoryProduction_AcceptsObsoleteBastionIdWithoutAssignment()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var enemyBastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(2) && entity.Kind == EntityKind.Bastion);
         Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
-        Assert.False(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, enemyBastion.Id));
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, enemyBastion.Id));
         Assert.Null(simulation.World.GetEntity(factoryId)!.AssignedBastionId);
-        Assert.Null(simulation.World.GetEntity(factoryId)!.ProductionTargetKind);
+        Assert.Equal(EntityKind.BasicTank, simulation.World.GetEntity(factoryId)!.ProductionTargetKind);
     }
 
     [Fact]
     public void TrySetFactoryProduction_RejectsOutputChangeWhileWorkInProgress()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank));
         AdvanceTicks(simulation, 1);
 
         var factory = simulation.World.GetEntity(factoryId)!;
@@ -811,8 +780,9 @@ public class GameSimulationTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, NearBlue(simulation, 5, 0), out _));
-        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, NearBlue(simulation, 4, -1), out _));
+        // Use 1x1 solar panels so the diagonal corner stays a single-tile choke (hubs are 2x2).
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.SolarPanel, NearBlue(simulation, 5, 0), out _));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.SolarPanel, NearBlue(simulation, 4, -1), out _));
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.TryIssueMoveCommand(commander.Id, NearBlue(simulation, 5, -1)));
@@ -1088,16 +1058,26 @@ public class GameSimulationTests
     }
 
     [Fact]
-    public void EnergyBuffer_IdleDoesNotDrain_EmptyPausesWork_RoundRobinFills()
+    public void EnergyBuffer_IdleDoesNotDrain_EmptyPausesWork_EmptiestFirstFills()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Assembler, NearBlue(simulation, 5, -2), out var assemblerId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Smelter, NearBlue(simulation, 8, -2), out var smelterId));
         AdvanceTicks(simulation, 30);
         var assembler = simulation.World.GetEntity(assemblerId)!;
+        var smelter = simulation.World.GetEntity(smelterId)!;
         Assert.Equal(MvpDefinitions.GetEnergyBufferCapacity(EntityKind.Assembler), assembler.EnergyBufferCapacity);
         var filled = assembler.EnergyBuffer;
         AdvanceTicks(simulation, 10);
         Assert.True(assembler.EnergyBuffer >= filled);
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, assembler.EnergyBufferCapacity));
+        Assert.True(simulation.TrySetEnergyBufferForTests(smelterId, 0));
+        var beforeSmelter = smelter.EnergyBuffer;
+        var beforeAssembler = assembler.EnergyBuffer;
+        AdvanceTicks(simulation, 1);
+        Assert.True(smelter.EnergyBuffer > beforeSmelter);
+        Assert.Equal(beforeAssembler, assembler.EnergyBuffer);
 
         var solar = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.SolarPanel);
         Assert.True(simulation.TrySetEntityHealthForTests(solar.Id, 0));
@@ -1114,6 +1094,29 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
         AdvanceTicks(simulation, remaining + 1);
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.IronGear));
+    }
+
+    [Fact]
+    public void Mine_DrivesWorkTicksAndConsumesEnergyOnCycleComplete()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var ironTile = FindReachableTerrain(simulation, commander, TerrainType.IronOre);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, ironTile, out var mineId));
+        AdvanceTicks(simulation, 30);
+
+        var mine = simulation.World.GetEntity(mineId)!;
+        Assert.True(simulation.TrySetEnergyBufferForTests(mineId, int.MaxValue));
+        var beforeOre = mine.OutputBuffer.Count(ItemId.IronOre);
+        simulation.AdvanceTick();
+        Assert.Equal(MvpDefinitions.MineWorkTicks, mine.WorkTicksTotal);
+        Assert.True(mine.WorkTicksRemaining > 0);
+        Assert.True(mine.WorkTicksRemaining < MvpDefinitions.MineWorkTicks);
+
+        var energyBefore = mine.EnergyBuffer;
+        AdvanceTicks(simulation, mine.WorkTicksRemaining);
+        Assert.Equal(beforeOre + 1, mine.OutputBuffer.Count(ItemId.IronOre));
+        Assert.True(mine.EnergyBuffer < energyBefore);
     }
 
     [Fact]
@@ -1140,9 +1143,70 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(mineId, 100));
 
         var before = mine.EnergyBuffer;
-        AdvanceTicks(simulation, 15);
+        AdvanceTicks(simulation, MvpDefinitions.MineWorkTicks);
         Assert.Equal(before, mine.EnergyBuffer);
         Assert.Equal(maxStack, mine.OutputBuffer.Count(ItemId.IronOre));
+        Assert.Equal(0, mine.WorkTicksRemaining);
+        Assert.Equal(0, mine.WorkTicksTotal);
+    }
+
+    [Fact]
+    public void Inserters_RoundRobinExtractFromSameSource()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var ironTile = FindReachableTerrain(simulation, commander, TerrainType.IronOre);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, ironTile, out var mineId));
+        AdvanceTicks(simulation, 30);
+
+        var mine = simulation.World.GetEntity(mineId)!;
+        Assert.True(simulation.TrySetEnergyBufferForTests(mineId, int.MaxValue));
+        Assert.True(simulation.TryAddOutputItemToEntity(mineId, ItemId.IronOre, 20));
+
+        var footprint = MvpDefinitions.GetFootprint(EntityKind.Mine);
+        var eastInserterPos = new TilePosition(mine.Position.X + footprint.Width, mine.Position.Y);
+        var westInserterPos = new TilePosition(mine.Position.X - 1, mine.Position.Y);
+        var eastHubPos = new TilePosition(eastInserterPos.X + 1, eastInserterPos.Y);
+        var westHubPos = new TilePosition(westInserterPos.X - 2, westInserterPos.Y);
+
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Inserter, eastInserterPos, out var eastInserterId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Inserter, westInserterPos, out var westInserterId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, eastHubPos, out var eastHubId));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, westHubPos, out var westHubId));
+        AdvanceTicks(simulation, 30);
+
+        // East inserter already faces East (drop east / pull west from mine).
+        // West inserter must face West (drop west / pull east from mine).
+        Assert.True(simulation.TryRotateEntity(westInserterId, new PlayerId(1), clockwise: true));
+        Assert.True(simulation.TryRotateEntity(westInserterId, new PlayerId(1), clockwise: true));
+        Assert.Equal(Direction.West, simulation.World.GetEntity(westInserterId)!.Direction);
+
+        AdvanceTicks(simulation, (MvpDefinitions.InserterTransferTicks + 2) * 12);
+
+        var eastCount = simulation.World.GetEntity(eastHubId)!.Inventory.Count(ItemId.IronOre);
+        var westCount = simulation.World.GetEntity(westHubId)!.Inventory.Count(ItemId.IronOre);
+        Assert.True(eastCount > 0, $"east hub got {eastCount}");
+        Assert.True(westCount > 0, $"west hub got {westCount}");
+    }
+
+    [Fact]
+    public void HubFootprint_IsTwoByTwo_AndStartingHubsDoNotOverlap()
+    {
+        Assert.Equal(new WorldSize(2, 2), MvpDefinitions.GetFootprint(EntityKind.Hub));
+        Assert.True(MvpDefinitions.HasPlayerInventory(EntityKind.Hub));
+        Assert.True(MvpDefinitions.HasPlayerInventory(EntityKind.Commander));
+        Assert.False(MvpDefinitions.HasPlayerInventory(EntityKind.BasicTank));
+
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        foreach (var hub in simulation.World.Entities.Where(entity => entity.Kind == EntityKind.Hub))
+        {
+            var hubTiles = GameWorld.GetFootprintTiles(hub.Kind, hub.Position).ToHashSet();
+            foreach (var other in simulation.World.Entities.Where(entity => entity.Id != hub.Id && entity.IsAlive))
+            {
+                var otherTiles = GameWorld.GetFootprintTiles(other.Kind, other.Position);
+                Assert.Empty(hubTiles.Intersect(otherTiles));
+            }
+        }
     }
 
     [Fact]

@@ -267,8 +267,8 @@ public sealed class CombatBastionTests
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, simulation.World.Size.Height / 2 + 6), out var factoryId));
         AdvanceTicks(simulation, 30);
-        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
-        Assert.Equal(bastion.Id, simulation.World.GetEntity(factoryId)!.AssignedBastionId);
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank));
+        Assert.Null(simulation.World.GetEntity(factoryId)!.AssignedBastionId);
 
         simulation.DamageEntity(bastion.Id, bastion.Health);
         Assert.False(simulation.World.GetEntity(bastion.Id)!.IsAlive);

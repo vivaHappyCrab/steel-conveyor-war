@@ -34,21 +34,23 @@ This document records architecture and game-design decisions made while implemen
 - T1 construction completes after a fixed number of ticks. T2 construction drones are represented by the same ghost-build model and can be expanded later without changing placement commands.
 - Player inventory remains broader faction state for later logistics/network rules; hubs are world logistics buffers and can fund BMK placement when in interact range.
 - If a build target is outside the БМК build radius, the core stores a queued build order and moves the БМК toward the target until placement becomes legal (payment still runs at placement time via the same commander/hub rule).
-- Building footprint is part of core placement rules: mines, laboratories and resource extractors are `2x2`; Bastions and military factories are `3x3`; other entities default to `1x1`.
+- Building footprint is part of core placement rules: mines, laboratories, hubs and resource extractors are `2x2`; Bastions and military factories are `3x3`; other entities default to `1x1`.
 
 ## Economy And Logistics
 
-- Mines and wells produce items into local building inventories on deterministic tick intervals.
+- Mines and wells produce items into local building inventories on a `MineWorkTicks` (=15) work cycle driven via `WorkTicksRemaining`/`WorkTicksTotal` each tick (progress bars). On cycle complete the building drains energy and adds 1 ore; full output leaves the building idle (ticks cleared).
 - Buildings now expose separate input and output buffers. Recipes consume from input buffers and put completed products into output buffers.
 - Input and output buffers are limited by per-item stack size definitions in `MvpDefinitions.ItemStackSizes`.
 - Inserters move items between adjacent output/input buffers and conveyor slots. An inserter hand can hold only one item with amount `1`.
+- When multiple empty-handed inserters pull from the same source entity in one tick, only one may extract (deterministic fair share by tick + source id among candidates ordered by inserter id).
 - Conveyor tiles hold at most two item slots and move items in their direction only after `MvpDefinitions.ConveyorMoveTicks`.
 - Inserters transfer held items only after `MvpDefinitions.InserterTransferTicks`.
 - Conveyor and inserter direction is core state and can be rotated through a simulation API. SFML only renders the arrows and translates hotkeys.
 - Conveyor item rendering reads directly from conveyor slots; detailed interpolation animation is deferred.
 - Oil is represented as `CrudeOil` items refined into `Fuel`. Full fluid pressure, pipe networks and reservoirs are deliberately deferred.
-- Energy is tracked as produced versus demanded per player. Each powered consumer has an `EnergyBuffer` with capacity `PowerDemand × 100`. The grid fills buffers round-robin from `PowerProduced` each tick. Buildings drain `PowerDemand` from their buffer only while actively producing; empty buffer pauses work progress (soft craft-time inflate removed).
+- Energy is tracked as produced versus demanded per player. Each powered consumer has an `EnergyBuffer` with capacity `PowerDemand × 100`. The grid fills buffers emptiest-first each tick: sort by `EnergyBuffer/Capacity` ascending then entity id, and distribute `PowerProduced` one energy unit at a time. Buildings drain `PowerDemand` from their buffer only while actively producing; empty buffer pauses work progress (soft craft-time inflate removed).
 - Assemblers and factories default to no recipe until selected (or bastion autofill). Smelters use a sticky auto-recipe from input; unused empty smelters refuse Ctrl+deposit.
+- Player-facing inventory UI applies only to Commander and Hub (`MvpDefinitions.HasPlayerInventory`).
 
 ## Commander Interaction
 
@@ -61,7 +63,7 @@ This document records architecture and game-design decisions made while implemen
 
 ## Research
 
-- Laboratories consume science packs from their own input buffers on a fixed lab cycle.
+- Laboratories consume science packs from their own input buffers on a per-lab `LabCycleTicks` (=30) work cycle (`WorkTicks*` progress). On cycle complete the lab drains energy and consumes packs for active projects.
 - Research is data-driven through `ResearchCatalog` / `config/research.json` with composable profiles (`mvp-a`, `mvp-b`, `mvp-c`, `hybrid-a-c`).
 - Default match profile is `mvp-b` from `config/game.json`; `GameSimulation.CreateNewGame(GameCreationOptions)` can override the profile for tests and future hosts.
 - Profiles combine orthogonal rules: tier gates (fixed set or 1-of-N qualifications), tracks (serial or weighted-parallel), exclusive doctrine groups, optional expansion pools, and typed effects.
@@ -73,7 +75,7 @@ This document records architecture and game-design decisions made while implemen
 
 ## Bastions And Combat
 
-- Bastions own desired unit templates (sum capped; research can raise capacity). Assigned factories can auto-pick missing units from the template. Live supply (assigned living units + in-flight factory production) is exposed via `GetBastionUnitSupply`. SFML shows a center composition overlay for tier-unlocked unit kinds with live/max and +/- wired to `TrySetBastionTemplate`.
+- Bastions own desired unit templates (sum capped; research can raise capacity). Factories do **not** store bastion assignment. Autofill picks a missing unit kind across **all** owned bastion templates; spawned units assign to the lowest bastion Id that still needs that kind. Live supply (assigned living units + attributed in-flight factory production) is exposed via `GetBastionUnitSupply`. SFML shows a center composition overlay for tier-unlocked unit kinds with live/max and +/- wired to `TrySetBastionTemplate`.
 - Produced units inherit the Bastion's current order (Scout filter applies). Manual factory recipes keep producing after spawn; autofill clears and re-picks deficits.
 - Active defense garrisons units inside the Bastion; threats in Bastion vision trigger a sortie. Bastion death kills assigned units.
 - Combat uses deterministic Euclidean range, cooldown, and **formula C** damage: `max(1, AttackDamage - Armor) * Resistance(projectile, targetCategory)` with basis-point integer math (`CombatDamage` / `MvpDefinitions.GetResistanceBasisPoints`). HP is clamped to ≥ 0.
@@ -110,14 +112,14 @@ This document records architecture and game-design decisions made while implemen
 ## Open Follow-Ups
 
 - Expand remaining non-research balance definitions from code to `config/` once the shape stabilizes.
-- Tune energy demand/production balance and optional priority tiers beyond round-robin once production loops are playtested.
+- Tune energy demand/production balance and optional consumer priority tiers beyond emptiest-first once production loops are playtested.
 - Expand SFML research controls from prototype paging/hotkeys to a dedicated full tree panel.
 - Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.
 - Add tick-stamped command queue / state hash for multiplayer research lockstep.
 
 ## Simulation State Hash
 
-- `SimulationStateHasher.AlgorithmVersion` (currently `4`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (teamId/inventory/visibility/research/energy RR cursor), ordered entities (buffers, energy buffer, sticky smelt recipe, work totals, paths, combat/build fields, bastion order waypoints).
+- `SimulationStateHasher.AlgorithmVersion` (currently `5`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (teamId/inventory/visibility/research/power), ordered entities (buffers, energy buffer, sticky smelt recipe, work totals, paths, combat/build fields, bastion order waypoints).
 - Doubles use IEEE bit patterns (`DoubleToInt64Bits`). Unordered collections are sorted before hashing.
 - Primary quality gate: dual independent runs with the same seed/commands must match (`DeterminismHashTests`). A checked-in golden hex is optional; when adding/updating one, bump `AlgorithmVersion` if the surface changed, re-run the fixture, and commit the new constant intentionally.
 - Out of surface: SFML/UI, wall-clock, tick-stamped command logs.
