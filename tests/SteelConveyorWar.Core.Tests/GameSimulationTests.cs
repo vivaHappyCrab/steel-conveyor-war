@@ -145,6 +145,149 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void GetBastionUnitSupply_CountsLivingAssignedUnitsAndInFlightProduction()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+        Assert.Equal(0, simulation.GetBastionUnitSupply(bastion.Id, EntityKind.BasicTank));
+
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
+        AdvanceTicks(simulation, 30);
+        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 12);
+        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 4);
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
+        simulation.AdvanceTick();
+        Assert.True(simulation.World.GetEntity(factoryId)!.WorkTicksRemaining > 0);
+        Assert.Equal(1, simulation.GetBastionUnitSupply(bastion.Id, EntityKind.BasicTank));
+
+        AdvanceTicks(simulation, 36);
+        Assert.Equal(1, simulation.GetBastionUnitSupply(bastion.Id, EntityKind.BasicTank));
+        Assert.Contains(simulation.World.Entities, entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id);
+
+        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 12);
+        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 4);
+        simulation.AdvanceTick();
+        Assert.Equal(2, simulation.GetBastionUnitSupply(bastion.Id, EntityKind.BasicTank));
+    }
+
+    [Fact]
+    public void IsUnitProductionUnlocked_MatchesFactoryRecipeGates()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        Assert.True(simulation.IsUnitProductionUnlocked(playerId, EntityKind.BasicTank));
+        Assert.False(simulation.IsUnitProductionUnlocked(playerId, EntityKind.LightBot));
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.LightBot, confirmExclusive: true));
+        Assert.True(simulation.IsUnitProductionUnlocked(playerId, EntityKind.LightBot));
+    }
+
+    [Fact]
+    public void TryPlaceGhostBuildFromCommander_PaysRemainingCostFromNearbyOwnedHubs()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
+        var hub = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Hub);
+        ClearInventory(commander.Inventory);
+        Assert.True(simulation.AddItemToEntity(hub.Id, ItemId.IronPlate, 1));
+        Assert.Equal(1, hub.Inventory.Count(ItemId.IronPlate));
+
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Conveyor,
+            NearBlue(simulation, 7, 0),
+            out var ghostId));
+        Assert.NotEqual(0, ghostId);
+        Assert.Equal(0, commander.Inventory.Count(ItemId.IronPlate));
+        Assert.Equal(0, hub.Inventory.Count(ItemId.IronPlate));
+    }
+
+    [Fact]
+    public void TryPlaceGhostBuildFromCommander_DoesNotPartialSpendWhenCombinedStockInsufficient()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
+        var hub = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Hub);
+        ClearInventory(commander.Inventory);
+        Assert.True(commander.Inventory.TryAddWithinTotalStackLimit(ItemId.IronPlate, 1, 40));
+        Assert.True(simulation.AddItemToEntity(hub.Id, ItemId.IronPlate, 1));
+        // Inserter costs 2 iron + 1 copper; commander+hub have only 2 iron and no copper.
+        Assert.False(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Inserter,
+            NearBlue(simulation, 7, 0),
+            out _));
+        Assert.Equal(1, commander.Inventory.Count(ItemId.IronPlate));
+        Assert.Equal(1, hub.Inventory.Count(ItemId.IronPlate));
+    }
+
+    [Fact]
+    public void TryPlaceGhostBuildFromCommander_IgnoresHubsOutsideInteractRadius()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
+        Assert.True(commander.Inventory.TryAddWithinTotalStackLimit(ItemId.IronPlate, 20, 100));
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Hub,
+            NearBlue(simulation, 11, 2),
+            out var farGhostId));
+        AdvanceTicks(simulation, 30);
+        var farHub = simulation.World.GetEntity(farGhostId)!;
+        Assert.Equal(EntityKind.Hub, farHub.Kind);
+
+        ClearInventory(commander.Inventory);
+        var nearHub = simulation.World.Entities.Single(entity =>
+            entity.OwnerId == playerId && entity.Kind == EntityKind.Hub && entity.Id != farHub.Id);
+        ClearInventory(nearHub.Inventory);
+        Assert.True(simulation.AddItemToEntity(farHub.Id, ItemId.IronPlate, 1));
+        Assert.False(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Conveyor,
+            NearBlue(simulation, 7, 0),
+            out _));
+        Assert.Equal(1, farHub.Inventory.Count(ItemId.IronPlate));
+        Assert.Equal(0, nearHub.Inventory.Count(ItemId.IronPlate));
+    }
+
+    [Fact]
+    public void TryPlaceGhostBuildFromCommander_SpendsNearbyHubsInAscendingEntityIdOrder()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
+        var startHub = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Hub);
+        ClearInventory(commander.Inventory);
+        Assert.True(commander.Inventory.TryAddWithinTotalStackLimit(ItemId.IronPlate, 20, 40));
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Hub,
+            NearBlue(simulation, 6, 0),
+            out var secondHubGhostId));
+        AdvanceTicks(simulation, 30);
+        var secondHub = simulation.World.GetEntity(secondHubGhostId)!;
+        Assert.Equal(EntityKind.Hub, secondHub.Kind);
+
+        ClearInventory(commander.Inventory);
+        ClearInventory(startHub.Inventory);
+        ClearInventory(secondHub.Inventory);
+        Assert.True(simulation.AddItemToEntity(startHub.Id, ItemId.IronPlate, 1));
+        Assert.True(simulation.AddItemToEntity(secondHub.Id, ItemId.IronPlate, 1));
+
+        var ordered = new[] { startHub, secondHub }.OrderBy(hub => hub.Id).ToArray();
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Conveyor,
+            NearBlue(simulation, 7, 0),
+            out _));
+        Assert.Equal(0, ordered[0].Inventory.Count(ItemId.IronPlate));
+        Assert.Equal(1, ordered[1].Inventory.Count(ItemId.IronPlate));
+    }
+
+    [Fact]
     public void BastionCount_CapStartsAtOne_RaisesAfterAdditionalBastions()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);

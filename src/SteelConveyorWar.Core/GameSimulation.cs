@@ -139,7 +139,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        if (!commander.Inventory.TryRemoveAll(cost))
+        if (!TryPayBuildCostFromCommanderOrNearbyHubs(commander, cost))
         {
             return false;
         }
@@ -487,6 +487,34 @@ public sealed class GameSimulation
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Live bastion unit supply for a template slot: assigned living units of <paramref name="unitKind"/>
+    /// plus in-flight factory production targeting that kind for this bastion.
+    /// </summary>
+    public int GetBastionUnitSupply(int bastionId, EntityKind unitKind)
+    {
+        var bastion = World.GetEntity(bastionId);
+        if (bastion is null || bastion.Kind != EntityKind.Bastion || !MvpDefinitions.UnitKinds.Contains(unitKind))
+        {
+            return 0;
+        }
+
+        return CountBastionUnitSupply(bastionId, unitKind);
+    }
+
+    /// <summary>
+    /// Same unlock gates factories use when picking unit recipes / bastion autofill deficits.
+    /// </summary>
+    public bool IsUnitProductionUnlocked(PlayerId playerId, EntityKind unitKind)
+    {
+        if (!MvpDefinitions.ProductionRecipes.TryGetValue(unitKind, out var recipe))
+        {
+            return false;
+        }
+
+        return IsRecipeUnlockedForOwner(playerId, recipe);
     }
 
     public int GetBastionTemplateCapacity(PlayerId playerId)
@@ -1331,6 +1359,109 @@ public sealed class GameSimulation
     private static bool IsWithinBuildRadius(WorldEntity commander, EntityKind targetKind, TilePosition anchor)
     {
         return DistanceToFootprint(commander.WorldPosition, targetKind, anchor) <= MvpDefinitions.CommanderBuildRadius;
+    }
+
+    /// <summary>
+    /// Pays ghost-build cost from commander inventory first, then remaining from owned hubs within
+    /// <see cref="MvpDefinitions.CommanderInteractRadius"/> (Euclidean distance to hub footprint,
+    /// same check as Ctrl withdraw/deposit), ordered by entity id. All-or-nothing: no partial spend
+    /// when the combined stock cannot cover cost. Construction-drone research only changes build
+    /// ticks; drones never pull hub stock.
+    /// </summary>
+    private bool TryPayBuildCostFromCommanderOrNearbyHubs(WorldEntity commander, IReadOnlyDictionary<ItemId, int> cost)
+    {
+        if (cost.Count == 0)
+        {
+            return true;
+        }
+
+        if (commander.Inventory.HasAll(cost))
+        {
+            return commander.Inventory.TryRemoveAll(cost);
+        }
+
+        if (commander.OwnerId is null)
+        {
+            return false;
+        }
+
+        var hubs = World.Entities
+            .Where(entity =>
+                entity.IsAlive
+                && entity.Kind == EntityKind.Hub
+                && entity.OwnerId == commander.OwnerId
+                && DistanceToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
+                    <= MvpDefinitions.CommanderInteractRadius)
+            .OrderBy(entity => entity.Id)
+            .ToList();
+
+        var remainingAfterCommander = new Dictionary<ItemId, int>();
+        foreach (var pair in cost.OrderBy(entry => entry.Key))
+        {
+            var fromCommander = Math.Min(commander.Inventory.Count(pair.Key), pair.Value);
+            var needFromHubs = pair.Value - fromCommander;
+            if (needFromHubs > 0)
+            {
+                remainingAfterCommander[pair.Key] = needFromHubs;
+            }
+        }
+
+        var plannedHubTake = hubs.ToDictionary(hub => hub.Id, _ => new Dictionary<ItemId, int>());
+        foreach (var pair in remainingAfterCommander.OrderBy(entry => entry.Key))
+        {
+            var left = pair.Value;
+            foreach (var hub in hubs)
+            {
+                if (left <= 0)
+                {
+                    break;
+                }
+
+                var available = hub.Inventory.Count(pair.Key) - plannedHubTake[hub.Id].GetValueOrDefault(pair.Key);
+                var take = Math.Min(available, left);
+                if (take <= 0)
+                {
+                    continue;
+                }
+
+                plannedHubTake[hub.Id][pair.Key] = plannedHubTake[hub.Id].GetValueOrDefault(pair.Key) + take;
+                left -= take;
+            }
+
+            if (left > 0)
+            {
+                return false;
+            }
+        }
+
+        foreach (var pair in cost.OrderBy(entry => entry.Key))
+        {
+            var fromCommander = Math.Min(commander.Inventory.Count(pair.Key), pair.Value);
+            if (fromCommander > 0)
+            {
+                commander.Inventory.TryRemove(pair.Key, fromCommander);
+            }
+
+            var left = pair.Value - fromCommander;
+            foreach (var hub in hubs)
+            {
+                if (left <= 0)
+                {
+                    break;
+                }
+
+                var take = Math.Min(plannedHubTake[hub.Id].GetValueOrDefault(pair.Key), left);
+                if (take <= 0)
+                {
+                    continue;
+                }
+
+                hub.Inventory.TryRemove(pair.Key, take);
+                left -= take;
+            }
+        }
+
+        return true;
     }
 
     private static int DistanceToFootprint(TilePosition from, EntityKind targetKind, TilePosition anchor)
