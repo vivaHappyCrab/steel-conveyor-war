@@ -32,7 +32,7 @@ public static class MvpResearchCatalog
             list.Add(new TechnologyDefinition(
                 id,
                 tier,
-                new ResearchCostDefinition(effort, [new SciencePackCost(pack, 1)]),
+                new ResearchCostDefinition(effort * 10, [new SciencePackCost(pack, 1)]),
                 effects.ToList(),
                 tags,
                 ResearchDisplayNames.GetDisplayName(id),

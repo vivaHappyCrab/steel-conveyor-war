@@ -221,13 +221,13 @@ public static class MvpDefinitions
     public static readonly IReadOnlyDictionary<EntityKind, ProductionRecipe> ProductionRecipes =
         new Dictionary<EntityKind, ProductionRecipe>
         {
-            [EntityKind.LightBot] = new(Cost((ItemId.IronPlate, 5)), EntityKind.LightBot, 20, TechnologyId.LightBot),
-            [EntityKind.BasicTank] = new(Cost((ItemId.IronPlate, 12), (ItemId.CopperPlate, 4)), EntityKind.BasicTank, 35),
-            [EntityKind.Scout] = new(Cost((ItemId.CopperPlate, 8)), EntityKind.Scout, 20, TechnologyId.Scout),
-            [EntityKind.MediumBot] = new(Cost((ItemId.Steel, 5)), EntityKind.MediumBot, 35, TechnologyId.MediumBot),
-            [EntityKind.MediumTank] = new(Cost((ItemId.Steel, 10), (ItemId.Fuel, 3)), EntityKind.MediumTank, 50, TechnologyId.MediumTank),
-            [EntityKind.AntiAirBot] = new(Cost((ItemId.Steel, 6), (ItemId.CopperPlate, 8)), EntityKind.AntiAirBot, 40, TechnologyId.AntiAirTurret),
-            [EntityKind.RocketLauncher] = new(Cost((ItemId.Steel, 8), (ItemId.Fuel, 5)), EntityKind.RocketLauncher, 55, TechnologyId.RocketLauncher)
+            [EntityKind.LightBot] = new(Cost((ItemId.IronPlate, 5)), EntityKind.LightBot, 60, TechnologyId.LightBot),
+            [EntityKind.BasicTank] = new(Cost((ItemId.IronPlate, 12), (ItemId.CopperPlate, 4)), EntityKind.BasicTank, 105),
+            [EntityKind.Scout] = new(Cost((ItemId.CopperPlate, 8)), EntityKind.Scout, 60, TechnologyId.Scout),
+            [EntityKind.MediumBot] = new(Cost((ItemId.Steel, 5)), EntityKind.MediumBot, 105, TechnologyId.MediumBot),
+            [EntityKind.MediumTank] = new(Cost((ItemId.Steel, 10), (ItemId.Fuel, 3)), EntityKind.MediumTank, 150, TechnologyId.MediumTank),
+            [EntityKind.AntiAirBot] = new(Cost((ItemId.Steel, 6), (ItemId.CopperPlate, 8)), EntityKind.AntiAirBot, 120, TechnologyId.AntiAirTurret),
+            [EntityKind.RocketLauncher] = new(Cost((ItemId.Steel, 8), (ItemId.Fuel, 5)), EntityKind.RocketLauncher, 165, TechnologyId.RocketLauncher)
         };
 
     public static readonly IReadOnlyDictionary<ItemRecipeId, ItemRecipeDefinition> ItemRecipes =
