@@ -187,17 +187,17 @@ public sealed class SfmlGameRunner
                 {
                     var hoverEntity = simulation.World.GetTopEntityAt(hoverTile.Value);
                     if (hoverEntity is not null
-                        && IsVisibleToLocalPlayer(simulation, localPlayer, hoverEntity)
+                        && hoverEntity.OwnerId == localPlayer
                         && BuildBarModel.IsDirectedKind(hoverEntity.Kind)
-                        && simulation.TryRotateEntity(hoverEntity.Id, clockwise: !counterClockwise))
+                        && simulation.TryRotateEntity(hoverEntity.Id, localPlayer, clockwise: !counterClockwise))
                     {
                         return;
                     }
                 }
 
-                if (selectedEntity is not null)
+                if (selectedEntity is not null && selectedEntity.OwnerId == localPlayer)
                 {
-                    simulation.TryRotateEntity(selectedEntity.Id, clockwise: !counterClockwise);
+                    simulation.TryRotateEntity(selectedEntity.Id, localPlayer, clockwise: !counterClockwise);
                 }
 
                 return;
@@ -406,7 +406,10 @@ public sealed class SfmlGameRunner
 
                 var clickedEntity = simulation.World.GetTopEntityAt(tile.Value);
                 var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
-                if (ctrlPressed && selectedEntity?.Kind == EntityKind.Commander && clickedEntity is not null)
+                if (ctrlPressed
+                    && selectedEntity?.Kind == EntityKind.Commander
+                    && selectedEntity.OwnerId == localPlayer
+                    && clickedEntity is not null)
                 {
                     simulation.TryWithdrawFromHubOrOutput(selectedEntity.Id, clickedEntity.Id);
                 }
@@ -436,13 +439,14 @@ public sealed class SfmlGameRunner
             else if (button == "Right")
             {
                 var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
-                if (selectedEntity?.Kind == EntityKind.Commander)
+                if (selectedEntity?.Kind == EntityKind.Commander && selectedEntity.OwnerId == localPlayer)
                 {
                     var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
                     var clickedEntity = simulation.World.GetTopEntityAt(tile.Value);
-                    if (ctrlPressed && clickedEntity is not null)
+                    if (ctrlPressed
+                        && clickedEntity is not null
+                        && simulation.TryDepositToHubOrInput(selectedEntity.Id, clickedEntity.Id))
                     {
-                        simulation.TryDepositToHubOrInput(selectedEntity.Id, clickedEntity.Id);
                         return;
                     }
 
