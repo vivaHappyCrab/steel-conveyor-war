@@ -622,6 +622,8 @@ public sealed class GameSimulation
     private static void ApplyBastionOrderToUnit(WorldEntity unit, BastionOrder bastionOrder)
     {
         unit.Order = ResolveOrderForUnit(unit.Kind, bastionOrder);
+        // Drop stale Attack/Scout waypoints so Defend/home (or a new target) can repath immediately.
+        ResetMovementPath(unit);
         if (unit.Order.Kind == BastionOrderKind.Defend)
         {
             // Stay home / garrison unless Defend active defense ungarrisons them.
@@ -639,8 +641,6 @@ public sealed class GameSimulation
             _ => bastionOrder
         };
     }
-
-    private static bool IsCombatUnit(EntityKind kind) => kind != EntityKind.Scout && MvpDefinitions.UnitKinds.Contains(kind);
 
     public void AddPlayerItems(PlayerId playerId, ItemId item, int amount)
     {
@@ -2751,11 +2751,17 @@ public sealed class GameSimulation
     {
         if (bastion.Order.Kind == BastionOrderKind.AttackArea && bastion.Order.Target is not null)
         {
-            var combatUnits = World.Entities
-                .Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && IsCombatUnit(entity.Kind))
+            // Scouts join AttackArea for FoW; completion waits for every assigned unit still on
+            // AttackArea (combat and scouts), so scout-only pushes and post-wipe leftovers can finish.
+            var attackUnits = World.Entities
+                .Where(entity =>
+                    entity.IsAlive
+                    && entity.AssignedBastionId == bastion.Id
+                    && MvpDefinitions.UnitKinds.Contains(entity.Kind)
+                    && entity.Order.Kind == BastionOrderKind.AttackArea)
                 .ToList();
-            if (combatUnits.Count > 0
-                && combatUnits.All(unit => unit.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1)))
+            if (attackUnits.Count > 0
+                && attackUnits.All(unit => unit.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1)))
             {
                 SwitchBastionToDefend(bastion);
             }
@@ -2786,6 +2792,7 @@ public sealed class GameSimulation
                      && MvpDefinitions.UnitKinds.Contains(entity.Kind)))
         {
             unit.Order = defend;
+            ResetMovementPath(unit);
         }
     }
 

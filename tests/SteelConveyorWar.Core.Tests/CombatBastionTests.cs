@@ -86,7 +86,11 @@ public sealed class CombatBastionTests
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         var tank = ProduceTankForBastion(simulation, bastion.Id);
         var scout = ProduceScoutForBastion(simulation, bastion.Id);
-        var target = new TilePosition(tank.Position.X + 1, tank.Position.Y);
+        // Completion waits for combat and scouts; start both one tile from the target.
+        var target = new TilePosition(bastion.Position.X + 4, bastion.Position.Y);
+        var staging = new TilePosition(target.X - 1, target.Y);
+        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, staging));
+        Assert.True(simulation.TryTeleportEntityForTests(scout.Id, staging));
         Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, target)));
 
         AdvanceTicks(simulation, 80);
@@ -94,6 +98,41 @@ public sealed class CombatBastionTests
         Assert.Equal(BastionOrderKind.Defend, bastion.Order.Kind);
         Assert.Equal(BastionOrderKind.Defend, simulation.World.GetEntity(tank.Id)!.Order.Kind);
         Assert.Equal(BastionOrderKind.Defend, simulation.World.GetEntity(scout.Id)!.Order.Kind);
+    }
+
+    [Fact]
+    public void TryIssueBastionOrder_AttackArea_ScoutOnlyCompletesToDefend()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var scout = ProduceScoutForBastion(simulation, bastion.Id);
+        var target = new TilePosition(scout.Position.X + 1, scout.Position.Y);
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, target)));
+
+        AdvanceTicks(simulation, 80);
+
+        Assert.Equal(BastionOrderKind.Defend, bastion.Order.Kind);
+        Assert.Equal(BastionOrderKind.Defend, simulation.World.GetEntity(scout.Id)!.Order.Kind);
+    }
+
+    [Fact]
+    public void TryIssueBastionOrder_Defend_ClearsInFlightAttackPath()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var scout = ProduceScoutForBastion(simulation, bastion.Id);
+        var attackTarget = new TilePosition(bastion.Position.X + 8, bastion.Position.Y);
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, attackTarget)));
+
+        AdvanceTicks(simulation, 12);
+        scout = simulation.World.GetEntity(scout.Id)!;
+        Assert.True(scout.CurrentWaypoint is not null || scout.MovementPath.Count > 0);
+
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
+        scout = simulation.World.GetEntity(scout.Id)!;
+        Assert.Equal(BastionOrderKind.Defend, scout.Order.Kind);
+        Assert.Null(scout.CurrentWaypoint);
+        Assert.Empty(scout.MovementPath);
     }
 
     [Fact]
