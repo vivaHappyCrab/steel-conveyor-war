@@ -154,7 +154,10 @@ public static class MvpResearchCatalog
             [new AddModifierEffect(ResearchStatIds.ConveyorMoveTicks, ModifierOperation.Multiply, 8_500)],
             "mandatory", "cycle");
         Tech(TechnologyId.CommandII, ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 9_000)],
+            [
+                new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 9_000),
+                new AddModifierEffect(ResearchStatIds.BastionTemplateCapacity, ModifierOperation.Add, 60_000)
+            ],
             "mandatory", "cycle");
 
         // T2 C mandatory
@@ -179,7 +182,10 @@ public static class MvpResearchCatalog
             [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 7_500)],
             "optional", "qualification", "logistics", "tactical");
         Tech(TechnologyId.AdditionalBastions, ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [new GrantCapabilityEffect(ResearchCapabilityIds.AdditionalBastions)],
+            [
+                new GrantCapabilityEffect(ResearchCapabilityIds.AdditionalBastions),
+                new AddModifierEffect(ResearchStatIds.BastionTemplateCapacity, ModifierOperation.Add, 20_000)
+            ],
             "optional", "qualification", "command", "tactical");
         Tech(new TechnologyId("technology.t2.auto-resupply"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
             [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_500)],
@@ -232,7 +238,10 @@ public static class MvpResearchCatalog
             [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_000, EntityKind.MediumTank.ToString())],
             "doctrine", "tactical", "optional");
         Tech(new TechnologyId("technology.t2.doctrine.maneuver-net"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [new GrantCapabilityEffect(ResearchCapabilityIds.AdditionalBastions)],
+            [
+                new GrantCapabilityEffect(ResearchCapabilityIds.AdditionalBastions),
+                new AddModifierEffect(ResearchStatIds.MaxBastions, ModifierOperation.Add, 20_000)
+            ],
             "doctrine", "tactical", "optional");
         Tech(new TechnologyId("technology.t2.doctrine.siege-control"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
             [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_000, EntityKind.RocketLauncher.ToString())],

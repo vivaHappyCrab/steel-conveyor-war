@@ -840,6 +840,12 @@
           "type": "grantCapability",
           "capabilityId": "capability.additional-bastions",
           "valueBasisPoints": 0
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.bastion.template-capacity",
+          "operation": "Add",
+          "valueBasisPoints": 20000
         }
       ],
       "tags": [
@@ -956,6 +962,12 @@
           "statId": "stat.construction.ticks",
           "operation": "Multiply",
           "valueBasisPoints": 9000
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.bastion.template-capacity",
+          "operation": "Add",
+          "valueBasisPoints": 60000
         }
       ],
       "tags": [
@@ -1061,6 +1073,12 @@
           "type": "grantCapability",
           "capabilityId": "capability.additional-bastions",
           "valueBasisPoints": 0
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.bastion.max-count",
+          "operation": "Add",
+          "valueBasisPoints": 20000
         }
       ],
       "tags": [

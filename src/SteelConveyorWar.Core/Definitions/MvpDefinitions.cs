@@ -9,6 +9,9 @@ public static class MvpDefinitions
     public const int ConveyorMaxItemsPerTile = 2;
     public const int HubStorageStacks = 20;
     public const double MobileMoveWorldUnitsPerTick = 0.125;
+    public const int BaseBastionTemplateCapacity = 10;
+    public const int BaseMaxBastions = 1;
+    public const int MaxBastionsAfterUnlock = 4;
 
     public static readonly HashSet<EntityKind> UnitKinds =
     [
@@ -190,7 +193,7 @@ public static class MvpDefinitions
         return kind switch
         {
             EntityKind.Commander => new EntityStats(300, 10, 3, 25, 8, 7),
-            EntityKind.Bastion => new EntityStats(450, VisionRadius: 6),
+            EntityKind.Bastion => new EntityStats(450, VisionRadius: 12),
             EntityKind.Hub => new EntityStats(150, VisionRadius: 4),
             EntityKind.Mine or EntityKind.CoalMine or EntityKind.OilWell => new EntityStats(120, VisionRadius: 3),
             EntityKind.Smelter or EntityKind.Refinery => new EntityStats(120, VisionRadius: 3),

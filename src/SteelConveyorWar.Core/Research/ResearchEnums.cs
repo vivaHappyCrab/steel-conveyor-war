@@ -41,6 +41,8 @@ public static class ResearchStatIds
     public const string VisionRadius = "stat.vision.radius";
     public const string HubStorageStacks = "stat.hub.storage-stacks";
     public const string EnergyShortagePenalty = "stat.energy.shortage-penalty";
+    public const string BastionTemplateCapacity = "stat.bastion.template-capacity";
+    public const string MaxBastions = "stat.bastion.max-count";
 }
 
 public static class ResearchCapabilityIds

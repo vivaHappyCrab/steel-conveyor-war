@@ -36,12 +36,40 @@ public sealed class SfmlGameRunner
         var pendingDirection = Direction.East;
         ItemRecipeId? pendingRecipe = null;
         var recipePage = 0;
+        var templateUnitIndex = 0;
+        var bastionPendingMode = BastionPendingInputMode.None;
+        var patrolWaypoints = new List<TilePosition>();
         var font = TryLoadFont();
+
+        void ClearBastionPending()
+        {
+            bastionPendingMode = BastionPendingInputMode.None;
+            patrolWaypoints.Clear();
+        }
 
         window.KeyPressed += (_, args) =>
         {
             var key = args.Code.ToString();
             var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
+
+            if (key == "Escape" && bastionPendingMode != BastionPendingInputMode.None)
+            {
+                ClearBastionPending();
+                return;
+            }
+
+            if (key is "Enter" or "Return"
+                && bastionPendingMode == BastionPendingInputMode.PatrolWaypoints
+                && selectedEntity?.Kind == EntityKind.Bastion
+                && selectedEntity.OwnerId == localPlayer
+                && patrolWaypoints.Count is >= 2 and <= 4)
+            {
+                simulation.TryIssueBastionOrder(
+                    selectedEntity.Id,
+                    new BastionOrder(BastionOrderKind.Patrol, Waypoints: patrolWaypoints.ToArray()));
+                ClearBastionPending();
+                return;
+            }
 
             if (key == "Q")
             {
@@ -90,6 +118,17 @@ public sealed class SfmlGameRunner
                     simulation.TryRotateEntity(selectedEntity.Id, clockwise: !counterClockwise);
                 }
 
+                return;
+            }
+
+            if (!isBuildMenuOpen
+                && selectedEntity?.Kind == EntityKind.Bastion
+                && selectedEntity.OwnerId == localPlayer
+                && key is "PageDown" or "RBracket" or "PageUp" or "LBracket")
+            {
+                var delta = key is "PageDown" or "RBracket" ? 1 : -1;
+                var count = BastionOrderBarModel.TemplateUnitKinds.Length;
+                templateUnitIndex = (templateUnitIndex + delta + count) % count;
                 return;
             }
 
@@ -149,6 +188,46 @@ public sealed class SfmlGameRunner
                 return;
             }
 
+            if (!isBuildMenuOpen
+                && selectedEntity is not null
+                && MvpDefinitions.FactoryKinds.Contains(selectedEntity.Kind)
+                && selectedEntity.OwnerId == localPlayer)
+            {
+                if (TryGetNumberShortcut(key, out var factoryRecipeIndex))
+                {
+                    var recipes = GetFactoryRecipes(selectedEntity.Kind).ToList();
+                    if (factoryRecipeIndex < recipes.Count)
+                    {
+                        simulation.TrySetFactoryProduction(selectedEntity.Id, recipes[factoryRecipeIndex].OutputKind);
+                    }
+
+                    return;
+                }
+
+                if (key is "N" or "Tab")
+                {
+                    TryCycleFactoryAssignedBastion(simulation, selectedEntity, localPlayer);
+                    return;
+                }
+            }
+
+            if (!isBuildMenuOpen
+                && selectedEntity?.Kind == EntityKind.Bastion
+                && selectedEntity.OwnerId == localPlayer)
+            {
+                if (TryGetNumberShortcut(key, out var orderIndex)
+                    && BastionOrderBarModel.TryGetCommand(orderIndex, out var orderCommand))
+                {
+                    ApplyBastionOrderCommand(simulation, selectedEntity.Id, orderCommand, ref bastionPendingMode, patrolWaypoints);
+                    return;
+                }
+
+                if (TryAdjustBastionTemplate(key, simulation, selectedEntity, templateUnitIndex))
+                {
+                    return;
+                }
+            }
+
             if (!isBuildMenuOpen)
             {
                 return;
@@ -189,6 +268,17 @@ public sealed class SfmlGameRunner
                 return;
             }
 
+            var selectedForBar = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
+            if (button == "Left"
+                && !isBuildMenuOpen
+                && selectedForBar?.Kind == EntityKind.Bastion
+                && selectedForBar.OwnerId == localPlayer
+                && TryPickBastionOrderCommand(mousePosition, windowWidth, windowHeight, panelX, out var barCommand))
+            {
+                ApplyBastionOrderCommand(simulation, selectedForBar.Id, barCommand, ref bastionPendingMode, patrolWaypoints);
+                return;
+            }
+
             var tile = ScreenToTile(mousePosition, panelX);
             if (tile is null || !simulation.World.IsInside(tile.Value))
             {
@@ -198,6 +288,25 @@ public sealed class SfmlGameRunner
             if (button == "Left")
             {
                 var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
+                if (TryHandleBastionPendingMapClick(
+                        simulation,
+                        selectedEntity,
+                        localPlayer,
+                        bastionPendingMode,
+                        patrolWaypoints,
+                        tile.Value,
+                        confirmPatrol: false,
+                        out var consumedLeft)
+                    && consumedLeft)
+                {
+                    if (bastionPendingMode is BastionPendingInputMode.AttackTarget or BastionPendingInputMode.ScoutTarget)
+                    {
+                        ClearBastionPending();
+                    }
+
+                    return;
+                }
+
                 var clickedEntity = simulation.World.GetTopEntityAt(tile.Value);
                 var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
                 if (ctrlPressed && selectedEntity?.Kind == EntityKind.Commander && clickedEntity is not null)
@@ -219,10 +328,12 @@ public sealed class SfmlGameRunner
                         ? clickedEntity.Id
                         : null;
                     recipePage = 0;
+                    templateUnitIndex = 0;
                     isBuildMenuOpen = false;
                     pendingBuildKind = null;
                     pendingDirection = Direction.East;
                     pendingRecipe = null;
+                    ClearBastionPending();
                 }
             }
             else if (button == "Right")
@@ -234,12 +345,18 @@ public sealed class SfmlGameRunner
                     return;
                 }
 
-                var bastion = selectedEntity?.Kind == EntityKind.Bastion
-                    ? selectedEntity
-                    : simulation.World.Entities.FirstOrDefault(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Bastion);
-                if (bastion is not null)
+                if (TryHandleBastionPendingMapClick(
+                        simulation,
+                        selectedEntity,
+                        localPlayer,
+                        bastionPendingMode,
+                        patrolWaypoints,
+                        tile.Value,
+                        confirmPatrol: true,
+                        out var consumedRight)
+                    && consumedRight)
                 {
-                    simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, tile.Value));
+                    ClearBastionPending();
                 }
             }
         };
@@ -264,11 +381,43 @@ public sealed class SfmlGameRunner
             window.Clear(new Color(18, 22, 18));
             var hoverPosition = Mouse.GetPosition(window);
             var hoverTile = ScreenToTile(hoverPosition, panelX) ?? new TilePosition(-1, -1);
-            DrawWorld(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen ? pendingBuildKind : null, pendingDirection, hoverTile);
-            DrawHud(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen, pendingBuildKind, pendingDirection, pendingRecipe, recipePage, font, windowWidth, windowHeight, panelX);
+            DrawWorld(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen ? pendingBuildKind : null, pendingDirection, hoverTile, patrolWaypoints);
+            DrawHud(
+                window,
+                simulation,
+                localPlayer,
+                selectedEntityId,
+                isBuildMenuOpen,
+                pendingBuildKind,
+                pendingDirection,
+                pendingRecipe,
+                recipePage,
+                templateUnitIndex,
+                bastionPendingMode,
+                patrolWaypoints.Count,
+                font,
+                windowWidth,
+                windowHeight,
+                panelX);
             if (isBuildMenuOpen)
             {
                 DrawBuildBar(window, simulation, localPlayer, selectedEntityId, pendingBuildKind, pendingDirection, pendingRecipe, font, windowWidth, windowHeight, panelX, hoverPosition);
+            }
+            else
+            {
+                var selectedForOrders = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
+                if (selectedForOrders?.Kind == EntityKind.Bastion && selectedForOrders.OwnerId == localPlayer)
+                {
+                    DrawBastionOrderBar(
+                        window,
+                        selectedForOrders,
+                        bastionPendingMode,
+                        font,
+                        windowWidth,
+                        windowHeight,
+                        panelX,
+                        hoverPosition);
+                }
             }
 
             window.Display();
@@ -281,7 +430,15 @@ public sealed class SfmlGameRunner
         }
     }
 
-    private static void DrawWorld(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer, int? selectedEntityId, EntityKind? pendingBuildKind, Direction pendingDirection, TilePosition hoverTile)
+    private static void DrawWorld(
+        IRenderTarget target,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        int? selectedEntityId,
+        EntityKind? pendingBuildKind,
+        Direction pendingDirection,
+        TilePosition hoverTile,
+        IReadOnlyList<TilePosition> patrolWaypoints)
     {
         var world = simulation.World;
         var tile = new RectangleShape(new Vector2f(TileSize - 1f, TileSize - 1f));
@@ -307,6 +464,23 @@ public sealed class SfmlGameRunner
             }
 
             DrawEntity(target, entity, selectedEntityId == entity.Id);
+        }
+
+        foreach (var waypoint in patrolWaypoints)
+        {
+            if (!world.IsInside(waypoint))
+            {
+                continue;
+            }
+
+            using var marker = new RectangleShape(new Vector2f(TileSize - 6f, TileSize - 6f))
+            {
+                Position = new Vector2f(waypoint.X * TileSize + 3f, waypoint.Y * TileSize + 3f),
+                FillColor = new Color(255, 210, 80, 90),
+                OutlineColor = new Color(255, 230, 120),
+                OutlineThickness = 1f
+            };
+            target.Draw(marker);
         }
 
         if (pendingBuildKind is not null && world.IsInside(hoverTile))
@@ -528,6 +702,9 @@ public sealed class SfmlGameRunner
         Direction pendingDirection,
         ItemRecipeId? pendingRecipe,
         int recipePage,
+        int templateUnitIndex,
+        BastionPendingInputMode bastionPendingMode,
+        int patrolWaypointCount,
         Font? font,
         uint windowWidth,
         uint windowHeight,
@@ -592,6 +769,34 @@ public sealed class SfmlGameRunner
             {
                 lines.Add($"Recipe: {(selected.SelectedItemRecipe?.ToString() ?? "-")}");
                 lines.Add("1-5: set assembler recipe");
+            }
+
+            if (MvpDefinitions.FactoryKinds.Contains(selected.Kind))
+            {
+                lines.Add($"Assigned bastion: {(selected.AssignedBastionId?.ToString() ?? "-")}");
+                lines.Add($"Manual produce: {(selected.IsManualProductionTarget ? "yes" : "no")}");
+                lines.Add("1-N: set factory recipe");
+                lines.Add("N/Tab: cycle assigned bastion");
+            }
+
+            if (selected.Kind == EntityKind.Bastion)
+            {
+                var ownerId = selected.OwnerId ?? localPlayer;
+                var capacity = simulation.GetBastionTemplateCapacity(ownerId);
+                var templateSum = selected.BastionTemplate.Values.Sum();
+                lines.Add($"Order: {BastionOrderBarModel.FormatOrder(selected.Order)}");
+                lines.Add($"Template: {templateSum}/{capacity}");
+                var unitKind = BastionOrderBarModel.TemplateUnitKinds[
+                    Math.Clamp(templateUnitIndex, 0, BastionOrderBarModel.TemplateUnitKinds.Length - 1)];
+                var unitCount = selected.BastionTemplate.GetValueOrDefault(unitKind);
+                lines.Add($"Edit: {unitKind} = {unitCount}");
+                lines.Add("[/]: unit type  +/-: count");
+                lines.Add("1-4 / bar: bastion orders");
+                var pendingHint = BastionOrderBarModel.PendingHint(bastionPendingMode, patrolWaypointCount);
+                if (!string.IsNullOrEmpty(pendingHint))
+                {
+                    lines.Add(pendingHint);
+                }
             }
 
             AddRecipeLines(lines, GetRecipeLines(selected, simulation, localPlayer, recipePage), recipePage: 0);
@@ -742,10 +947,11 @@ public sealed class SfmlGameRunner
     {
         if (MvpDefinitions.FactoryKinds.Contains(selected.Kind))
         {
-            yield return "Recipes:";
-            foreach (var recipe in MvpDefinitions.ProductionRecipes.Values.Where(recipe => selected.Kind == EntityKind.DroneCenter ? recipe.OutputKind == EntityKind.Scout : recipe.OutputKind != EntityKind.Scout))
+            var index = 1;
+            foreach (var recipe in GetFactoryRecipes(selected.Kind))
             {
-                yield return $"  {recipe.OutputKind}: {FormatCost(recipe.Inputs)}";
+                yield return $"  {index}: {recipe.OutputKind}: {FormatCost(recipe.Inputs)}";
+                index++;
             }
         }
         else if (selected.Kind == EntityKind.Laboratory)
@@ -945,14 +1151,273 @@ public sealed class SfmlGameRunner
             };
     }
 
-    private static FloatRect GetBuildBarBounds(uint windowWidth, uint windowHeight, float panelX, out float startX, out float barY)
+    private static IEnumerable<ProductionRecipe> GetFactoryRecipes(EntityKind factoryKind)
     {
-        var count = BuildMenuCatalog.BuildableKinds.Length;
-        var totalWidth = count * BuildBarSlotSize;
+        return MvpDefinitions.ProductionRecipes.Values
+            .Where(recipe => factoryKind == EntityKind.DroneCenter
+                ? recipe.OutputKind == EntityKind.Scout
+                : recipe.OutputKind != EntityKind.Scout)
+            .OrderBy(recipe => (int)recipe.OutputKind);
+    }
+
+    private static void TryCycleFactoryAssignedBastion(GameSimulation simulation, WorldEntity factory, PlayerId localPlayer)
+    {
+        var bastions = simulation.World.Entities
+            .Where(entity => entity.IsAlive && entity.OwnerId == localPlayer && entity.Kind == EntityKind.Bastion)
+            .OrderBy(entity => entity.Id)
+            .Select(entity => entity.Id)
+            .ToList();
+        if (bastions.Count == 0)
+        {
+            return;
+        }
+
+        var currentIndex = factory.AssignedBastionId is null
+            ? -1
+            : bastions.IndexOf(factory.AssignedBastionId.Value);
+        var nextIndex = (currentIndex + 1) % bastions.Count;
+        simulation.TrySetFactoryProduction(factory.Id, factory.ProductionTargetKind, bastions[nextIndex]);
+    }
+
+    private static void ApplyBastionOrderCommand(
+        GameSimulation simulation,
+        int bastionId,
+        BastionOrderCommand command,
+        ref BastionPendingInputMode pendingMode,
+        List<TilePosition> patrolWaypoints)
+    {
+        patrolWaypoints.Clear();
+        switch (command)
+        {
+            case BastionOrderCommand.ActiveDefense:
+                pendingMode = BastionPendingInputMode.None;
+                simulation.TryIssueBastionOrder(bastionId, new BastionOrder(BastionOrderKind.Defend));
+                break;
+            case BastionOrderCommand.Patrol:
+                pendingMode = BastionPendingInputMode.PatrolWaypoints;
+                break;
+            case BastionOrderCommand.Attack:
+                pendingMode = BastionPendingInputMode.AttackTarget;
+                break;
+            case BastionOrderCommand.Scout:
+                pendingMode = BastionPendingInputMode.ScoutTarget;
+                break;
+        }
+    }
+
+    private static bool TryAdjustBastionTemplate(string key, GameSimulation simulation, WorldEntity bastion, int templateUnitIndex)
+    {
+        var kinds = BastionOrderBarModel.TemplateUnitKinds;
+        if (kinds.Length == 0)
+        {
+            return false;
+        }
+
+        var unitKind = kinds[Math.Clamp(templateUnitIndex, 0, kinds.Length - 1)];
+        var current = bastion.BastionTemplate.GetValueOrDefault(unitKind);
+        var delta = key switch
+        {
+            "Equal" or "Add" => 1,
+            "Hyphen" or "Subtract" => -1,
+            _ => 0
+        };
+        if (delta == 0)
+        {
+            return false;
+        }
+
+        simulation.TrySetBastionTemplate(bastion.Id, unitKind, Math.Max(0, current + delta));
+        return true;
+    }
+
+    private static bool TryHandleBastionPendingMapClick(
+        GameSimulation simulation,
+        WorldEntity? selectedEntity,
+        PlayerId localPlayer,
+        BastionPendingInputMode pendingMode,
+        List<TilePosition> patrolWaypoints,
+        TilePosition tile,
+        bool confirmPatrol,
+        out bool consumed)
+    {
+        consumed = false;
+        if (pendingMode == BastionPendingInputMode.None
+            || selectedEntity?.Kind != EntityKind.Bastion
+            || selectedEntity.OwnerId != localPlayer)
+        {
+            return false;
+        }
+
+        if (pendingMode == BastionPendingInputMode.AttackTarget)
+        {
+            consumed = simulation.TryIssueBastionOrder(
+                selectedEntity.Id,
+                new BastionOrder(BastionOrderKind.AttackArea, tile));
+            return true;
+        }
+
+        if (pendingMode == BastionPendingInputMode.ScoutTarget)
+        {
+            consumed = simulation.TryIssueBastionOrder(
+                selectedEntity.Id,
+                new BastionOrder(BastionOrderKind.Scout, tile));
+            return true;
+        }
+
+        if (pendingMode == BastionPendingInputMode.PatrolWaypoints)
+        {
+            if (confirmPatrol)
+            {
+                if (patrolWaypoints.Count is >= 2 and <= 4)
+                {
+                    consumed = simulation.TryIssueBastionOrder(
+                        selectedEntity.Id,
+                        new BastionOrder(BastionOrderKind.Patrol, Waypoints: patrolWaypoints.ToArray()));
+                }
+
+                return true;
+            }
+
+            if (patrolWaypoints.Count < 4)
+            {
+                patrolWaypoints.Add(tile);
+            }
+
+            consumed = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static FloatRect GetOrderBarBounds(uint windowWidth, uint windowHeight, float panelX, int slotCount, out float startX, out float barY)
+    {
+        var totalWidth = slotCount * BuildBarSlotSize;
         var available = Math.Max(BuildBarSlotSize, panelX - 16f);
         startX = Math.Max(8f, (available - totalWidth) * 0.5f);
         barY = windowHeight - BuildBarSlotSize - BuildBarBottomMargin;
         return new FloatRect(new Vector2f(startX, barY), new Vector2f(Math.Min(totalWidth, available), BuildBarSlotSize));
+    }
+
+    private static bool TryPickBastionOrderCommand(
+        Vector2i mousePosition,
+        uint windowWidth,
+        uint windowHeight,
+        float panelX,
+        out BastionOrderCommand command)
+    {
+        command = default;
+        var bounds = GetOrderBarBounds(
+            windowWidth,
+            windowHeight,
+            panelX,
+            BastionOrderBarModel.Commands.Length,
+            out var startX,
+            out var barY);
+        if (mousePosition.X < bounds.Left
+            || mousePosition.Y < bounds.Top
+            || mousePosition.X >= bounds.Left + bounds.Width
+            || mousePosition.Y >= bounds.Top + bounds.Height)
+        {
+            return false;
+        }
+
+        var index = (int)((mousePosition.X - startX) / BuildBarSlotSize);
+        return BastionOrderBarModel.TryGetCommand(index, out command);
+    }
+
+    private static void DrawBastionOrderBar(
+        IRenderTarget target,
+        WorldEntity bastion,
+        BastionPendingInputMode pendingMode,
+        Font? font,
+        uint windowWidth,
+        uint windowHeight,
+        float panelX,
+        Vector2i mousePosition)
+    {
+        var bounds = GetOrderBarBounds(
+            windowWidth,
+            windowHeight,
+            panelX,
+            BastionOrderBarModel.Commands.Length,
+            out var startX,
+            out var barY);
+        using var backdrop = new RectangleShape(new Vector2f(bounds.Width + 8f, bounds.Height + 8f))
+        {
+            Position = new Vector2f(bounds.Left - 4f, bounds.Top - 4f),
+            FillColor = new Color(10, 14, 20, 210),
+            OutlineColor = new Color(90, 110, 140),
+            OutlineThickness = 1f
+        };
+        target.Draw(backdrop);
+
+        string? tooltip = null;
+        for (var i = 0; i < BastionOrderBarModel.Commands.Length; i++)
+        {
+            var command = BastionOrderBarModel.Commands[i];
+            var slotX = startX + i * BuildBarSlotSize;
+            var selected = BastionOrderBarModel.IsCommandHighlighted(command, pendingMode, bastion.Order.Kind);
+            var fill = selected
+                ? new Color(70, 110, 160, 235)
+                : new Color(45, 55, 70, 230);
+
+            using var slot = new RectangleShape(new Vector2f(BuildBarSlotSize - 4f, BuildBarSlotSize - 4f))
+            {
+                Position = new Vector2f(slotX + 2f, barY + 2f),
+                FillColor = fill,
+                OutlineColor = selected ? new Color(255, 230, 120) : new Color(100, 120, 150),
+                OutlineThickness = selected ? 2f : 1f
+            };
+            target.Draw(slot);
+
+            if (font is not null)
+            {
+                using var glyph = new Text(font, BastionOrderBarModel.Glyph(command))
+                {
+                    CharacterSize = 18,
+                    FillColor = Color.White,
+                    Position = new Vector2f(slotX + 14f, barY + 10f)
+                };
+                target.Draw(glyph);
+
+                var badge = BastionOrderBarModel.ShortcutBadge(i);
+                if (badge is not null)
+                {
+                    using var keyBadge = new Text(font, badge)
+                    {
+                        CharacterSize = 11,
+                        FillColor = new Color(230, 230, 200),
+                        Position = new Vector2f(slotX + BuildBarSlotSize - 16f, barY + 2f)
+                    };
+                    target.Draw(keyBadge);
+                }
+            }
+
+            if (mousePosition.X >= slotX
+                && mousePosition.X < slotX + BuildBarSlotSize
+                && mousePosition.Y >= barY
+                && mousePosition.Y < barY + BuildBarSlotSize)
+            {
+                tooltip = BastionOrderBarModel.Label(command);
+            }
+        }
+
+        if (tooltip is not null && font is not null)
+        {
+            using var tip = new Text(font, tooltip)
+            {
+                CharacterSize = 13,
+                FillColor = Color.White,
+                Position = new Vector2f(bounds.Left, barY - 22f)
+            };
+            target.Draw(tip);
+        }
+    }
+
+    private static FloatRect GetBuildBarBounds(uint windowWidth, uint windowHeight, float panelX, out float startX, out float barY)
+    {
+        return GetOrderBarBounds(windowWidth, windowHeight, panelX, BuildMenuCatalog.BuildableKinds.Length, out startX, out barY);
     }
 
     private static bool TryPickBuildBarKind(Vector2i mousePosition, uint windowWidth, uint windowHeight, float panelX, out EntityKind kind)

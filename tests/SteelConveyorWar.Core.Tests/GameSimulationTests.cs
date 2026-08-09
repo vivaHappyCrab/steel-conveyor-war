@@ -133,6 +133,72 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void TrySetBastionTemplate_RejectsSumOverCapacity()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+        Assert.Equal(MvpDefinitions.BaseBastionTemplateCapacity, simulation.GetBastionTemplateCapacity(playerId));
+
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 10));
+        Assert.False(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.LightBot, 1));
+        Assert.Equal(10, bastion.BastionTemplate[EntityKind.BasicTank]);
+        Assert.False(bastion.BastionTemplate.ContainsKey(EntityKind.LightBot));
+    }
+
+    [Fact]
+    public void BastionCount_CapStartsAtOne_RaisesAfterAdditionalBastions()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        Assert.Equal(1, simulation.GetMaxBastionCount(playerId));
+        Assert.Equal(1, simulation.CountOwnedBastions(playerId));
+
+        var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
+        Assert.False(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Bastion,
+            new TilePosition(8, 10),
+            out _));
+
+        UnlockTier2ForTests(simulation, playerId);
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.AdditionalBastions));
+        Assert.Equal(MvpDefinitions.MaxBastionsAfterUnlock, simulation.GetMaxBastionCount(playerId));
+        Assert.Equal(MvpDefinitions.BaseBastionTemplateCapacity + 2, simulation.GetBastionTemplateCapacity(playerId));
+
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Bastion,
+            new TilePosition(8, 10),
+            out var ghostId));
+        Assert.Equal(2, simulation.CountOwnedBastions(playerId));
+        Assert.NotEqual(0, ghostId);
+    }
+
+    [Fact]
+    public void TrySetFactoryProduction_ManualRecipe_ContinuesAfterSpawn()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        AdvanceTicks(simulation, 30);
+
+        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 40);
+        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 20);
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
+        AdvanceTicks(simulation, 36);
+
+        var factory = simulation.World.GetEntity(factoryId)!;
+        Assert.Equal(EntityKind.BasicTank, factory.ProductionTargetKind);
+        Assert.True(factory.IsManualProductionTarget);
+        Assert.Equal(1, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id));
+
+        AdvanceTicks(simulation, 40);
+        Assert.True(simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id) >= 2);
+        Assert.Equal(EntityKind.BasicTank, simulation.World.GetEntity(factoryId)!.ProductionTargetKind);
+    }
+
+    [Fact]
     public void TrySetFactoryProduction_RejectsFactoryUnitMismatch()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
@@ -141,6 +207,24 @@ public class GameSimulationTests
 
         Assert.False(simulation.TrySetFactoryProduction(factoryId, EntityKind.Scout));
         Assert.Null(simulation.World.GetEntity(factoryId)!.ProductionTargetKind);
+    }
+
+    [Fact]
+    public void TrySetFactoryProduction_RecipeOnly_PreservesAssignedBastion()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.TankFactory, new TilePosition(2, 20), out var factoryId));
+        AdvanceTicks(simulation, 30);
+
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank, bastion.Id));
+        Assert.Equal(bastion.Id, simulation.World.GetEntity(factoryId)!.AssignedBastionId);
+
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.LightBot));
+        var factory = simulation.World.GetEntity(factoryId)!;
+        Assert.Equal(EntityKind.LightBot, factory.ProductionTargetKind);
+        Assert.Equal(bastion.Id, factory.AssignedBastionId);
+        Assert.True(factory.IsManualProductionTarget);
     }
 
     [Fact]

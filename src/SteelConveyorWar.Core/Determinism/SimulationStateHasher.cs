@@ -9,7 +9,7 @@ namespace SteelConveyorWar.Core;
 /// </summary>
 public static class SimulationStateHasher
 {
-    public const int AlgorithmVersion = 1;
+    public const int AlgorithmVersion = 2;
 
     public static string Compute(GameSimulation simulation)
     {
@@ -106,6 +106,7 @@ public static class SimulationStateHasher
         writer.Write(entity.ConstructionTicksRemaining);
         writer.Write(entity.ProductionTargetKind.HasValue);
         writer.Write(entity.ProductionTargetKind.HasValue ? (int)entity.ProductionTargetKind.Value : 0);
+        writer.Write(entity.IsManualProductionTarget);
         writer.Write(entity.PendingOutputItem.HasValue);
         writer.Write(entity.PendingOutputItem.HasValue ? (int)entity.PendingOutputItem.Value : 0);
         writer.Write(entity.PendingOutputAmount);
@@ -122,8 +123,13 @@ public static class SimulationStateHasher
         writer.Write(entity.Order.Target.HasValue);
         writer.Write(entity.Order.Target?.X ?? 0);
         writer.Write(entity.Order.Target?.Y ?? 0);
-        writer.Write(entity.Order.FollowEntityId.HasValue);
-        writer.Write(entity.Order.FollowEntityId ?? 0);
+        writer.Write(entity.Order.WaypointIndex);
+        writer.Write(entity.Order.WaypointList.Count);
+        foreach (var waypoint in entity.Order.WaypointList)
+        {
+            writer.Write(waypoint.X);
+            writer.Write(waypoint.Y);
+        }
         writer.Write(entity.MoveTarget.HasValue);
         writer.Write(entity.MoveTarget?.X ?? 0);
         writer.Write(entity.MoveTarget?.Y ?? 0);
