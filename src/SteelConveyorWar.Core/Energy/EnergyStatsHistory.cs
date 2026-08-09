@@ -2,8 +2,9 @@ namespace SteelConveyorWar.Core;
 
 /// <summary>
 /// Presentation-only per-player energy sample ring (not hashed / not gameplay-affecting).
-/// Tick-resolution storage; <see cref="Query"/> downsamples into time buckets (avg per tick)
-/// so graphs stay smooth — 1s for short windows, 5s for 5 min, 10s for 10 min.
+/// Tick-resolution storage keyed by absolute <see cref="GameSimulation.Tick"/>.
+/// <see cref="Query"/> emits averages over <b>fixed</b> absolute time buckets (aligned to tick 0),
+/// so a completed bucket's graph point never changes as the window slides.
 /// </summary>
 public sealed class EnergyStatsHistory
 {
@@ -16,6 +17,7 @@ public sealed class EnergyStatsHistory
     private static readonly EntityKind[] ConsumerKinds =
         MvpDefinitions.PowerDemand.Keys.OrderBy(kind => (int)kind).ToArray();
 
+    private readonly long[] _sampleTick;
     private readonly int[] _totalProduced;
     private readonly int[] _totalDemand;
     private readonly int[,] _producedByKind;
@@ -25,6 +27,7 @@ public sealed class EnergyStatsHistory
 
     public EnergyStatsHistory()
     {
+        _sampleTick = new long[Capacity];
         _totalProduced = new int[Capacity];
         _totalDemand = new int[Capacity];
         _producedByKind = new int[ProducerKinds.Length, Capacity];
@@ -56,12 +59,14 @@ public sealed class EnergyStatsHistory
     }
 
     public void Record(
+        long tick,
         int totalProduced,
         int totalConsumed,
         IReadOnlyDictionary<EntityKind, int> producedByKind,
         IReadOnlyDictionary<EntityKind, int> consumedByKind)
     {
         var index = _next;
+        _sampleTick[index] = tick;
         _totalProduced[index] = totalProduced;
         _totalDemand[index] = totalConsumed;
 
@@ -84,21 +89,31 @@ public sealed class EnergyStatsHistory
 
     public EnergyStatsWindow Query(int windowSeconds)
     {
-        var window = Math.Clamp(windowSeconds, 1, MaxWindowSeconds);
-        var ticksWanted = window * GameSimulation.TicksPerSecond;
-        var availableTicks = Math.Min(ticksWanted, _count);
-        if (availableTicks <= 0)
+        if (_count <= 0)
         {
             return EnergyStatsWindow.Empty;
         }
 
+        var window = Math.Clamp(windowSeconds, 1, MaxWindowSeconds);
         var bucketSeconds = DisplayBucketSeconds(window);
         var bucketTicks = bucketSeconds * GameSimulation.TicksPerSecond;
-        var bucketCount = Math.Max(1, availableTicks / bucketTicks);
-        // Align to newest: use the trailing bucketCount * bucketTicks ticks.
-        var ticksUsed = Math.Min(availableTicks, bucketCount * bucketTicks);
-        var tickOffset = availableTicks - ticksUsed; // skip incomplete oldest partial bucket
-        bucketCount = ticksUsed / bucketTicks;
+        var maxBuckets = Math.Max(1, window / bucketSeconds);
+
+        var newestIndex = (_next - 1 + Capacity) % Capacity;
+        var newestTick = _sampleTick[newestIndex];
+        var oldestTick = _sampleTick[OldestRingIndex()];
+
+        // Bucket B covers absolute ticks [B*bucketTicks, (B+1)*bucketTicks).
+        // Only completed buckets are emitted so points stay fixed once closed.
+        var lastCompleteBucket = (int)((newestTick + 1) / bucketTicks) - 1;
+        if (lastCompleteBucket < 0)
+        {
+            return EnergyStatsWindow.Empty;
+        }
+
+        var firstAvailableBucket = (int)((oldestTick + bucketTicks - 1) / bucketTicks);
+        var firstBucket = Math.Max(firstAvailableBucket, lastCompleteBucket - maxBuckets + 1);
+        var bucketCount = lastCompleteBucket - firstBucket + 1;
         if (bucketCount <= 0)
         {
             return EnergyStatsWindow.Empty;
@@ -125,9 +140,12 @@ public sealed class EnergyStatsHistory
 
         long producedTotal = 0;
         long demandTotal = 0;
+        var ticksUsed = bucketCount * bucketTicks;
 
         for (var b = 0; b < bucketCount; b++)
         {
+            var bucketId = firstBucket + b;
+            var bucketStartTick = (long)bucketId * bucketTicks;
             long bucketProduced = 0;
             long bucketDemand = 0;
             var kindProduced = new long[ProducerKinds.Length];
@@ -135,8 +153,12 @@ public sealed class EnergyStatsHistory
 
             for (var t = 0; t < bucketTicks; t++)
             {
-                var chronological = tickOffset + b * bucketTicks + t;
-                var ringIndex = RingIndex(availableTicks, chronological);
+                var tick = bucketStartTick + t;
+                if (!TryGetRingIndexForTick(tick, newestTick, out var ringIndex))
+                {
+                    continue;
+                }
+
                 bucketProduced += _totalProduced[ringIndex];
                 bucketDemand += _totalDemand[ringIndex];
                 for (var k = 0; k < ProducerKinds.Length; k++)
@@ -150,7 +172,6 @@ public sealed class EnergyStatsHistory
                 }
             }
 
-            // Average per tick within the bucket (graph Y = sustained rate).
             producedSeries[b] = (int)Math.Round(bucketProduced / (double)bucketTicks);
             demandSeries[b] = (int)Math.Round(bucketDemand / (double)bucketTicks);
             producedTotal += bucketProduced;
@@ -199,12 +220,27 @@ public sealed class EnergyStatsHistory
             consumerRows);
     }
 
-    private int RingIndex(int available, int chronologicalIndex)
+    private int OldestRingIndex()
     {
-        // chronologicalIndex 0 = oldest in window; available-1 = newest.
-        var newest = (_next - 1 + Capacity) % Capacity;
-        var ageFromNewest = available - 1 - chronologicalIndex;
-        return (newest - ageFromNewest + Capacity) % Capacity;
+        if (_count < Capacity)
+        {
+            return 0;
+        }
+
+        return _next;
+    }
+
+    private bool TryGetRingIndexForTick(long tick, long newestTick, out int ringIndex)
+    {
+        ringIndex = 0;
+        var age = newestTick - tick;
+        if (age < 0 || age >= _count)
+        {
+            return false;
+        }
+
+        ringIndex = (int)(((_next - 1 + Capacity) % Capacity - age % Capacity + Capacity) % Capacity);
+        return _sampleTick[ringIndex] == tick;
     }
 }
 

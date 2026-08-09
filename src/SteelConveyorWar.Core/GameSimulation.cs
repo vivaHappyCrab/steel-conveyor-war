@@ -1836,6 +1836,7 @@ public sealed class GameSimulation
         foreach (var player in _players)
         {
             player.EnergyStats.Record(
+                Tick,
                 _tickPowerProduced.GetValueOrDefault(player.Id),
                 _tickPowerConsumed.GetValueOrDefault(player.Id),
                 _tickProducedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>(),

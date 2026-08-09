@@ -1184,33 +1184,68 @@ public class GameSimulationTests
     }
 
     [Fact]
-    public void EnergyStats_Query_UsesLargerBucketsForLongWindows()
+    public void EnergyStats_Query_UsesFixedAbsoluteBuckets()
     {
         Assert.Equal(1, EnergyStatsHistory.DisplayBucketSeconds(10));
-        Assert.Equal(1, EnergyStatsHistory.DisplayBucketSeconds(60));
         Assert.Equal(5, EnergyStatsHistory.DisplayBucketSeconds(300));
         Assert.Equal(10, EnergyStatsHistory.DisplayBucketSeconds(600));
 
         var history = new EnergyStatsHistory();
         var empty = new Dictionary<EntityKind, int>();
-        // 10 seconds of constant production 5 / consumption 4.
-        for (var i = 0; i < 10 * GameSimulation.TicksPerSecond; i++)
+        var tps = GameSimulation.TicksPerSecond;
+
+        // Ticks 0..29 → bucket 0 avg 1; 30..59 → bucket 1 avg 9. Mid-bucket noise must not rewrite bucket 0.
+        for (long tick = 0; tick < tps; tick++)
         {
-            history.Record(5, 4, empty, empty);
+            history.Record(tick, 1, 1, empty, empty);
+        }
+
+        var afterFirst = history.Query(10);
+        Assert.Equal(1, afterFirst.SampleCount);
+        Assert.Equal(1, afterFirst.DemandSeries[0]);
+
+        for (long tick = tps; tick < tps + tps / 2; tick++)
+        {
+            history.Record(tick, 100, 100, empty, empty);
+        }
+
+        var midSecond = history.Query(10);
+        Assert.Equal(1, midSecond.SampleCount);
+        Assert.Equal(1, midSecond.DemandSeries[0]); // completed bucket unchanged
+
+        for (long tick = tps + tps / 2; tick < 2 * tps; tick++)
+        {
+            history.Record(tick, 9, 9, empty, empty);
+        }
+
+        var afterSecond = history.Query(10);
+        Assert.Equal(2, afterSecond.SampleCount);
+        Assert.Equal(1, afterSecond.DemandSeries[0]);
+        // Second bucket = 15 ticks of 100 + 15 ticks of 9 → avg 54.5 → 54 or 55
+        Assert.InRange(afterSecond.DemandSeries[1], 54, 55);
+    }
+
+    [Fact]
+    public void EnergyStats_Query_UsesLargerBucketsForLongWindows()
+    {
+        var history = new EnergyStatsHistory();
+        var empty = new Dictionary<EntityKind, int>();
+        for (long tick = 0; tick < 10 * GameSimulation.TicksPerSecond; tick++)
+        {
+            history.Record(tick, 5, 4, empty, empty);
         }
 
         var shortWindow = history.Query(10);
-        Assert.Equal(10, shortWindow.SampleCount); // 1s buckets
+        Assert.Equal(10, shortWindow.SampleCount);
         Assert.All(shortWindow.DemandSeries, value => Assert.Equal(4, value));
 
-        // Pad to 5 minutes of the same rate.
-        for (var i = 0; i < (5 * 60 - 10) * GameSimulation.TicksPerSecond; i++)
+        for (long tick = 10 * GameSimulation.TicksPerSecond; tick < 5 * 60 * GameSimulation.TicksPerSecond; tick++)
         {
-            history.Record(5, 4, empty, empty);
+            history.Record(tick, 5, 4, empty, empty);
         }
 
         var fiveMin = history.Query(300);
-        Assert.Equal(60, fiveMin.SampleCount); // 5s buckets over 300s
+        Assert.Equal(60, fiveMin.SampleCount);
         Assert.All(fiveMin.DemandSeries, value => Assert.Equal(4, value));
     }
 
