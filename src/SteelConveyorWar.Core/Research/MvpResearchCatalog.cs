@@ -90,10 +90,17 @@ public static class MvpResearchCatalog
             ],
             "optional", "tactical");
         Tech(TechnologyId.MachineGunTurret, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [UnlockContentEffect.Entity(EntityKind.MachineGunTurret)],
+            [
+                UnlockContentEffect.Entity(EntityKind.MachineGunTurret),
+                new AddModifierEffect(ResearchStatIds.AttackDamage, ModifierOperation.Multiply, 11_000)
+            ],
             "optional", "tactical");
         Tech(TechnologyId.ConcreteWalls, ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [UnlockContentEffect.Entity(EntityKind.Wall)],
+            [
+                UnlockContentEffect.Entity(EntityKind.Wall),
+                new AddModifierEffect(ResearchStatIds.Armor, ModifierOperation.Add, 10_000),
+                new AddModifierEffect(ResearchStatIds.MaxHealth, ModifierOperation.Multiply, 11_000)
+            ],
             "optional", "tactical");
         Tech(new TechnologyId("technology.t1.forward-observer"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.VisionRadius, ModifierOperation.Add, 10_000)],
@@ -102,7 +109,10 @@ public static class MvpResearchCatalog
             [new GrantCapabilityEffect(ResearchCapabilityIds.RepairOutOfCombat)],
             "optional", "tactical");
         Tech(new TechnologyId("technology.t1.prefab-fortifications"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 8_000)],
+            [
+                new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 8_000),
+                new AddModifierEffect(ResearchStatIds.AttackCooldownTicks, ModifierOperation.Multiply, 9_000)
+            ],
             "optional", "tactical");
         Tech(new TechnologyId("technology.t1.production-reserve"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.HubStorageStacks, ModifierOperation.Add, 20_000)],

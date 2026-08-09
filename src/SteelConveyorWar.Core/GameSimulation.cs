@@ -413,6 +413,49 @@ public sealed class GameSimulation
         return true;
     }
 
+    /// <summary>
+    /// Test helper: spawns a completed entity (skips ghost construction) for combat setups.
+    /// </summary>
+    public bool TrySpawnEntityForTests(EntityKind kind, TilePosition position, PlayerId ownerId, out int entityId)
+    {
+        entityId = -1;
+        if (!World.IsInside(position) || kind == EntityKind.GhostBuild)
+        {
+            return false;
+        }
+
+        var entity = AddCompletedEntity(kind, position, ownerId);
+        entityId = entity.Id;
+        return true;
+    }
+
+    /// <summary>
+    /// Test helper: injects a research modifier without completing a technology.
+    /// </summary>
+    public void ApplyResearchModifierForTests(PlayerId playerId, AddModifierEffect effect)
+    {
+        GetPlayer(playerId).Research.AppliedModifiersMutable.Add(effect);
+        foreach (var entity in World.Entities.Where(candidate => candidate.OwnerId == playerId && candidate.IsAlive))
+        {
+            SyncResolvedMaxHealth(entity);
+        }
+    }
+
+    /// <summary>
+    /// Test/helper: formula-C damage for the current research-scaled stats of attacker and target.
+    /// </summary>
+    public int ComputeCombatDamageForTests(int attackerId, int targetId)
+    {
+        var attacker = World.GetEntity(attackerId);
+        var target = World.GetEntity(targetId);
+        if (attacker is null || target is null)
+        {
+            return 0;
+        }
+
+        return ComputeDamageAgainst(attacker, MvpDefinitions.GetStats(attacker.Kind), target);
+    }
+
     public bool TrySetBastionTemplate(int bastionId, EntityKind unitKind, int count)
     {
         var bastion = World.GetEntity(bastionId);
@@ -895,21 +938,197 @@ public sealed class GameSimulation
     {
         var entity = new WorldEntity(_nextEntityId++, kind, position, ownerId);
         ConfigureEntityDefaults(entity);
+        SyncResolvedMaxHealth(entity);
         return entity;
     }
 
     private static void ConfigureEntityDefaults(WorldEntity entity)
     {
-        if (entity.Kind == EntityKind.Conveyor || entity.Kind == EntityKind.UndergroundConveyor)
-        {
-            entity.MaxHealth = 40;
-            entity.Health = 40;
-        }
-
         if (entity.Kind == EntityKind.Assembler && entity.SelectedItemRecipe is null)
         {
             entity.SelectedItemRecipe = ItemRecipeId.IronGear;
         }
+    }
+
+    /// <summary>
+    /// Applies research-scaled MaxHealth (and clamps/extends current HP when the cap changes).
+    /// </summary>
+    private void SyncResolvedMaxHealth(WorldEntity entity)
+    {
+        if (entity.OwnerId is null)
+        {
+            return;
+        }
+
+        var baseline = MvpDefinitions.GetStats(entity.Kind).MaxHealth;
+        var resolved = ResolveStat(
+            entity.OwnerId.Value,
+            ResearchStatIds.MaxHealth,
+            baseline,
+            entity.Kind.ToString(),
+            minValue: 1);
+        if (resolved == entity.MaxHealth)
+        {
+            return;
+        }
+
+        var delta = resolved - entity.MaxHealth;
+        entity.MaxHealth = resolved;
+        if (delta > 0)
+        {
+            entity.Health += delta;
+        }
+        else
+        {
+            entity.Health = Math.Min(entity.Health, resolved);
+        }
+    }
+
+    private int ResolveAttackDamage(WorldEntity attacker, EntityStats baseline)
+    {
+        if (attacker.OwnerId is null)
+        {
+            return baseline.AttackDamage;
+        }
+
+        return ResolveStat(
+            attacker.OwnerId.Value,
+            ResearchStatIds.AttackDamage,
+            baseline.AttackDamage,
+            attacker.Kind.ToString(),
+            minValue: 0);
+    }
+
+    private int ResolveArmor(WorldEntity target, EntityStats baseline)
+    {
+        if (target.OwnerId is null)
+        {
+            return baseline.Armor;
+        }
+
+        return ResolveStat(
+            target.OwnerId.Value,
+            ResearchStatIds.Armor,
+            baseline.Armor,
+            target.Kind.ToString(),
+            minValue: 0);
+    }
+
+    private int ResolveAttackCooldown(WorldEntity attacker, EntityStats baseline)
+    {
+        if (attacker.OwnerId is null)
+        {
+            return baseline.AttackCooldownTicks;
+        }
+
+        return ResolveStat(
+            attacker.OwnerId.Value,
+            ResearchStatIds.AttackCooldownTicks,
+            baseline.AttackCooldownTicks,
+            attacker.Kind.ToString(),
+            minValue: 1);
+    }
+
+    private int ComputeDamageAgainst(WorldEntity attacker, EntityStats attackerStats, WorldEntity target)
+    {
+        SyncResolvedMaxHealth(target);
+        var attackDamage = ResolveAttackDamage(attacker, attackerStats);
+        var targetStats = MvpDefinitions.GetStats(target.Kind);
+        var armor = ResolveArmor(target, targetStats);
+        var resistance = CombatDamage.GetResistanceBasisPoints(
+            attackerStats.ProjectileKind,
+            MvpDefinitions.GetCombatTargetCategory(target.Kind));
+        return CombatDamage.ComputeFinalDamage(attackDamage, armor, resistance);
+    }
+
+    /// <summary>
+    /// True when GroundToGround fire at a ground unit is blocked by an allied Wall/SteelWall on the LoS ray.
+    /// Ballistic and AirToGround ignore walls. Buildings/walls as targets are never covered.
+    /// Ally check is same OwnerId until alliances land in #41.
+    /// </summary>
+    private bool IsGroundToGroundBlockedByAlliedWall(WorldEntity attacker, WorldEntity target, ProjectileKind projectileKind)
+    {
+        if (projectileKind != ProjectileKind.GroundToGround)
+        {
+            return false;
+        }
+
+        if (!MvpDefinitions.IsGroundUnitForWallCover(target.Kind) || target.OwnerId is null)
+        {
+            return false;
+        }
+
+        foreach (var tile in EnumerateLineExclusive(attacker.Position, target.Position))
+        {
+            if (!World.IsInside(tile))
+            {
+                continue;
+            }
+
+            if (World.GetEntitiesAt(tile).Any(entity =>
+                    entity.IsAlive
+                    && MvpDefinitions.IsWallKind(entity.Kind)
+                    && entity.OwnerId == target.OwnerId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Bresenham tiles strictly between <paramref name="from"/> and <paramref name="to"/> (endpoints excluded).
+    /// </summary>
+    internal static IEnumerable<TilePosition> EnumerateLineExclusive(TilePosition from, TilePosition to)
+    {
+        var x0 = from.X;
+        var y0 = from.Y;
+        var x1 = to.X;
+        var y1 = to.Y;
+        var dx = Math.Abs(x1 - x0);
+        var dy = Math.Abs(y1 - y0);
+        var sx = x0 < x1 ? 1 : -1;
+        var sy = y0 < y1 ? 1 : -1;
+        var err = dx - dy;
+
+        while (true)
+        {
+            if (x0 == x1 && y0 == y1)
+            {
+                yield break;
+            }
+
+            var e2 = 2 * err;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                x0 += sx;
+            }
+
+            if (e2 < dx)
+            {
+                err += dx;
+                y0 += sy;
+            }
+
+            if (x0 == x1 && y0 == y1)
+            {
+                yield break;
+            }
+
+            yield return new TilePosition(x0, y0);
+        }
+    }
+
+    private void ApplyCombatDamage(WorldEntity target, int damage)
+    {
+        if (damage <= 0)
+        {
+            return;
+        }
+
+        target.Health = Math.Max(0, target.Health - damage);
     }
 
     private static TerrainType[,] CreateStartingTerrain(WorldSize size, int randomSeed)
@@ -2252,13 +2471,14 @@ public sealed class GameSimulation
             }
 
             var stats = MvpDefinitions.GetStats(attacker.Kind);
+            var attackRange = stats.AttackRange;
             var target = World.Entities
                 .Where(entity =>
                     entity.IsAlive
                     && !entity.IsGarrisoned
                     && entity.OwnerId is not null
                     && entity.OwnerId != attacker.OwnerId)
-                .Where(entity => attacker.Position.IsWithinEuclideanRange(entity.Position, stats.AttackRange))
+                .Where(entity => attacker.Position.IsWithinEuclideanRange(entity.Position, attackRange))
                 .OrderBy(entity => attacker.Position.EuclideanDistanceSquared(entity.Position))
                 .ThenBy(entity => entity.Id)
                 .FirstOrDefault();
@@ -2267,9 +2487,40 @@ public sealed class GameSimulation
                 continue;
             }
 
-            target.Health = Math.Max(0, target.Health - stats.AttackDamage);
-            attacker.AttackCooldownRemaining = stats.AttackCooldownTicks;
-            if (!target.IsAlive)
+            attacker.AttackCooldownRemaining = ResolveAttackCooldown(attacker, stats);
+
+            if (IsGroundToGroundBlockedByAlliedWall(attacker, target, stats.ProjectileKind))
+            {
+                continue;
+            }
+
+            var primaryDamage = ComputeDamageAgainst(attacker, stats, target);
+            ApplyCombatDamage(target, primaryDamage);
+            var killed = !target.IsAlive;
+
+            if (stats.SplashRadius > 0)
+            {
+                foreach (var splashTarget in World.Entities
+                             .Where(entity =>
+                                 entity.IsAlive
+                                 && !entity.IsGarrisoned
+                                 && entity.Id != target.Id
+                                 && entity.OwnerId is not null
+                                 && entity.OwnerId != attacker.OwnerId
+                                 && target.Position.IsWithinEuclideanRange(entity.Position, stats.SplashRadius))
+                             .OrderBy(entity => entity.Id)
+                             .ToList())
+                {
+                    var splashDamage = ComputeDamageAgainst(attacker, stats, splashTarget);
+                    ApplyCombatDamage(splashTarget, splashDamage);
+                    if (!splashTarget.IsAlive)
+                    {
+                        killed = true;
+                    }
+                }
+            }
+
+            if (killed)
             {
                 CascadeBastionDeaths();
             }

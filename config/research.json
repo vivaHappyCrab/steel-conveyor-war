@@ -68,6 +68,18 @@
           "contentKind": "entity",
           "contentId": "Wall",
           "valueBasisPoints": 0
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.max-health",
+          "operation": "Multiply",
+          "valueBasisPoints": 11000
         }
       ],
       "tags": [
@@ -557,6 +569,12 @@
           "contentKind": "entity",
           "contentId": "MachineGunTurret",
           "valueBasisPoints": 0
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Multiply",
+          "valueBasisPoints": 11000
         }
       ],
       "tags": [
@@ -685,6 +703,12 @@
           "statId": "stat.construction.ticks",
           "operation": "Multiply",
           "valueBasisPoints": 8000
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-cooldown-ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 9000
         }
       ],
       "tags": [

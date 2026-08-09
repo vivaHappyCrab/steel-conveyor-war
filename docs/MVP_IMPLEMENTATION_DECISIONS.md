@@ -72,8 +72,12 @@ This document records architecture and game-design decisions made while implemen
 - Bastions own desired unit templates (sum capped; research can raise capacity). Assigned factories can auto-pick missing units from the template.
 - Produced units inherit the Bastion's current order (Scout filter applies). Manual factory recipes keep producing after spawn; autofill clears and re-picks deficits.
 - Active defense garrisons units inside the Bastion; threats in Bastion vision trigger a sortie. Bastion death kills assigned units.
-- Combat uses deterministic Euclidean range, cooldown and damage values. Friendly fire is disabled for MVP.
-- Victory is evaluated by commander survival: the last player with a living БМК wins.
+- Combat uses deterministic Euclidean range, cooldown, and **formula C** damage: `max(1, AttackDamage - Armor) * Resistance(projectile, targetCategory)` with basis-point integer math (`CombatDamage` / `MvpDefinitions.GetResistanceBasisPoints`). HP is clamped to ≥ 0.
+- `EntityStats` includes Armor, `ProjectileKind` (`GroundToGround` | `Ballistic` | `AirToGround`), and `SplashRadius` (0 = single target). MG turrets/bots/БМК are G2G; cannon/rocket/medium tank are Ballistic; AA turret/bot are AirToGround. Splash applies in the same `ProcessCombat` pass to enemies near the primary target (ordered by entity id).
+- Walls/SteelWalls block **GroundToGround** damage to allied **ground** units (БМК + `UnitKinds` except Scout) when a Bresenham LoS tile between attacker and target holds a Wall/SteelWall owned by the same `OwnerId` as the target. Ballistic and AirToGround ignore walls. Buildings and walls as targets still take full formula-C damage. Until alliances (#41), “allied” means same `OwnerId`.
+- Research modifiers (`ResearchStatIds.AttackDamage` / `Armor` / `AttackCooldownTicks` / `MaxHealth`, plus existing `VisionRadius`) flow through `ResolveStat` / `AddModifierEffect`. `ProcessCombat` and FoW/HP sync use resolved values (MaxHealth delta adjusts current HP when the cap changes).
+- Friendly fire is disabled for MVP. Victory is evaluated by commander survival: the last player with a living БМК wins.
+- Baseline combat tables live in `docs/MVP_GDD.md` §12 and `MvpDefinitions.GetStats`.
 
 ## Fog Of War And Tech Signatures
 
