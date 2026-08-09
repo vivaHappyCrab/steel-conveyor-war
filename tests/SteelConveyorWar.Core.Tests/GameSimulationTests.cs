@@ -130,7 +130,7 @@ public class GameSimulationTests
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
         Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 1));
-        AdvanceTicks(simulation, 70);
+        AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 10);
 
         Assert.Contains(simulation.World.Entities, entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id);
     }
@@ -552,7 +552,7 @@ public class GameSimulationTests
             simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
         }
 
-        AdvanceTicks(simulation, 70);
+        AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 10);
         Assert.Equal(1, simulation.World.Entities.Count(entity =>
             entity.IsAlive && entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id));
     }
@@ -572,7 +572,7 @@ public class GameSimulationTests
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 40);
         simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 20);
 
-        AdvanceTicks(simulation, 70);
+        AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 10);
         Assert.Contains(simulation.World.Entities, entity =>
             entity.IsAlive && entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id);
         Assert.DoesNotContain(simulation.World.Entities, entity => entity.Kind == EntityKind.LightBot);
@@ -633,9 +633,9 @@ public class GameSimulationTests
         AdvanceTicks(simulation, 30);
 
         Assert.True(simulation.TrySetEnergyBufferForTests(labId, int.MaxValue));
-        simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 3);
+        simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 30);
         Assert.True(simulation.TryStartResearch(new PlayerId(1), TechnologyId.LightBot));
-        AdvanceTicks(simulation, 91);
+        AdvanceTicks(simulation, ResearchSystem.LabCycleTicks * 30);
 
         Assert.Contains(TechnologyId.LightBot, simulation.GetPlayer(new PlayerId(1)).ResearchedTechnologies);
     }
@@ -1053,16 +1053,16 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Laboratory, NearBlue(simulation, 5, -2), out var labId));
         AdvanceTicks(simulation, 30);
 
-        for (var i = 0; i < 3; i++)
+        for (var i = 0; i < 30; i++)
         {
             ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT1, (ItemId.IronGear, 1), (ItemId.CopperPlate, 1));
         }
 
         var assembler = simulation.World.GetEntity(assemblerId)!;
-        Assert.True(assembler.OutputBuffer.TryRemove(ItemId.SciencePackT1, 3));
-        Assert.True(simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 3));
+        Assert.True(assembler.OutputBuffer.TryRemove(ItemId.SciencePackT1, 30));
+        Assert.True(simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 30));
         Assert.True(simulation.TryStartResearch(new PlayerId(1), TechnologyId.LightBot));
-        AdvanceTicks(simulation, 91);
+        AdvanceTicks(simulation, ResearchSystem.LabCycleTicks * 30);
 
         Assert.Contains(TechnologyId.LightBot, simulation.GetPlayer(new PlayerId(1)).ResearchedTechnologies);
     }

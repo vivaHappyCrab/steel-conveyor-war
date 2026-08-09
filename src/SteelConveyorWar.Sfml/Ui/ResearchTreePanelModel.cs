@@ -38,6 +38,8 @@ public sealed record ResearchTreePanelModel(
     TechnologyId? ActiveId,
     bool SupportsAllocationToggle,
     FloatRect OverlayBounds,
+    FloatRect ContentViewport,
+    float ContentHeight,
     FloatRect ExitButtonBounds,
     FloatRect ActionButtonBounds,
     FloatRect AllocationButtonBounds,
@@ -45,16 +47,18 @@ public sealed record ResearchTreePanelModel(
     bool CanStartSelected,
     bool CanCancelSelected)
 {
-    public const float IconSize = 44f;
-    public const float IconGapX = 18f;
-    public const float IconGapY = 22f;
+    public const float IconSize = 36f;
+    public const float IconGapX = 14f;
+    public const float IconGapY = 16f;
     public const float OverlayPadding = 10f;
     public const float ButtonHeight = 28f;
     public const float ButtonGap = 8f;
-    public const float LabelHeight = 16f;
-    public const float BusGap = 28f;
-    public const float TierGap = 36f;
-    public const float OptionalOffsetX = 56f;
+    public const float LabelHeight = 14f;
+    public const float BusGap = 22f;
+    public const float TierGap = 28f;
+    public const float OptionalOffsetX = 48f;
+    public const float TitleChromeHeight = 34f;
+    public const float ScrollStep = 48f;
 
     public static ResearchTreePanelModel FromSnapshot(
         ResearchSnapshot snapshot,
@@ -109,11 +113,12 @@ public sealed record ResearchTreePanelModel(
             .OrderBy(group => group.Key, StringComparer.Ordinal)
             .ToList();
 
+        var contentViewport = ComputeContentViewport(overlayBounds);
         var nodes = new List<ResearchTreeNode>();
         var edges = new List<ResearchTreeEdge>();
-        var contentLeft = overlayBounds.Left + OverlayPadding;
-        var contentTop = overlayBounds.Top + OverlayPadding + 22f;
-        var cursorY = contentTop;
+        // Content-local coordinates: (0,0) is top-left of the scrollable viewport.
+        var contentLeft = 0f;
+        var cursorY = 0f;
         Vector2f? previousBusCenter = null;
 
         foreach (var tierGroup in byTier)
@@ -186,7 +191,7 @@ public sealed record ResearchTreePanelModel(
             for (var i = 0; i < optional.Count; i++)
             {
                 var x = optionalStartX;
-                var y = cursorY + i * (IconSize + LabelHeight + 6f);
+                var y = cursorY + i * (IconSize + LabelHeight + IconGapY);
                 var node = CreateNode(optional[i], activeId, snapshot.CurrentTierId, isMandatory: false, x, y);
                 nodes.Add(node);
                 edges.Add(new ResearchTreeEdge(
@@ -197,10 +202,14 @@ public sealed record ResearchTreePanelModel(
             previousBusCenter = new Vector2f((busLeft + busRight) / 2f, busY);
             var optionalHeight = optional.Count == 0
                 ? 0f
-                : optional.Count * (IconSize + LabelHeight + 6f);
+                : optional.Count * (IconSize + LabelHeight + IconGapY);
             var rowHeight = Math.Max(IconSize + LabelHeight + BusGap, optionalHeight);
             cursorY += rowHeight + TierGap;
         }
+
+        var contentHeight = Math.Max(cursorY, nodes.Count == 0
+            ? 0f
+            : nodes.Max(node => node.Bounds.Top + node.Bounds.Height + LabelHeight));
 
         var selected = selectedId is null
             ? null
@@ -240,6 +249,8 @@ public sealed record ResearchTreePanelModel(
             activeId,
             supportsAllocation,
             overlayBounds,
+            contentViewport,
+            contentHeight,
             exitBounds,
             actionBounds,
             allocationBounds,
@@ -282,6 +293,18 @@ public sealed record ResearchTreePanelModel(
         return new FloatRect(new Vector2f(left, top), new Vector2f(width, height));
     }
 
+    public static FloatRect ComputeContentViewport(FloatRect overlayBounds)
+    {
+        var buttonReserve = ButtonHeight + OverlayPadding * 2f;
+        var height = Math.Max(40f, overlayBounds.Height - TitleChromeHeight - buttonReserve);
+        return new FloatRect(
+            new Vector2f(overlayBounds.Left + OverlayPadding, overlayBounds.Top + TitleChromeHeight),
+            new Vector2f(Math.Max(40f, overlayBounds.Width - OverlayPadding * 2f), height));
+    }
+
+    public static float ClampScroll(float scrollY, float contentHeight, float viewportHeight) =>
+        Math.Clamp(scrollY, 0f, Math.Max(0f, contentHeight - viewportHeight));
+
     // Mirrored from SfmlGameRunner for layout math without a circular dependency.
     private const float TopBarHeight = 36f;
 
@@ -297,6 +320,7 @@ public sealed record ResearchTreePanelModel(
             yield return $"Профиль: {ProfileId}";
             yield return $"Тир: {CurrentTierId}";
             yield return "Клик — детали. Двойной клик / Start — запуск.";
+            yield return "Колёсико — прокрутка дерева.";
             yield return "Связи: обязательные → шина → следующий тир;";
             yield return "опциональные висят сбоку шины.";
             yield return "T / Exit: закрыть.";
@@ -321,13 +345,21 @@ public sealed record ResearchTreePanelModel(
         }
     }
 
-    public bool TryPickNode(Vector2i mouse, out TechnologyId technologyId)
+    public bool TryPickNode(Vector2i mouse, float scrollOffsetY, out TechnologyId technologyId)
     {
         technologyId = default!;
         var point = new Vector2f(mouse.X, mouse.Y);
+        if (!Contains(ContentViewport, point))
+        {
+            return false;
+        }
+
+        var contentPoint = new Vector2f(
+            point.X - ContentViewport.Left,
+            point.Y - ContentViewport.Top + scrollOffsetY);
         foreach (var node in Nodes)
         {
-            if (Contains(node.Bounds, point))
+            if (Contains(node.Bounds, contentPoint))
             {
                 technologyId = node.Id;
                 return true;
@@ -345,6 +377,9 @@ public sealed record ResearchTreePanelModel(
         SupportsAllocationToggle && Contains(AllocationButtonBounds, new Vector2f(mouse.X, mouse.Y));
 
     public bool ContainsOverlay(Vector2i mouse) => Contains(OverlayBounds, new Vector2f(mouse.X, mouse.Y));
+
+    public bool ContainsContentViewport(Vector2i mouse) =>
+        Contains(ContentViewport, new Vector2f(mouse.X, mouse.Y));
 
     private static bool Contains(FloatRect rect, Vector2f point) =>
         point.X >= rect.Left
