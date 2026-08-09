@@ -1865,6 +1865,12 @@ public sealed class GameSimulation
                 continue;
             }
 
+            // Drain only when a unit can actually be produced (full output = idle).
+            if (entity.OutputBuffer.Count(product.Value) >= MvpDefinitions.GetMaxStackSize(product.Value))
+            {
+                continue;
+            }
+
             if (!TryConsumeBuildingEnergy(entity))
             {
                 continue;
