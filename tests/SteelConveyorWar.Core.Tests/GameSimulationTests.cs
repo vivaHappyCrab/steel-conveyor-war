@@ -1150,25 +1150,68 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEntityHealthForTests(solar.Id, 0));
 
         Assert.True(simulation.TrySetAssemblerRecipe(assemblerId, ItemRecipeId.IronGear));
-        simulation.AddItemToEntity(assemblerId, ItemId.IronPlate, 4);
+        simulation.AddItemToEntity(assemblerId, ItemId.IronPlate, 40);
         var demand = MvpDefinitions.GetPowerDemand(EntityKind.Assembler);
         Assert.True(demand > 0);
 
         Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
-        simulation.AdvanceTick(); // start craft (no drain yet)
+        simulation.AdvanceTick(); // start craft
         Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
-        simulation.AdvanceTick(); // drain while progressing
+        // Fill a full 1s display bucket with working drains.
+        for (var i = 0; i < GameSimulation.TicksPerSecond; i++)
+        {
+            Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
+            simulation.AdvanceTick();
+        }
+
         var working = simulation.GetPlayer(new PlayerId(1)).EnergyStats.Query(10);
+        Assert.Equal(1, EnergyStatsHistory.DisplayBucketSeconds(10));
         Assert.Equal(demand, working.DemandSeries[^1]);
         var assemblerWorking = working.ConsumerRows.Single(row => row.Kind == EntityKind.Assembler);
         Assert.Equal(demand, assemblerWorking.Series[^1]);
 
         Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
-        simulation.AdvanceTick();
+        for (var i = 0; i < GameSimulation.TicksPerSecond; i++)
+        {
+            Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
+            simulation.AdvanceTick();
+        }
+
         var starved = simulation.GetPlayer(new PlayerId(1)).EnergyStats.Query(10);
         Assert.Equal(0, starved.DemandSeries[^1]);
         Assert.DoesNotContain(starved.ConsumerRows, row => row.Kind == EntityKind.Assembler && row.Series[^1] > 0);
         Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
+    }
+
+    [Fact]
+    public void EnergyStats_Query_UsesLargerBucketsForLongWindows()
+    {
+        Assert.Equal(1, EnergyStatsHistory.DisplayBucketSeconds(10));
+        Assert.Equal(1, EnergyStatsHistory.DisplayBucketSeconds(60));
+        Assert.Equal(5, EnergyStatsHistory.DisplayBucketSeconds(300));
+        Assert.Equal(10, EnergyStatsHistory.DisplayBucketSeconds(600));
+
+        var history = new EnergyStatsHistory();
+        var empty = new Dictionary<EntityKind, int>();
+        // 10 seconds of constant production 5 / consumption 4.
+        for (var i = 0; i < 10 * GameSimulation.TicksPerSecond; i++)
+        {
+            history.Record(5, 4, empty, empty);
+        }
+
+        var shortWindow = history.Query(10);
+        Assert.Equal(10, shortWindow.SampleCount); // 1s buckets
+        Assert.All(shortWindow.DemandSeries, value => Assert.Equal(4, value));
+
+        // Pad to 5 minutes of the same rate.
+        for (var i = 0; i < (5 * 60 - 10) * GameSimulation.TicksPerSecond; i++)
+        {
+            history.Record(5, 4, empty, empty);
+        }
+
+        var fiveMin = history.Query(300);
+        Assert.Equal(60, fiveMin.SampleCount); // 5s buckets over 300s
+        Assert.All(fiveMin.DemandSeries, value => Assert.Equal(4, value));
     }
 
     [Fact]

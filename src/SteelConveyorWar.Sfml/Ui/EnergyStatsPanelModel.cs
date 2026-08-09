@@ -9,7 +9,8 @@ public enum EnergyStatsWindowKind
     Seconds10 = 10,
     Seconds30 = 30,
     Minutes1 = 60,
-    Minutes5 = 300
+    Minutes5 = 300,
+    Minutes10 = 600
 }
 
 public sealed record EnergyStatsLegendRow(
@@ -37,7 +38,8 @@ public sealed class EnergyStatsPanelModel
         EnergyStatsWindowKind.Seconds10,
         EnergyStatsWindowKind.Seconds30,
         EnergyStatsWindowKind.Minutes1,
-        EnergyStatsWindowKind.Minutes5
+        EnergyStatsWindowKind.Minutes5,
+        EnergyStatsWindowKind.Minutes10
     ];
 
     public static readonly Color TotalSeriesColor = new(220, 60, 60);
@@ -128,6 +130,7 @@ public sealed class EnergyStatsPanelModel
         EnergyStatsWindowKind.Seconds30 => "30 сек",
         EnergyStatsWindowKind.Minutes1 => "1 мин",
         EnergyStatsWindowKind.Minutes5 => "5 мин",
+        EnergyStatsWindowKind.Minutes10 => "10 мин",
         _ => kind.ToString()
     };
 

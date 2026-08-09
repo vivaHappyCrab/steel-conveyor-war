@@ -2,11 +2,12 @@ namespace SteelConveyorWar.Core;
 
 /// <summary>
 /// Presentation-only per-player energy sample ring (not hashed / not gameplay-affecting).
-/// Capacity covers 5 minutes at <see cref="GameSimulation.TicksPerSecond"/>.
+/// Tick-resolution storage; <see cref="Query"/> downsamples into time buckets (avg per tick)
+/// so graphs stay smooth — 1s for short windows, 5s for 5 min, 10s for 10 min.
 /// </summary>
 public sealed class EnergyStatsHistory
 {
-    public const int MaxWindowSeconds = 5 * 60;
+    public const int MaxWindowSeconds = 10 * 60;
     public static int Capacity { get; } = MaxWindowSeconds * GameSimulation.TicksPerSecond;
 
     private static readonly EntityKind[] ProducerKinds =
@@ -35,6 +36,24 @@ public sealed class EnergyStatsHistory
     public static IReadOnlyList<EntityKind> AllConsumerKinds => ConsumerKinds;
 
     public int SampleCount => _count;
+
+    /// <summary>
+    /// Graph point spacing for a window: 1s (≤1 min), 5s (5 min), 10s (10 min).
+    /// </summary>
+    public static int DisplayBucketSeconds(int windowSeconds)
+    {
+        if (windowSeconds >= 10 * 60)
+        {
+            return 10;
+        }
+
+        if (windowSeconds >= 5 * 60)
+        {
+            return 5;
+        }
+
+        return 1;
+    }
 
     public void Record(
         int totalProduced,
@@ -65,15 +84,28 @@ public sealed class EnergyStatsHistory
 
     public EnergyStatsWindow Query(int windowSeconds)
     {
-        var ticks = Math.Clamp(windowSeconds, 1, MaxWindowSeconds) * GameSimulation.TicksPerSecond;
-        var available = Math.Min(ticks, _count);
-        if (available <= 0)
+        var window = Math.Clamp(windowSeconds, 1, MaxWindowSeconds);
+        var ticksWanted = window * GameSimulation.TicksPerSecond;
+        var availableTicks = Math.Min(ticksWanted, _count);
+        if (availableTicks <= 0)
         {
             return EnergyStatsWindow.Empty;
         }
 
-        var producedSeries = new int[available];
-        var demandSeries = new int[available];
+        var bucketSeconds = DisplayBucketSeconds(window);
+        var bucketTicks = bucketSeconds * GameSimulation.TicksPerSecond;
+        var bucketCount = Math.Max(1, availableTicks / bucketTicks);
+        // Align to newest: use the trailing bucketCount * bucketTicks ticks.
+        var ticksUsed = Math.Min(availableTicks, bucketCount * bucketTicks);
+        var tickOffset = availableTicks - ticksUsed; // skip incomplete oldest partial bucket
+        bucketCount = ticksUsed / bucketTicks;
+        if (bucketCount <= 0)
+        {
+            return EnergyStatsWindow.Empty;
+        }
+
+        var producedSeries = new int[bucketCount];
+        var demandSeries = new int[bucketCount];
         var producedByKindSeries = new Dictionary<EntityKind, int[]>();
         var demandByKindSeries = new Dictionary<EntityKind, int[]>();
         var producedSums = new Dictionary<EntityKind, long>();
@@ -81,38 +113,61 @@ public sealed class EnergyStatsHistory
 
         for (var i = 0; i < ProducerKinds.Length; i++)
         {
-            producedByKindSeries[ProducerKinds[i]] = new int[available];
+            producedByKindSeries[ProducerKinds[i]] = new int[bucketCount];
             producedSums[ProducerKinds[i]] = 0;
         }
 
         for (var i = 0; i < ConsumerKinds.Length; i++)
         {
-            demandByKindSeries[ConsumerKinds[i]] = new int[available];
+            demandByKindSeries[ConsumerKinds[i]] = new int[bucketCount];
             demandSums[ConsumerKinds[i]] = 0;
         }
 
         long producedTotal = 0;
         long demandTotal = 0;
-        for (var i = 0; i < available; i++)
+
+        for (var b = 0; b < bucketCount; b++)
         {
-            var ringIndex = RingIndex(available, i);
-            producedSeries[i] = _totalProduced[ringIndex];
-            demandSeries[i] = _totalDemand[ringIndex];
-            producedTotal += producedSeries[i];
-            demandTotal += demandSeries[i];
+            long bucketProduced = 0;
+            long bucketDemand = 0;
+            var kindProduced = new long[ProducerKinds.Length];
+            var kindDemand = new long[ConsumerKinds.Length];
+
+            for (var t = 0; t < bucketTicks; t++)
+            {
+                var chronological = tickOffset + b * bucketTicks + t;
+                var ringIndex = RingIndex(availableTicks, chronological);
+                bucketProduced += _totalProduced[ringIndex];
+                bucketDemand += _totalDemand[ringIndex];
+                for (var k = 0; k < ProducerKinds.Length; k++)
+                {
+                    kindProduced[k] += _producedByKind[k, ringIndex];
+                }
+
+                for (var k = 0; k < ConsumerKinds.Length; k++)
+                {
+                    kindDemand[k] += _demandByKind[k, ringIndex];
+                }
+            }
+
+            // Average per tick within the bucket (graph Y = sustained rate).
+            producedSeries[b] = (int)Math.Round(bucketProduced / (double)bucketTicks);
+            demandSeries[b] = (int)Math.Round(bucketDemand / (double)bucketTicks);
+            producedTotal += bucketProduced;
+            demandTotal += bucketDemand;
 
             for (var k = 0; k < ProducerKinds.Length; k++)
             {
-                var value = _producedByKind[k, ringIndex];
-                producedByKindSeries[ProducerKinds[k]][i] = value;
-                producedSums[ProducerKinds[k]] += value;
+                var avg = (int)Math.Round(kindProduced[k] / (double)bucketTicks);
+                producedByKindSeries[ProducerKinds[k]][b] = avg;
+                producedSums[ProducerKinds[k]] += kindProduced[k];
             }
 
             for (var k = 0; k < ConsumerKinds.Length; k++)
             {
-                var value = _demandByKind[k, ringIndex];
-                demandByKindSeries[ConsumerKinds[k]][i] = value;
-                demandSums[ConsumerKinds[k]] += value;
+                var avg = (int)Math.Round(kindDemand[k] / (double)bucketTicks);
+                demandByKindSeries[ConsumerKinds[k]][b] = avg;
+                demandSums[ConsumerKinds[k]] += kindDemand[k];
             }
         }
 
@@ -121,7 +176,7 @@ public sealed class EnergyStatsHistory
         var producerRows = ProducerKinds
             .Select(kind => new EnergyStatsKindRow(
                 kind,
-                Average(producedSums[kind], available),
+                Average(producedSums[kind], ticksUsed),
                 producedByKindSeries[kind]))
             .Where(row => row.Series.Any(v => v > 0) || row.AveragePerTick > 0)
             .ToArray();
@@ -129,15 +184,15 @@ public sealed class EnergyStatsHistory
         var consumerRows = ConsumerKinds
             .Select(kind => new EnergyStatsKindRow(
                 kind,
-                Average(demandSums[kind], available),
+                Average(demandSums[kind], ticksUsed),
                 demandByKindSeries[kind]))
             .Where(row => row.Series.Any(v => v > 0) || row.AveragePerTick > 0)
             .ToArray();
 
         return new EnergyStatsWindow(
-            available,
-            Average(producedTotal, available),
-            Average(demandTotal, available),
+            bucketCount,
+            Average(producedTotal, ticksUsed),
+            Average(demandTotal, ticksUsed),
             producedSeries,
             demandSeries,
             producerRows,
