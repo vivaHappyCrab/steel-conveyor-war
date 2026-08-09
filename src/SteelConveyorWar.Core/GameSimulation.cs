@@ -373,7 +373,8 @@ public sealed class GameSimulation
         target.WorkTicksRemaining = 0;
         target.WorkTicksTotal = 0;
 
-        DepositItemsToCommanderOrNearbyHubs(commander!, transfer);
+        // Exclude the demolish target so hub scrap/overflow cannot re-deposit into the dying hub.
+        DepositItemsToCommanderOrNearbyHubs(commander!, transfer, excludeEntityId: target.Id);
 
         target.Health = 0;
         if (commander!.QueuedDemolishOrder?.TargetEntityId == targetEntityId)
@@ -456,7 +457,10 @@ public sealed class GameSimulation
     /// Deposits into commander first (per-item stack cap), then owned hubs in interact radius by id.
     /// Remaining amounts are discarded.
     /// </summary>
-    private void DepositItemsToCommanderOrNearbyHubs(WorldEntity commander, IReadOnlyDictionary<ItemId, int> items)
+    private void DepositItemsToCommanderOrNearbyHubs(
+        WorldEntity commander,
+        IReadOnlyDictionary<ItemId, int> items,
+        int? excludeEntityId = null)
     {
         if (items.Count == 0 || commander.OwnerId is null)
         {
@@ -468,6 +472,7 @@ public sealed class GameSimulation
                 entity.IsAlive
                 && entity.Kind == EntityKind.Hub
                 && entity.OwnerId == commander.OwnerId
+                && (excludeEntityId is null || entity.Id != excludeEntityId.Value)
                 && DistanceToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
                     <= MvpDefinitions.CommanderInteractRadius)
             .OrderBy(entity => entity.Id)

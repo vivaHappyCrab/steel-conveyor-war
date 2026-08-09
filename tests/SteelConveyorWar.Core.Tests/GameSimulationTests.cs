@@ -1512,6 +1512,45 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void Demolish_HubDoesNotRedepositIntoDyingHub()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var player = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
+        var survivorHub = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Hub && entity.OwnerId == player);
+        ClearInventory(commander.Inventory);
+        ClearInventory(survivorHub.Inventory);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 20));
+
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Hub,
+            NearBlue(simulation, 6, 0),
+            out var victimHubId));
+        AdvanceTicks(simulation, 30);
+        var victimHub = simulation.World.GetEntity(victimHubId)!;
+        Assert.Equal(EntityKind.Hub, victimHub.Kind);
+
+        ClearInventory(commander.Inventory);
+        ClearInventory(survivorHub.Inventory);
+        ClearInventory(victimHub.Inventory);
+        Assert.True(simulation.AddItemToEntity(victimHubId, ItemId.CopperPlate, 5));
+
+        var maxIron = MvpDefinitions.GetMaxStackSize(ItemId.IronPlate);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, maxIron));
+        Assert.True(simulation.TryTeleportEntityForTests(commander.Id, victimHub.Position));
+
+        Assert.True(simulation.TryDemolishBuilding(commander.Id, victimHubId));
+        AdvanceTicks(simulation, 1);
+
+        Assert.Null(simulation.World.GetEntity(victimHubId));
+        Assert.Equal(maxIron, commander.Inventory.Count(ItemId.IronPlate));
+        // Half Hub cost (20/2=10) + victim copper must land on the surviving hub, not vanish into the scrap target.
+        Assert.Equal(10, survivorHub.Inventory.Count(ItemId.IronPlate));
+        Assert.Equal(5, survivorHub.Inventory.Count(ItemId.CopperPlate));
+    }
+
+    [Fact]
     public void Demolish_RejectsBastionAndEnemy()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
