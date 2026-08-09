@@ -271,6 +271,30 @@ public sealed class CombatBastionTests
     }
 
     [Fact]
+    public void ProcessCombat_BastionDeath_CascadesAssignedUnitsSameTick()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var tank = ProduceTankForBastion(simulation, bastion.Id);
+        // Keep the tank far from the attacker so combat targets the bastion only.
+        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, new TilePosition(2, 20)));
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
+
+        var enemy = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        Assert.True(PlaceAdjacent(simulation, enemy, bastion.Position));
+        Assert.True(simulation.TrySetEntityHealthForTests(
+            bastion.Id,
+            MvpDefinitions.GetStats(EntityKind.Commander).AttackDamage));
+
+        var tankId = tank.Id;
+        var bastionId = bastion.Id;
+        simulation.AdvanceTick();
+
+        Assert.Null(simulation.World.GetEntity(bastionId));
+        Assert.Null(simulation.World.GetEntity(tankId));
+    }
+
+    [Fact]
     public void ProcessBastions_Scout_GarrisonsHomeCombatUnitsAndDoesNotSortie()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);

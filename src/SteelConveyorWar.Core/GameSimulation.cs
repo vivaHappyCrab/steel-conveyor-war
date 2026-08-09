@@ -1988,6 +1988,12 @@ public sealed class GameSimulation
                      && entity.OwnerId is not null
                      && MvpDefinitions.GetStats(entity.Kind).AttackDamage > 0).OrderBy(entity => entity.Id).ToList())
         {
+            // Cascade may have killed this attacker earlier in the same pass.
+            if (!attacker.IsAlive || attacker.IsGarrisoned)
+            {
+                continue;
+            }
+
             if (attacker.AttackCooldownRemaining > 0)
             {
                 attacker.AttackCooldownRemaining--;
@@ -2012,6 +2018,10 @@ public sealed class GameSimulation
 
             target.Health = Math.Max(0, target.Health - stats.AttackDamage);
             attacker.AttackCooldownRemaining = stats.AttackCooldownTicks;
+            if (!target.IsAlive)
+            {
+                CascadeBastionDeaths();
+            }
         }
     }
 
