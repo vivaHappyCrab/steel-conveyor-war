@@ -12,6 +12,8 @@ public sealed class SfmlGameRunner
     private const float TopBarHeight = 36f;
     private const float EdgeScrollBand = 20f;
     private const float CameraPanSpeed = 420f;
+    private const float BuildBarSlotSize = 48f;
+    private const float BuildBarBottomMargin = 10f;
     private const int MaxHudLines = 34;
     private const int RecipeLinesPerPage = 8;
     private const int HudWrapCharacters = 32;
@@ -42,6 +44,8 @@ public sealed class SfmlGameRunner
         int? selectedEntityId = simulation.World.Entities.First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander).Id;
         var isBuildMenuOpen = false;
         EntityKind? pendingBuildKind = null;
+        var pendingDirection = Direction.East;
+        ItemRecipeId? pendingRecipe = null;
         var recipePage = 0;
         var font = TryLoadFont();
 
@@ -90,18 +94,53 @@ public sealed class SfmlGameRunner
             var key = args.Code.ToString();
             var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
 
+            if (key == "Q")
+            {
+                var mousePosition = Mouse.GetPosition(window);
+                var tile = TileFromScreen(mousePosition);
+                if (tile is not null)
+                {
+                    var hoverEntity = simulation.World.GetTopEntityAt(tile.Value);
+                    if (hoverEntity is not null
+                        && IsVisibleToLocalPlayer(simulation, localPlayer, hoverEntity)
+                        && BuildBarModel.TryCopyFromWorldEntity(hoverEntity, out var copyKind, out var copyDirection, out var copyRecipe))
+                    {
+                        EnsureLocalCommanderSelected(simulation, localPlayer, ref selectedEntityId);
+                        isBuildMenuOpen = true;
+                        pendingBuildKind = copyKind;
+                        pendingDirection = copyDirection;
+                        pendingRecipe = copyRecipe;
+                        recipePage = 0;
+                    }
+                }
+
+                return;
+            }
+
             if (key == "B" && selectedEntity?.Kind == EntityKind.Commander && selectedEntity.OwnerId == localPlayer)
             {
                 isBuildMenuOpen = !isBuildMenuOpen;
                 pendingBuildKind = isBuildMenuOpen ? BuildMenuCatalog.BuildableKinds[0] : null;
+                pendingDirection = Direction.East;
+                pendingRecipe = null;
                 recipePage = 0;
                 return;
             }
 
-            if (key == "R" && selectedEntity is not null)
+            if (key == "R")
             {
                 var counterClockwise = Keyboard.IsKeyPressed(Keyboard.Key.LShift) || Keyboard.IsKeyPressed(Keyboard.Key.RShift);
-                simulation.TryRotateEntity(selectedEntity.Id, clockwise: !counterClockwise);
+                if (isBuildMenuOpen && pendingBuildKind is not null && BuildBarModel.IsDirectedKind(pendingBuildKind.Value))
+                {
+                    pendingDirection = RotateDirection(pendingDirection, clockwise: !counterClockwise);
+                    return;
+                }
+
+                if (selectedEntity is not null)
+                {
+                    simulation.TryRotateEntity(selectedEntity.Id, clockwise: !counterClockwise);
+                }
+
                 return;
             }
 
@@ -169,6 +208,15 @@ public sealed class SfmlGameRunner
             if (TryGetNumberShortcut(key, out var buildIndex) && buildIndex < BuildMenuCatalog.BuildableKinds.Length)
             {
                 pendingBuildKind = BuildMenuCatalog.BuildableKinds[buildIndex];
+                if (!BuildBarModel.IsDirectedKind(pendingBuildKind.Value))
+                {
+                    pendingDirection = Direction.East;
+                }
+
+                if (pendingBuildKind != EntityKind.Assembler)
+                {
+                    pendingRecipe = null;
+                }
             }
         };
         window.MouseButtonPressed += (_, args) =>
@@ -179,6 +227,23 @@ public sealed class SfmlGameRunner
             {
                 isMiddleDragging = true;
                 lastDragMouse = mousePosition;
+                return;
+            }
+
+            if (button == "Left" && isBuildMenuOpen
+                && TryPickBuildBarKind(mousePosition, windowWidth, windowHeight, panelX, out var barKind))
+            {
+                pendingBuildKind = barKind;
+                if (!BuildBarModel.IsDirectedKind(barKind))
+                {
+                    pendingDirection = Direction.East;
+                }
+
+                if (barKind != EntityKind.Assembler)
+                {
+                    pendingRecipe = null;
+                }
+
                 return;
             }
 
@@ -199,7 +264,12 @@ public sealed class SfmlGameRunner
                 }
                 else if (isBuildMenuOpen && pendingBuildKind is not null && selectedEntity?.Kind == EntityKind.Commander)
                 {
-                    simulation.TryQueueCommanderBuild(selectedEntity.Id, pendingBuildKind.Value, tile.Value);
+                    simulation.TryQueueCommanderBuild(
+                        selectedEntity.Id,
+                        pendingBuildKind.Value,
+                        tile.Value,
+                        pendingDirection,
+                        pendingRecipe);
                 }
                 else
                 {
@@ -209,6 +279,8 @@ public sealed class SfmlGameRunner
                     recipePage = 0;
                     isBuildMenuOpen = false;
                     pendingBuildKind = null;
+                    pendingDirection = Direction.East;
+                    pendingRecipe = null;
                 }
             }
             else if (button == "Right")
@@ -314,12 +386,28 @@ public sealed class SfmlGameRunner
             {
                 window.SetView(worldView);
                 var hoverTile = TileFromScreen(mousePosition);
-                DrawWorld(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen ? pendingBuildKind : null, hoverTile, cameraX, cameraY, playfieldWidth, playfieldHeight);
+                DrawWorld(
+                    window,
+                    simulation,
+                    localPlayer,
+                    selectedEntityId,
+                    isBuildMenuOpen ? pendingBuildKind : null,
+                    pendingDirection,
+                    hoverTile,
+                    cameraX,
+                    cameraY,
+                    playfieldWidth,
+                    playfieldHeight);
             }
 
             window.SetView(window.DefaultView);
             DrawTopBar(window, simulation, localPlayer, font, playfieldWidth);
-            DrawHud(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen, pendingBuildKind, recipePage, font, windowWidth, windowHeight, panelX);
+            DrawHud(window, simulation, localPlayer, selectedEntityId, isBuildMenuOpen, pendingBuildKind, pendingDirection, pendingRecipe, recipePage, font, windowWidth, windowHeight, panelX);
+            if (isBuildMenuOpen)
+            {
+                DrawBuildBar(window, simulation, localPlayer, selectedEntityId, pendingBuildKind, pendingDirection, pendingRecipe, font, windowWidth, windowHeight, panelX, mousePosition);
+            }
+
             window.Display();
 
             renderedFrames++;
@@ -336,6 +424,7 @@ public sealed class SfmlGameRunner
         PlayerId localPlayer,
         int? selectedEntityId,
         EntityKind? pendingBuildKind,
+        Direction pendingDirection,
         TilePosition? hoverTile,
         float cameraX,
         float cameraY,
@@ -374,7 +463,7 @@ public sealed class SfmlGameRunner
 
         if (pendingBuildKind is not null && hoverTile is not null && world.IsInside(hoverTile.Value))
         {
-            DrawGhostPreview(target, pendingBuildKind.Value, hoverTile.Value);
+            DrawGhostPreview(target, pendingBuildKind.Value, hoverTile.Value, pendingDirection);
         }
     }
 
@@ -529,7 +618,7 @@ public sealed class SfmlGameRunner
         EntityPictograms.DrawUnitMark(target, entity.Kind, center, radius, ink);
     }
 
-    private static void DrawGhostPreview(IRenderTarget target, EntityKind kind, TilePosition anchor)
+    private static void DrawGhostPreview(IRenderTarget target, EntityKind kind, TilePosition anchor, Direction pendingDirection)
     {
         var footprint = MvpDefinitions.GetFootprint(kind);
         using var preview = new RectangleShape(new Vector2f(TileSize * footprint.Width - 2f, TileSize * footprint.Height - 2f))
@@ -540,6 +629,11 @@ public sealed class SfmlGameRunner
             OutlineThickness = 2f
         };
         target.Draw(preview);
+
+        if (BuildBarModel.IsDirectedKind(kind))
+        {
+            DrawDirectionArrow(target, anchor, pendingDirection, new Color(255, 240, 120));
+        }
     }
 
     private static void DrawSelection(IRenderTarget target, WorldEntity entity, WorldSize footprint)
@@ -717,6 +811,8 @@ public sealed class SfmlGameRunner
         int? selectedEntityId,
         bool isBuildMenuOpen,
         EntityKind? pendingBuildKind,
+        Direction pendingDirection,
+        ItemRecipeId? pendingRecipe,
         int recipePage,
         Font? font,
         uint windowWidth,
@@ -773,6 +869,7 @@ public sealed class SfmlGameRunner
                 lines.Add($"Move target: {(selected.MoveTarget is null ? "-" : $"{selected.MoveTarget.Value.X},{selected.MoveTarget.Value.Y}")}");
                 lines.Add($"Queued: {(selected.QueuedBuildOrder is null ? "-" : $"{selected.QueuedBuildOrder.TargetKind}@{selected.QueuedBuildOrder.TargetPosition.X},{selected.QueuedBuildOrder.TargetPosition.Y}")}");
                 lines.Add("B: build menu");
+                lines.Add("Q: copy hovered building");
                 lines.Add("RMB: move");
                 lines.Add("Ctrl+LMB building: collect output");
                 lines.Add("Arrows/MMB/edge: pan camera");
@@ -821,12 +918,19 @@ public sealed class SfmlGameRunner
         if (isBuildMenuOpen)
         {
             lines.Add("");
-            lines.Add("Build menu:");
+            lines.Add("Build mode:");
             lines.Add($"Pending: {pendingBuildKind}");
-            lines.Add("1 Mine 2 Coal 3 Oil");
-            lines.Add("4 Smelt 5 Refinery 6 Belt");
-            lines.Add("7 Inserter 8 Assembler 9 Factory 0 Hub");
-            lines.Add("Lab/Solar/defense are in catalog");
+            if (pendingBuildKind is not null && BuildBarModel.IsDirectedKind(pendingBuildKind.Value))
+            {
+                lines.Add($"Ghost dir: {pendingDirection} (R/Shift+R)");
+            }
+
+            if (pendingBuildKind == EntityKind.Assembler && pendingRecipe is not null)
+            {
+                lines.Add($"Ghost recipe: {pendingRecipe}");
+            }
+
+            lines.Add("Bottom bar: pick building");
             lines.Add("LMB: place/queue build");
         }
 
@@ -1082,5 +1186,180 @@ public sealed class SfmlGameRunner
     {
         index = value;
         return success;
+    }
+
+    private static void EnsureLocalCommanderSelected(GameSimulation simulation, PlayerId localPlayer, ref int? selectedEntityId)
+    {
+        var selected = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
+        if (selected?.Kind == EntityKind.Commander && selected.OwnerId == localPlayer)
+        {
+            return;
+        }
+
+        selectedEntityId = simulation.World.Entities
+            .First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander && entity.IsAlive)
+            .Id;
+    }
+
+    private static Direction RotateDirection(Direction direction, bool clockwise)
+    {
+        return clockwise
+            ? direction switch
+            {
+                Direction.North => Direction.East,
+                Direction.East => Direction.South,
+                Direction.South => Direction.West,
+                Direction.West => Direction.North,
+                _ => direction
+            }
+            : direction switch
+            {
+                Direction.North => Direction.West,
+                Direction.West => Direction.South,
+                Direction.South => Direction.East,
+                Direction.East => Direction.North,
+                _ => direction
+            };
+    }
+
+    private static FloatRect GetBuildBarBounds(uint windowWidth, uint windowHeight, float panelX, out float startX, out float barY)
+    {
+        var count = BuildMenuCatalog.BuildableKinds.Length;
+        var totalWidth = count * BuildBarSlotSize;
+        var available = Math.Max(BuildBarSlotSize, panelX - 16f);
+        startX = Math.Max(8f, (available - totalWidth) * 0.5f);
+        barY = windowHeight - BuildBarSlotSize - BuildBarBottomMargin;
+        return new FloatRect(new Vector2f(startX, barY), new Vector2f(Math.Min(totalWidth, available), BuildBarSlotSize));
+    }
+
+    private static bool TryPickBuildBarKind(Vector2i mousePosition, uint windowWidth, uint windowHeight, float panelX, out EntityKind kind)
+    {
+        kind = default;
+        var bounds = GetBuildBarBounds(windowWidth, windowHeight, panelX, out var startX, out var barY);
+        if (mousePosition.X < bounds.Position.X
+            || mousePosition.Y < bounds.Position.Y
+            || mousePosition.X >= bounds.Position.X + bounds.Size.X
+            || mousePosition.Y >= bounds.Position.Y + bounds.Size.Y)
+        {
+            return false;
+        }
+
+        var index = (int)((mousePosition.X - startX) / BuildBarSlotSize);
+        if (index < 0 || index >= BuildMenuCatalog.BuildableKinds.Length)
+        {
+            return false;
+        }
+
+        kind = BuildMenuCatalog.BuildableKinds[index];
+        return true;
+    }
+
+    private static void DrawBuildBar(
+        IRenderTarget target,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        int? selectedEntityId,
+        EntityKind? pendingBuildKind,
+        Direction pendingDirection,
+        ItemRecipeId? pendingRecipe,
+        Font? font,
+        uint windowWidth,
+        uint windowHeight,
+        float panelX,
+        Vector2i mousePosition)
+    {
+        var commander = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
+        if (commander?.Kind != EntityKind.Commander || commander.OwnerId != localPlayer)
+        {
+            commander = simulation.World.Entities.FirstOrDefault(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander && entity.IsAlive);
+        }
+
+        var inventory = commander?.Inventory ?? new Inventory();
+        var bounds = GetBuildBarBounds(windowWidth, windowHeight, panelX, out var startX, out var barY);
+        using var backdrop = new RectangleShape(new Vector2f(bounds.Size.X + 8f, bounds.Size.Y + 8f))
+        {
+            Position = new Vector2f(bounds.Position.X - 4f, bounds.Position.Y - 4f),
+            FillColor = new Color(10, 14, 20, 210),
+            OutlineColor = new Color(90, 110, 140),
+            OutlineThickness = 1f
+        };
+        target.Draw(backdrop);
+
+        string? tooltip = null;
+        for (var i = 0; i < BuildMenuCatalog.BuildableKinds.Length; i++)
+        {
+            var kind = BuildMenuCatalog.BuildableKinds[i];
+            var slotX = startX + i * BuildBarSlotSize;
+            var affordable = BuildBarModel.AffordableBuilds(kind, inventory);
+            var selected = pendingBuildKind == kind;
+            var fill = affordable <= 0
+                ? new Color(35, 40, 48, 220)
+                : selected
+                    ? new Color(70, 110, 160, 235)
+                    : new Color(45, 55, 70, 230);
+
+            using var slot = new RectangleShape(new Vector2f(BuildBarSlotSize - 4f, BuildBarSlotSize - 4f))
+            {
+                Position = new Vector2f(slotX + 2f, barY + 2f),
+                FillColor = fill,
+                OutlineColor = selected ? new Color(255, 230, 120) : new Color(100, 120, 150),
+                OutlineThickness = selected ? 2f : 1f
+            };
+            target.Draw(slot);
+
+            if (font is not null)
+            {
+                using var glyph = new Text(font, BuildBarModel.Glyph(kind))
+                {
+                    CharacterSize = 18,
+                    FillColor = affordable <= 0 ? new Color(110, 110, 120) : Color.White,
+                    Position = new Vector2f(slotX + 14f, barY + 10f)
+                };
+                target.Draw(glyph);
+
+                using var afford = new Text(font, BuildBarModel.AffordLabel(affordable))
+                {
+                    CharacterSize = 11,
+                    FillColor = affordable <= 0 ? new Color(160, 80, 80) : new Color(200, 220, 180),
+                    Position = new Vector2f(slotX + 4f, barY + BuildBarSlotSize - 18f)
+                };
+                target.Draw(afford);
+
+                var badge = BuildBarModel.ShortcutBadge(i);
+                if (badge is not null)
+                {
+                    using var keyBadge = new Text(font, badge)
+                    {
+                        CharacterSize = 11,
+                        FillColor = new Color(230, 230, 200),
+                        Position = new Vector2f(slotX + BuildBarSlotSize - 16f, barY + 2f)
+                    };
+                    target.Draw(keyBadge);
+                }
+            }
+
+            if (mousePosition.X >= slotX
+                && mousePosition.X < slotX + BuildBarSlotSize
+                && mousePosition.Y >= barY
+                && mousePosition.Y < barY + BuildBarSlotSize)
+            {
+                tooltip = BuildBarModel.Tooltip(
+                    kind,
+                    affordable,
+                    selected && BuildBarModel.IsDirectedKind(kind) ? pendingDirection : Direction.East,
+                    selected && kind == EntityKind.Assembler ? pendingRecipe : null);
+            }
+        }
+
+        if (tooltip is not null && font is not null)
+        {
+            using var tip = new Text(font, tooltip)
+            {
+                CharacterSize = 13,
+                FillColor = Color.White,
+                Position = new Vector2f(bounds.Left, barY - 22f)
+            };
+            target.Draw(tip);
+        }
     }
 }

@@ -109,7 +109,13 @@ public sealed class GameSimulation
         return commander is not null && TryPlaceGhostBuildFromCommander(commander.Id, targetKind, position, out ghostId);
     }
 
-    public bool TryPlaceGhostBuildFromCommander(int commanderId, EntityKind targetKind, TilePosition position, out int ghostId)
+    public bool TryPlaceGhostBuildFromCommander(
+        int commanderId,
+        EntityKind targetKind,
+        TilePosition position,
+        out int ghostId,
+        Direction direction = Direction.East,
+        ItemRecipeId? selectedItemRecipe = null)
     {
         ghostId = 0;
         var commander = World.GetEntity(commanderId);
@@ -140,6 +146,16 @@ public sealed class GameSimulation
 
         var ghost = CreateEntity(EntityKind.GhostBuild, position, commander.OwnerId);
         ghost.BuildTargetKind = targetKind;
+        if (IsDirectedBuildKind(targetKind))
+        {
+            ghost.Direction = direction;
+        }
+
+        if (targetKind == EntityKind.Assembler && selectedItemRecipe is not null)
+        {
+            ghost.SelectedItemRecipe = selectedItemRecipe;
+        }
+
         var buildTicks = MvpDefinitions.BuildTicks.GetValueOrDefault(targetKind, TicksPerSecond);
         if (commander.OwnerId is not null)
         {
@@ -153,7 +169,12 @@ public sealed class GameSimulation
         return true;
     }
 
-    public bool TryQueueCommanderBuild(int commanderId, EntityKind targetKind, TilePosition position)
+    public bool TryQueueCommanderBuild(
+        int commanderId,
+        EntityKind targetKind,
+        TilePosition position,
+        Direction direction = Direction.East,
+        ItemRecipeId? selectedItemRecipe = null)
     {
         var commander = World.GetEntity(commanderId);
         if (commander is null || commander.Kind != EntityKind.Commander || commander.OwnerId is null || !commander.IsAlive)
@@ -168,14 +189,19 @@ public sealed class GameSimulation
 
         if (IsWithinBuildRadius(commander, targetKind, position))
         {
-            return TryPlaceGhostBuildFromCommander(commanderId, targetKind, position, out _);
+            return TryPlaceGhostBuildFromCommander(commanderId, targetKind, position, out _, direction, selectedItemRecipe);
         }
 
-        commander.QueuedBuildOrder = new CommanderBuildOrder(targetKind, position);
+        commander.QueuedBuildOrder = new CommanderBuildOrder(targetKind, position, direction, selectedItemRecipe);
         commander.IsGarrisoned = false;
         commander.MoveTarget = null;
         ResetMovementPath(commander);
         return true;
+    }
+
+    private static bool IsDirectedBuildKind(EntityKind kind)
+    {
+        return kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter;
     }
 
     public bool TryRotateEntity(int entityId, bool clockwise)
@@ -755,7 +781,13 @@ public sealed class GameSimulation
 
             if (IsWithinBuildRadius(commander, order.TargetKind, order.TargetPosition))
             {
-                TryPlaceGhostBuildFromCommander(commander.Id, order.TargetKind, order.TargetPosition, out _);
+                TryPlaceGhostBuildFromCommander(
+                    commander.Id,
+                    order.TargetKind,
+                    order.TargetPosition,
+                    out _,
+                    order.Direction,
+                    order.SelectedItemRecipe);
                 continue;
             }
 
