@@ -1,7 +1,7 @@
-using SteelConveyorWar.Core;
-using SteelConveyorWar.Sfml;
 using SFML.Graphics;
 using SFML.System;
+using SteelConveyorWar.Core;
+using SteelConveyorWar.Sfml;
 
 namespace SteelConveyorWar.Sfml.Tests;
 

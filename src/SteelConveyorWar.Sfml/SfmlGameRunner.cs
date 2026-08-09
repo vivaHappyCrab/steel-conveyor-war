@@ -1714,49 +1714,49 @@ public sealed class SfmlGameRunner
                 return false;
 
             case EntityKind.Laboratory:
-            {
-                var ownerId = selected.OwnerId ?? localPlayer;
-                var snapshot = simulation.GetResearchSnapshot(ownerId);
-                TechnologyId? activeId = null;
-                foreach (var track in snapshot.Tracks.OrderBy(track => track.Id, StringComparer.Ordinal))
                 {
-                    if (track.ActiveSerialTarget is not null)
-                    {
-                        activeId = track.ActiveSerialTarget;
-                        break;
-                    }
-                }
-
-                if (activeId is null)
-                {
+                    var ownerId = selected.OwnerId ?? localPlayer;
+                    var snapshot = simulation.GetResearchSnapshot(ownerId);
+                    TechnologyId? activeId = null;
                     foreach (var track in snapshot.Tracks.OrderBy(track => track.Id, StringComparer.Ordinal))
                     {
-                        if (track.ProjectWeights.Count == 0)
+                        if (track.ActiveSerialTarget is not null)
                         {
-                            continue;
+                            activeId = track.ActiveSerialTarget;
+                            break;
                         }
-
-                        activeId = track.ProjectWeights.Keys.OrderBy(id => id.Value, StringComparer.Ordinal).First();
-                        break;
                     }
-                }
 
-                if (activeId is null)
-                {
-                    needs = new Dictionary<ItemId, int>();
-                    return false;
-                }
+                    if (activeId is null)
+                    {
+                        foreach (var track in snapshot.Tracks.OrderBy(track => track.Id, StringComparer.Ordinal))
+                        {
+                            if (track.ProjectWeights.Count == 0)
+                            {
+                                continue;
+                            }
 
-                var tech = snapshot.Technologies.FirstOrDefault(t => t.Id == activeId);
-                if (tech is null || tech.SciencePacks.Count == 0)
-                {
-                    needs = new Dictionary<ItemId, int>();
-                    return false;
-                }
+                            activeId = track.ProjectWeights.Keys.OrderBy(id => id.Value, StringComparer.Ordinal).First();
+                            break;
+                        }
+                    }
 
-                needs = tech.SciencePacks.ToDictionary(pack => pack.Item, pack => pack.Amount);
-                return true;
-            }
+                    if (activeId is null)
+                    {
+                        needs = new Dictionary<ItemId, int>();
+                        return false;
+                    }
+
+                    var tech = snapshot.Technologies.FirstOrDefault(t => t.Id == activeId);
+                    if (tech is null || tech.SciencePacks.Count == 0)
+                    {
+                        needs = new Dictionary<ItemId, int>();
+                        return false;
+                    }
+
+                    needs = tech.SciencePacks.ToDictionary(pack => pack.Item, pack => pack.Amount);
+                    return true;
+                }
 
             default:
                 needs = new Dictionary<ItemId, int>();
