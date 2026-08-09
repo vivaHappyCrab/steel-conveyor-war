@@ -10,6 +10,9 @@
     "content": "research.json",
     "profile": "mvp-b"
   },
+  "map": {
+    "content": "maps/default.json"
+  },
   "window": {
     "width": 1280,
     "height": 720,

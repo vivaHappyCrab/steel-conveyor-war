@@ -67,13 +67,18 @@ public sealed class GameSimulation
             throw new InvalidOperationException($"Unknown research profile '{options.ProfileId}'.");
         }
 
+        var map = options.ResolvedMap;
+        if (map.Players.Count < 2)
+        {
+            throw new InvalidOperationException("Map config must declare at least two players for MVP.");
+        }
+
         var size = new WorldSize(192, 112);
         var terrain = CreateStartingTerrain(size, options.RandomSeed);
-        var players = new[]
-        {
-            new PlayerState(new PlayerId(1), "Blue", size),
-            new PlayerState(new PlayerId(2), "Red", size)
-        };
+        var players = map.Players
+            .OrderBy(player => player.Id)
+            .Select(player => new PlayerState(new PlayerId(player.Id), player.Name, size, player.TeamId))
+            .ToArray();
 
         foreach (var player in players)
         {
@@ -95,6 +100,21 @@ public sealed class GameSimulation
         simulation.UpdateFogOfWar();
         simulation.UpdateTechSignatures();
         return simulation;
+    }
+
+    public bool AreAllied(PlayerId a, PlayerId b)
+    {
+        if (a == b)
+        {
+            return true;
+        }
+
+        return GetPlayer(a).TeamId == GetPlayer(b).TeamId;
+    }
+
+    public bool AreAllied(PlayerId? a, PlayerId? b)
+    {
+        return a is not null && b is not null && AreAllied(a.Value, b.Value);
     }
 
     public PlayerState GetPlayer(PlayerId playerId)
@@ -1093,7 +1113,7 @@ public sealed class GameSimulation
     /// <summary>
     /// True when GroundToGround fire at a ground unit is blocked by an allied Wall/SteelWall on the LoS ray.
     /// Ballistic and AirToGround ignore walls. Buildings/walls as targets are never covered.
-    /// Ally check is same OwnerId until alliances land in #41.
+    /// Allied means same TeamId (static map-config alliances).
     /// </summary>
     private bool IsGroundToGroundBlockedByAlliedWall(WorldEntity attacker, WorldEntity target, ProjectileKind projectileKind)
     {
@@ -1117,7 +1137,7 @@ public sealed class GameSimulation
             if (World.GetEntitiesAt(tile).Any(entity =>
                     entity.IsAlive
                     && MvpDefinitions.IsWallKind(entity.Kind)
-                    && entity.OwnerId == target.OwnerId))
+                    && AreAllied(entity.OwnerId, target.OwnerId)))
             {
                 return true;
             }
@@ -2224,7 +2244,7 @@ public sealed class GameSimulation
                 entity.IsAlive
                 && !entity.IsGarrisoned
                 && entity.OwnerId is not null
-                && entity.OwnerId != origin.OwnerId
+                && !AreAllied(origin.OwnerId, entity.OwnerId)
                 && origin.Position.IsWithinEuclideanRange(entity.Position, radius))
             .OrderBy(entity => origin.Position.EuclideanDistanceSquared(entity.Position))
             .ThenBy(entity => entity.Id)
@@ -2632,7 +2652,7 @@ public sealed class GameSimulation
                     entity.IsAlive
                     && !entity.IsGarrisoned
                     && entity.OwnerId is not null
-                    && entity.OwnerId != attacker.OwnerId)
+                    && !AreAllied(attacker.OwnerId, entity.OwnerId))
                 .Where(entity => attacker.Position.IsWithinEuclideanRange(entity.Position, attackRange))
                 .OrderBy(entity => attacker.Position.EuclideanDistanceSquared(entity.Position))
                 .ThenBy(entity => entity.Id)
@@ -2661,7 +2681,7 @@ public sealed class GameSimulation
                                  && !entity.IsGarrisoned
                                  && entity.Id != target.Id
                                  && entity.OwnerId is not null
-                                 && entity.OwnerId != attacker.OwnerId
+                                 && !AreAllied(attacker.OwnerId, entity.OwnerId)
                                  && target.Position.IsWithinEuclideanRange(entity.Position, stats.SplashRadius))
                              .OrderBy(entity => entity.Id)
                              .ToList())
@@ -2704,7 +2724,10 @@ public sealed class GameSimulation
         {
             player.DecayVisibility();
             foreach (var entity in World.Entities.Where(entity =>
-                         entity.IsAlive && !entity.IsGarrisoned && entity.OwnerId == player.Id))
+                         entity.IsAlive
+                         && !entity.IsGarrisoned
+                         && entity.OwnerId is not null
+                         && AreAllied(entity.OwnerId.Value, player.Id)))
             {
                 var radius = MvpDefinitions.GetStats(entity.Kind).VisionRadius;
                 if (entity.OwnerId is not null)
@@ -2731,7 +2754,10 @@ public sealed class GameSimulation
         foreach (var player in _players)
         {
             var hotspots = World.Entities
-                .Where(entity => entity.IsAlive && entity.OwnerId is not null && entity.OwnerId != player.Id)
+                .Where(entity =>
+                    entity.IsAlive
+                    && entity.OwnerId is not null
+                    && !AreAllied(entity.OwnerId.Value, player.Id))
                 .Select(entity => new
                 {
                     ZoneX = entity.Position.X / 8,

@@ -41,6 +41,7 @@ public static class GameSettingsLoader
             dto.Simulation?.DefaultRandomSeed ?? GameSettings.Default.DefaultRandomSeed,
             string.IsNullOrWhiteSpace(dto.Research?.Content) ? GameSettings.Default.ResearchContentFile : dto.Research.Content,
             string.IsNullOrWhiteSpace(dto.Research?.Profile) ? GameSettings.Default.ResearchProfileId : dto.Research.Profile,
+            string.IsNullOrWhiteSpace(dto.Map?.Content) ? GameSettings.Default.MapContentFile : dto.Map.Content,
             new WindowSettings(width, height, title));
     }
 
@@ -51,6 +52,7 @@ public static class GameSettingsLoader
         public string DisplayName { get; set; } = "";
         public SimulationConfigDto? Simulation { get; set; }
         public ResearchConfigDto? Research { get; set; }
+        public MapConfigRefDto? Map { get; set; }
         public WindowConfigDto? Window { get; set; }
     }
 
@@ -64,6 +66,11 @@ public static class GameSettingsLoader
     {
         public string Content { get; set; } = "research.json";
         public string Profile { get; set; } = ResearchProfileIds.MvpB;
+    }
+
+    private sealed class MapConfigRefDto
+    {
+        public string Content { get; set; } = "maps/default.json";
     }
 
     private sealed class WindowConfigDto

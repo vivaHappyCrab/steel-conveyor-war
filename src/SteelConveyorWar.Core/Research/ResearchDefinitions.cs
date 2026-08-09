@@ -75,17 +75,21 @@ public sealed record GameCreationOptions(
     string ProfileId,
     ResearchCatalog Catalog,
     TileCatalog Tiles,
-    EntityCatalog Entities)
+    EntityCatalog Entities,
+    MapSettings? Map = null)
 {
     public GameCreationOptions(int randomSeed, string profileId, ResearchCatalog catalog)
-        : this(randomSeed, profileId, catalog, TileCatalog.Empty, EntityCatalog.Empty)
+        : this(randomSeed, profileId, catalog, TileCatalog.Empty, EntityCatalog.Empty, null)
     {
     }
+
+    public MapSettings ResolvedMap => Map ?? MapSettings.Default1v1;
 
     public static GameCreationOptions Default => new(
         RandomSeed: 1,
         ProfileId: ResearchProfileIds.MvpB,
         Catalog: MvpResearchCatalog.CreateEmbedded(),
         Tiles: TileCatalog.Empty,
-        Entities: EntityCatalog.Empty);
+        Entities: EntityCatalog.Empty,
+        Map: MapSettings.Default1v1);
 }

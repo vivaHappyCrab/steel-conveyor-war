@@ -76,23 +76,26 @@ This document records architecture and game-design decisions made while implemen
 - Active defense garrisons units inside the Bastion; threats in Bastion vision trigger a sortie. Bastion death kills assigned units.
 - Combat uses deterministic Euclidean range, cooldown, and **formula C** damage: `max(1, AttackDamage - Armor) * Resistance(projectile, targetCategory)` with basis-point integer math (`CombatDamage` / `MvpDefinitions.GetResistanceBasisPoints`). HP is clamped to ≥ 0.
 - `EntityStats` includes Armor, `ProjectileKind` (`GroundToGround` | `Ballistic` | `AirToGround`), and `SplashRadius` (0 = single target). MG turrets/bots/БМК are G2G; cannon/rocket/medium tank are Ballistic; AA turret/bot are AirToGround. Splash applies in the same `ProcessCombat` pass to enemies near the primary target (ordered by entity id).
-- Walls/SteelWalls block **GroundToGround** damage to allied **ground** units (БМК + `UnitKinds` except Scout) when a Bresenham LoS tile between attacker and target holds a Wall/SteelWall owned by the same `OwnerId` as the target. Ballistic and AirToGround ignore walls. Buildings and walls as targets still take full formula-C damage. Until alliances (#41), “allied” means same `OwnerId`.
+- Walls/SteelWalls block **GroundToGround** damage to allied **ground** units (БМК + `UnitKinds` except Scout) when a Bresenham LoS tile between attacker and target holds a Wall/SteelWall owned by a player with the same `TeamId` as the target. Ballistic and AirToGround ignore walls. Buildings and walls as targets still take full formula-C damage.
 - Research modifiers (`ResearchStatIds.AttackDamage` / `Armor` / `AttackCooldownTicks` / `MaxHealth`, plus existing `VisionRadius`) flow through `ResolveStat` / `AddModifierEffect`. `ProcessCombat` and FoW/HP sync use resolved values (MaxHealth delta adjusts current HP when the cap changes).
-- Friendly fire is disabled for MVP. Victory is evaluated by commander survival: the last player with a living БМК wins.
+- Friendly fire is disabled for MVP (same `TeamId`). Victory is evaluated by commander survival: the last player with a living БМК wins.
 - Baseline combat tables live in `docs/MVP_GDD.md` §12 and `MvpDefinitions.GetStats`.
 
 ## Fog Of War And Tech Signatures
 
 - Each player has a tile visibility mask: unknown, explored, visible.
 - Owned entities reveal circular Euclidean-radius vision (integer `dx*dx+dy*dy <= r*r`).
+- **Shared vision (MVP):** entities owned by any player with the same `TeamId` contribute to every ally's fog mask each tick.
 - Bastion vision radius is elevated relative to other buildings.
 - Combat attack range uses the same Euclidean tile check for determinism.
-- Tech signatures are aggregated into map zones and expose intensity without exact building identity.
+- Tech signatures are aggregated into map zones from **non-allied** entities and expose intensity without exact building identity.
+- SFML draws a **display-only FoW minimap** (top-right of the playfield, left of the side panel): explored/visible terrain + resource patches; buildings colored blue=own / red=enemy / magenta(255,0,255)=ally; unknown tiles stay hidden.
 
 ## Map And Session Lifetime
 
 - MVP match map size is **192×112** tiles (4× the original 48×28 prototype footprint).
-- `GameSimulation.CreateNewGame` builds mirrored starting terrain in memory via `CreateStartingTerrain(size, options.RandomSeed)` and stores `RandomSeed` on the simulation.
+- **Static alliances:** `config/maps/default.json` (path via `game.json` → `map.content`) defines the match roster (`id` / `name` / `teamId`). Same `teamId` = allied for the whole match. Default 1v1 is Blue `teamId` 1 vs Red `teamId` 2. Dynamic mid-match diplomacy is out of MVP.
+- `GameSimulation.CreateNewGame` builds mirrored starting terrain in memory via `CreateStartingTerrain(size, options.RandomSeed)` and stores `RandomSeed` on the simulation. Player `TeamId` comes from `MapSettings` / `GameCreationOptions.Map`.
 - Terrain generation uses a local `System.Random` seeded with `RandomSeed` to jitter patch centers/radii on the left half, then mirrors resource tiles to the right for PvP fairness. Grass remains the default fill. The RNG is not kept for later ticks.
 - Starting Fe/Cu patches sit near each base; coal/oil patches sit farther toward the half-map center. Ore fill uses **Chebyshev** distance so each patch AABB is at least **4×4** (radius ≥ 2 → 5×5).
 - Each side starts with БМК, Bastion, Hub, and **one SolarPanel** on grass at Chebyshev distance 1 from the bastion footprint (no resource overlap).
@@ -100,7 +103,7 @@ This document records architecture and game-design decisions made while implemen
 - Terrain and entity layout currently live only for the process lifetime of one match. Exiting the client discards the in-memory grid; the next session regenerates from the same seed + generation parameters.
 - `RandomSeed` is accepted from `GameCreationOptions` / `config/game.json` (`simulation.defaultRandomSeed`) and consumed by starting terrain generation (reproducibility covered by `MapGenerationTests`).
 - Desired post-MVP reproducibility prefers **seed + generation parameters → regenerate** over opaque map blobs (better for lockstep / fairness than shipping terrain files).
-- **MVP non-goal:** no on-disk map/seed-map blob format, and no save/load path for world terrain. Aligns with GDD §17 (saves are out of MVP). Full procedural biomes remain out of scope.
+- **MVP non-goal:** no on-disk terrain/seed-map blob format, and no save/load path for world terrain. Map JSON is **roster/alliance metadata only**, not a terrain dump. Aligns with GDD §17 (saves are out of MVP). Full procedural biomes remain out of scope.
 
 ## Open Follow-Ups
 
@@ -112,7 +115,7 @@ This document records architecture and game-design decisions made while implemen
 
 ## Simulation State Hash
 
-- `SimulationStateHasher.AlgorithmVersion` (currently `2`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (inventory/visibility/research), ordered entities (buffers, paths, combat/build fields, bastion order waypoints).
+- `SimulationStateHasher.AlgorithmVersion` (currently `3`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (teamId/inventory/visibility/research), ordered entities (buffers, paths, combat/build fields, bastion order waypoints).
 - Doubles use IEEE bit patterns (`DoubleToInt64Bits`). Unordered collections are sorted before hashing.
 - Primary quality gate: dual independent runs with the same seed/commands must match (`DeterminismHashTests`). A checked-in golden hex is optional; when adding/updating one, bump `AlgorithmVersion` if the surface changed, re-run the fixture, and commit the new constant intentionally.
 - Out of surface: SFML/UI, wall-clock, tick-stamped command logs.
