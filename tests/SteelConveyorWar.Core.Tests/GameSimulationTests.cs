@@ -119,6 +119,50 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void Factory_SpawnRoutesToDeficitBastion_WhenLowerIdBastionIsSatiated()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var firstBastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+
+        UnlockTier2ForTests(simulation, playerId);
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.AdditionalBastions));
+        var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Bastion,
+            NearBlue(simulation, 8, -4),
+            out _));
+        AdvanceTicks(simulation, MvpDefinitions.BuildTicks[EntityKind.Bastion] + 1);
+
+        var secondBastion = simulation.World.Entities
+            .Where(entity => entity.IsAlive && entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion && entity.Id != firstBastion.Id)
+            .OrderBy(entity => entity.Id)
+            .Single();
+        Assert.True(firstBastion.Id < secondBastion.Id);
+
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
+        AdvanceTicks(simulation, 30);
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
+        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
+        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
+
+        // Lower-id bastion satiated; higher-id bastion still needs a tank.
+        Assert.True(simulation.TrySetBastionTemplate(firstBastion.Id, EntityKind.BasicTank, 0));
+        Assert.True(simulation.TrySetBastionTemplate(secondBastion.Id, EntityKind.BasicTank, 1));
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank));
+        Assert.Null(simulation.World.GetEntity(factoryId)!.AssignedBastionId);
+        AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
+
+        Assert.Contains(
+            simulation.World.Entities,
+            entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == secondBastion.Id);
+        Assert.DoesNotContain(
+            simulation.World.Entities,
+            entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == firstBastion.Id);
+    }
+
+    [Fact]
     public void BastionTemplate_FactoryAutofillsMissingUnitsAcrossBastions()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
