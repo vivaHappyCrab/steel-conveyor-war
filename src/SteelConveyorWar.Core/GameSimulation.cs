@@ -1784,10 +1784,10 @@ public sealed class GameSimulation
 
         while (remaining > 0)
         {
+            // Integer cross-multiply keeps emptiest-first order free of authoritative floating-point.
             var target = consumers
                 .Where(entity => entity.EnergyBuffer < entity.EnergyBufferCapacity)
-                .OrderBy(entity => (double)entity.EnergyBuffer / entity.EnergyBufferCapacity)
-                .ThenBy(entity => entity.Id)
+                .OrderBy(entity => entity, Comparer<WorldEntity>.Create(CompareEnergyFillPriority))
                 .FirstOrDefault();
             if (target is null)
             {
@@ -1797,6 +1797,14 @@ public sealed class GameSimulation
             target.EnergyBuffer++;
             remaining--;
         }
+    }
+
+    private static int CompareEnergyFillPriority(WorldEntity left, WorldEntity right)
+    {
+        var leftScore = (long)left.EnergyBuffer * right.EnergyBufferCapacity;
+        var rightScore = (long)right.EnergyBuffer * left.EnergyBufferCapacity;
+        var ratioCompare = leftScore.CompareTo(rightScore);
+        return ratioCompare != 0 ? ratioCompare : left.Id.CompareTo(right.Id);
     }
 
     private void ProduceRawResources()
@@ -2058,6 +2066,8 @@ public sealed class GameSimulation
             .ToList();
 
         // Empty-handed extract: at most one pull per source entity per tick (fair share by tick + source id).
+        // Skip transfer countdown on the extract tick (same as pre-RR behavior).
+        var extractedThisTick = new HashSet<int>();
         var extractGroups = inserters
             .Where(inserter => inserter.HeldItem is null)
             .Select(inserter =>
@@ -2081,12 +2091,13 @@ public sealed class GameSimulation
                 {
                     inserter.HeldItem = item;
                     inserter.HeldTransferTicksRemaining = MvpDefinitions.InserterTransferTicks;
+                    extractedThisTick.Add(inserter.Id);
                     break;
                 }
             }
         }
 
-        foreach (var inserter in inserters.Where(entity => entity.HeldItem is not null))
+        foreach (var inserter in inserters.Where(entity => entity.HeldItem is not null && !extractedThisTick.Contains(entity.Id)))
         {
             if (inserter.HeldTransferTicksRemaining > 0)
             {

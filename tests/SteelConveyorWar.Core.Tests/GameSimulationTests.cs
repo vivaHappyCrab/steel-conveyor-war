@@ -696,10 +696,14 @@ public class GameSimulationTests
 
         var inserter = simulation.World.GetEntity(inserterId)!;
         Assert.Equal(ItemId.IronPlate, inserter.HeldItem);
+        Assert.Equal(MvpDefinitions.InserterTransferTicks, inserter.HeldTransferTicksRemaining);
         Assert.Equal(1, simulation.World.GetEntity(sourceHubId)!.Inventory.Count(ItemId.IronPlate));
         AdvanceTicks(simulation, MvpDefinitions.InserterTransferTicks / 2);
 
         Assert.Equal(ItemId.IronPlate, inserter.HeldItem);
+        Assert.Equal(
+            MvpDefinitions.InserterTransferTicks - (MvpDefinitions.InserterTransferTicks / 2),
+            inserter.HeldTransferTicksRemaining);
         Assert.Equal(1, simulation.World.GetEntity(sourceHubId)!.Inventory.Count(ItemId.IronPlate));
     }
 
