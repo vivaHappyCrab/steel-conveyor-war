@@ -116,6 +116,32 @@ public sealed class ResearchProgressionTests
     }
 
     [Fact]
+    public void TryCancelResearch_ClearsActiveTargetButKeepsProgress()
+    {
+        var simulation = Create(ResearchProfileIds.MvpB);
+        var player = new PlayerId(1);
+        Assert.True(simulation.TryStartResearch(player, TechnologyId.ProductionI));
+
+        Assert.True(simulation.TryPlaceGhostBuild(player, EntityKind.Laboratory, new TilePosition(5, simulation.World.Size.Height / 2 - 2), out var labId));
+        for (var i = 0; i < 30; i++)
+        {
+            simulation.AdvanceTick();
+        }
+
+        simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 1);
+        for (var i = 0; i < ResearchSystem.LabCycleTicks; i++)
+        {
+            simulation.AdvanceTick();
+        }
+
+        var progress = simulation.GetPlayer(player).Research.ProgressWorkUnits.GetValueOrDefault(TechnologyId.ProductionI);
+        Assert.True(progress > 0);
+        Assert.True(simulation.TryCancelResearch(player, TechnologyId.ProductionI));
+        Assert.Equal(progress, simulation.GetPlayer(player).Research.ProgressWorkUnits[TechnologyId.ProductionI]);
+        Assert.Null(simulation.GetResearchSnapshot(player).Tracks.Single().ActiveSerialTarget);
+    }
+
+    [Fact]
     public void AllocationSplitIsDeterministicAcrossSimulations()
     {
         var first = Create(ResearchProfileIds.MvpC);

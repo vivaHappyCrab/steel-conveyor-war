@@ -92,7 +92,7 @@ public sealed record ResearchPanelModel(
 
         if (SupportsAllocationToggle)
         {
-            yield return "  [T] toggle cycle/tactical allocation";
+            yield return "  Alloc: use research panel toggle";
         }
 
         for (var i = 0; i < PageEntries.Count; i++)

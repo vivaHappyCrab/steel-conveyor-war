@@ -7,6 +7,7 @@ public static class MvpDefinitions
     public const int ConveyorMoveTicks = 10;
     public const int InserterTransferTicks = 12;
     public const int ConveyorMaxItemsPerTile = 2;
+    public const int MineWorkTicks = 15;
     public const int HubStorageStacks = 20;
     public const double MobileMoveWorldUnitsPerTick = 0.125;
     public const int BaseBastionTemplateCapacity = 10;
@@ -134,11 +135,15 @@ public static class MvpDefinitions
     {
         return kind switch
         {
-            EntityKind.Mine or EntityKind.CoalMine or EntityKind.OilWell or EntityKind.Smelter or EntityKind.Assembler or EntityKind.Laboratory => new WorldSize(2, 2),
+            EntityKind.Mine or EntityKind.CoalMine or EntityKind.OilWell or EntityKind.Smelter or EntityKind.Assembler or EntityKind.Laboratory or EntityKind.Hub => new WorldSize(2, 2),
             EntityKind.Bastion or EntityKind.TankFactory or EntityKind.DroneCenter => new WorldSize(3, 3),
             _ => new WorldSize(1, 1)
         };
     }
+
+    /// <summary>Player-facing storage UI / inventory rules: only Commander and Hub.</summary>
+    public static bool HasPlayerInventory(EntityKind kind) =>
+        kind is EntityKind.Commander or EntityKind.Hub;
 
     public static CollisionSize GetCollisionSize(EntityKind kind)
     {

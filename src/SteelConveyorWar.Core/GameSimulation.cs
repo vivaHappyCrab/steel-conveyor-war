@@ -258,6 +258,11 @@ public sealed class GameSimulation
         return TrySelectResearch(playerId, technology) == ResearchCommandResult.Ok;
     }
 
+    public bool TryCancelResearch(PlayerId playerId, TechnologyId technology)
+    {
+        return _researchSystem.TryCancelResearch(GetPlayer(playerId).Research, technology) == ResearchCommandResult.Ok;
+    }
+
     public ResearchCommandResult TrySelectResearch(
         PlayerId playerId,
         TechnologyId technology,
@@ -298,6 +303,8 @@ public sealed class GameSimulation
 
     public bool TrySetFactoryProduction(int factoryId, EntityKind? outputKind, int? bastionId = null)
     {
+        // bastionId is ignored: factories no longer store bastion assignment.
+        _ = bastionId;
         var factory = World.GetEntity(factoryId);
         if (factory is null || !MvpDefinitions.FactoryKinds.Contains(factory.Kind))
         {
@@ -309,20 +316,10 @@ public sealed class GameSimulation
             return false;
         }
 
-        if (bastionId is not null && !TryValidateOwnedBastion(factory, bastionId.Value))
-        {
-            return false;
-        }
-
         if (outputKind is null)
         {
             factory.ProductionTargetKind = null;
             factory.IsManualProductionTarget = false;
-            if (bastionId is not null)
-            {
-                factory.AssignedBastionId = bastionId;
-            }
-
             return true;
         }
 
@@ -334,47 +331,18 @@ public sealed class GameSimulation
 
         factory.ProductionTargetKind = outputKind;
         factory.IsManualProductionTarget = true;
-        if (bastionId is not null)
-        {
-            factory.AssignedBastionId = bastionId;
-        }
-
         return true;
     }
 
     /// <summary>
-    /// Reassigns a factory's bastion without changing recipe / manual-vs-autofill mode.
-    /// Autofill clears a sticky idle target so the next tick re-picks the new bastion's deficit.
+    /// Obsolete: factories no longer assign to bastions. Always returns false.
+    /// Spawned units pick a deficit bastion automatically.
     /// </summary>
     public bool TryAssignFactoryBastion(int factoryId, int bastionId)
     {
-        var factory = World.GetEntity(factoryId);
-        if (factory is null || !MvpDefinitions.FactoryKinds.Contains(factory.Kind))
-        {
-            return false;
-        }
-
-        if (!TryValidateOwnedBastion(factory, bastionId))
-        {
-            return false;
-        }
-
-        factory.AssignedBastionId = bastionId;
-        if (!factory.IsManualProductionTarget && factory.WorkTicksRemaining <= 0)
-        {
-            factory.ProductionTargetKind = null;
-        }
-
-        return true;
-    }
-
-    private bool TryValidateOwnedBastion(WorldEntity factory, int bastionId)
-    {
-        var bastion = World.GetEntity(bastionId);
-        return bastion is not null
-            && bastion.IsAlive
-            && bastion.Kind == EntityKind.Bastion
-            && bastion.OwnerId == factory.OwnerId;
+        _ = factoryId;
+        _ = bastionId;
+        return false;
     }
 
     public bool TryForceCompleteResearch(PlayerId playerId, TechnologyId technologyId, bool confirmExclusive = true)
@@ -1081,6 +1049,7 @@ public sealed class GameSimulation
         var commanderOne = AddCompletedEntity(EntityKind.Commander, new TilePosition(4, midY), playerOne);
         AddStartingCommanderInventory(commanderOne);
         var bastionOne = AddCompletedEntity(EntityKind.Bastion, new TilePosition(1, midY), playerOne);
+        // Hub is 2x2; keep within CommanderInteractRadius of the БМК and clear of bastion 3x3 (x=1..3).
         AddCompletedEntity(EntityKind.Hub, new TilePosition(5, midY + 2), playerOne);
         var solarOne = ChooseStartingSolarTile(bastionOne);
         AddCompletedEntity(EntityKind.SolarPanel, solarOne, playerOne);
@@ -1794,11 +1763,11 @@ public sealed class GameSimulation
 
         foreach (var player in _players)
         {
-            FillEnergyBuffersRoundRobin(player);
+            FillEnergyBuffersEmptiestFirst(player);
         }
     }
 
-    private void FillEnergyBuffersRoundRobin(PlayerState player)
+    private void FillEnergyBuffersEmptiestFirst(PlayerState player)
     {
         var remaining = player.PowerProduced;
         if (remaining <= 0)
@@ -1811,7 +1780,6 @@ public sealed class GameSimulation
                 entity.IsAlive
                 && entity.OwnerId == player.Id
                 && entity.EnergyBufferCapacity > 0)
-            .OrderBy(entity => entity.Id)
             .ToList();
 
         if (consumers.Count == 0)
@@ -1819,36 +1787,26 @@ public sealed class GameSimulation
             return;
         }
 
-        var index = player.EnergyRoundRobinIndex % consumers.Count;
-        var idleCycles = 0;
-        while (remaining > 0 && idleCycles < consumers.Count)
+        while (remaining > 0)
         {
-            var consumer = consumers[index];
-            if (consumer.EnergyBuffer < consumer.EnergyBufferCapacity)
+            var target = consumers
+                .Where(entity => entity.EnergyBuffer < entity.EnergyBufferCapacity)
+                .OrderBy(entity => (double)entity.EnergyBuffer / entity.EnergyBufferCapacity)
+                .ThenBy(entity => entity.Id)
+                .FirstOrDefault();
+            if (target is null)
             {
-                consumer.EnergyBuffer++;
-                remaining--;
-                idleCycles = 0;
-            }
-            else
-            {
-                idleCycles++;
+                break;
             }
 
-            index = (index + 1) % consumers.Count;
+            target.EnergyBuffer++;
+            remaining--;
         }
-
-        player.EnergyRoundRobinIndex = index;
     }
 
     private void ProduceRawResources()
     {
-        if (Tick % 15 != 0)
-        {
-            return;
-        }
-
-        foreach (var entity in World.Entities.Where(entity => entity.IsAlive))
+        foreach (var entity in World.Entities.Where(entity => entity.IsAlive).OrderBy(entity => entity.Id))
         {
             var terrain = World.GetTerrain(entity.Position);
             ItemId? product = entity.Kind switch
@@ -1865,18 +1823,35 @@ public sealed class GameSimulation
                 continue;
             }
 
-            // Drain only when a unit can actually be produced (full output = idle).
+            // Full output = idle (clear / don't advance ticks).
             if (entity.OutputBuffer.Count(product.Value) >= MvpDefinitions.GetMaxStackSize(product.Value))
+            {
+                entity.WorkTicksRemaining = 0;
+                entity.WorkTicksTotal = 0;
+                continue;
+            }
+
+            if (entity.WorkTicksRemaining <= 0)
+            {
+                entity.WorkTicksTotal = MvpDefinitions.MineWorkTicks;
+                entity.WorkTicksRemaining = MvpDefinitions.MineWorkTicks;
+            }
+
+            entity.WorkTicksRemaining--;
+            if (entity.WorkTicksRemaining > 0)
             {
                 continue;
             }
 
             if (!TryConsumeBuildingEnergy(entity))
             {
+                // Stay at zero until energy is available; next tick restarts the cycle.
+                entity.WorkTicksTotal = 0;
                 continue;
             }
 
             TryAddToBuffer(entity.OutputBuffer, product.Value, 1);
+            entity.WorkTicksTotal = 0;
         }
     }
 
@@ -2082,20 +2057,42 @@ public sealed class GameSimulation
 
     private void ProcessInserters()
     {
-        foreach (var inserter in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Inserter).OrderBy(entity => entity.Id))
-        {
-            if (inserter.HeldItem is null)
+        var inserters = World.Entities
+            .Where(entity => entity.IsAlive && entity.Kind == EntityKind.Inserter)
+            .OrderBy(entity => entity.Id)
+            .ToList();
+
+        // Empty-handed extract: at most one pull per source entity per tick (fair share by tick + source id).
+        var extractGroups = inserters
+            .Where(inserter => inserter.HeldItem is null)
+            .Select(inserter =>
             {
                 var source = World.GetTopEntityAt(inserter.Position.Offset(Opposite(inserter.Direction)));
-                if (source is not null && TryExtractItem(source, inserter.FilterItem, out var item))
+                return (Inserter: inserter, Source: source);
+            })
+            .Where(pair => pair.Source is not null)
+            .GroupBy(pair => pair.Source!.Id)
+            .OrderBy(group => group.Key);
+
+        foreach (var group in extractGroups)
+        {
+            var candidates = group.OrderBy(pair => pair.Inserter.Id).ToList();
+            var start = (int)((Tick + group.Key) % candidates.Count);
+            for (var offset = 0; offset < candidates.Count; offset++)
+            {
+                var index = (start + offset) % candidates.Count;
+                var (inserter, source) = candidates[index];
+                if (TryExtractItem(source!, inserter.FilterItem, out var item))
                 {
                     inserter.HeldItem = item;
                     inserter.HeldTransferTicksRemaining = MvpDefinitions.InserterTransferTicks;
+                    break;
                 }
-
-                continue;
             }
+        }
 
+        foreach (var inserter in inserters.Where(entity => entity.HeldItem is not null))
+        {
             if (inserter.HeldTransferTicksRemaining > 0)
             {
                 inserter.HeldTransferTicksRemaining--;
@@ -2103,7 +2100,7 @@ public sealed class GameSimulation
             }
 
             var target = World.GetTopEntityAt(inserter.Position.Offset(inserter.Direction));
-            if (target is not null && TryInsertItem(target, inserter.HeldItem.Value))
+            if (target is not null && TryInsertItem(target, inserter.HeldItem!.Value))
             {
                 inserter.HeldItem = null;
             }
@@ -2305,8 +2302,8 @@ public sealed class GameSimulation
                 continue;
             }
 
-            // Autofill re-resolves every idle tick so sticky locked/zeroed template entries cannot block later deficits.
-            if (!factory.IsManualProductionTarget && factory.AssignedBastionId is not null)
+            // Autofill re-resolves every idle tick across all owned bastion deficits.
+            if (!factory.IsManualProductionTarget)
             {
                 factory.ProductionTargetKind = ChooseBastionDeficit(factory);
             }
@@ -2339,34 +2336,36 @@ public sealed class GameSimulation
 
     private EntityKind? ChooseBastionDeficit(WorldEntity factory)
     {
-        if (factory.AssignedBastionId is null)
+        if (factory.OwnerId is null)
         {
             return null;
         }
 
-        var bastion = World.GetEntity(factory.AssignedBastionId.Value);
-        if (bastion is null)
+        foreach (var bastion in World.Entities
+            .Where(entity =>
+                entity.IsAlive
+                && entity.OwnerId == factory.OwnerId
+                && entity.Kind == EntityKind.Bastion)
+            .OrderBy(entity => entity.Id))
         {
-            return null;
-        }
-
-        foreach (var desired in bastion.BastionTemplate.OrderBy(pair => pair.Key))
-        {
-            if (desired.Value <= 0 || !CanFactoryProduce(factory.Kind, desired.Key))
+            foreach (var desired in bastion.BastionTemplate.OrderBy(pair => pair.Key))
             {
-                continue;
-            }
+                if (desired.Value <= 0 || !CanFactoryProduce(factory.Kind, desired.Key))
+                {
+                    continue;
+                }
 
-            if (!MvpDefinitions.ProductionRecipes.TryGetValue(desired.Key, out var recipe)
-                || !IsRecipeUnlockedForOwner(factory.OwnerId, recipe))
-            {
-                continue;
-            }
+                if (!MvpDefinitions.ProductionRecipes.TryGetValue(desired.Key, out var recipe)
+                    || !IsRecipeUnlockedForOwner(factory.OwnerId, recipe))
+                {
+                    continue;
+                }
 
-            var current = CountBastionUnitSupply(bastion.Id, desired.Key);
-            if (current < desired.Value)
-            {
-                return desired.Key;
+                var current = CountBastionUnitSupply(bastion.Id, desired.Key);
+                if (current < desired.Value)
+                {
+                    return desired.Key;
+                }
             }
         }
 
@@ -2379,13 +2378,72 @@ public sealed class GameSimulation
             entity.IsAlive
             && entity.AssignedBastionId == bastionId
             && entity.Kind == unitKind);
-        var inFlight = World.Entities.Count(entity =>
-            entity.IsAlive
-            && MvpDefinitions.FactoryKinds.Contains(entity.Kind)
-            && entity.AssignedBastionId == bastionId
-            && entity.ProductionTargetKind == unitKind
-            && entity.WorkTicksRemaining > 0);
-        return living + inFlight;
+
+        var bastion = World.GetEntity(bastionId);
+        if (bastion?.OwnerId is null)
+        {
+            return living;
+        }
+
+        return living + CountInFlightAttributedToBastion(bastion.OwnerId.Value, bastionId, unitKind);
+    }
+
+    /// <summary>
+    /// Attributes in-flight factory crafts of <paramref name="unitKind"/> to bastions greedily:
+    /// lowest factory Id fills the lowest bastion Id that still has living-based deficit.
+    /// </summary>
+    private int CountInFlightAttributedToBastion(PlayerId ownerId, int bastionId, EntityKind unitKind)
+    {
+        var bastions = World.Entities
+            .Where(entity => entity.IsAlive && entity.OwnerId == ownerId && entity.Kind == EntityKind.Bastion)
+            .OrderBy(entity => entity.Id)
+            .ToList();
+
+        var remainingDeficit = new Dictionary<int, int>();
+        foreach (var bastion in bastions)
+        {
+            var desired = bastion.BastionTemplate.GetValueOrDefault(unitKind);
+            var living = World.Entities.Count(entity =>
+                entity.IsAlive
+                && entity.AssignedBastionId == bastion.Id
+                && entity.Kind == unitKind);
+            remainingDeficit[bastion.Id] = Math.Max(0, desired - living);
+        }
+
+        var attributed = 0;
+        foreach (var factory in World.Entities
+            .Where(entity =>
+                entity.IsAlive
+                && entity.OwnerId == ownerId
+                && MvpDefinitions.FactoryKinds.Contains(entity.Kind)
+                && entity.ProductionTargetKind == unitKind
+                && entity.WorkTicksRemaining > 0)
+            .OrderBy(entity => entity.Id))
+        {
+            _ = factory;
+            var assignee = remainingDeficit
+                .Where(pair => pair.Value > 0)
+                .OrderBy(pair => pair.Key)
+                .Select(pair => (int?)pair.Key)
+                .FirstOrDefault()
+                ?? (bastions.Count > 0 ? bastions[0].Id : null);
+            if (assignee is null)
+            {
+                continue;
+            }
+
+            if (remainingDeficit.GetValueOrDefault(assignee.Value) > 0)
+            {
+                remainingDeficit[assignee.Value]--;
+            }
+
+            if (assignee.Value == bastionId)
+            {
+                attributed++;
+            }
+        }
+
+        return attributed;
     }
 
     private bool IsRecipeUnlockedForOwner(PlayerId? ownerId, ProductionRecipe recipe)
@@ -2414,10 +2472,11 @@ public sealed class GameSimulation
         }
 
         var unit = CreateEntity(unitKind, FindSpawnTileNear(factory, unitKind), factory.OwnerId);
-        unit.AssignedBastionId = factory.AssignedBastionId;
-        if (factory.AssignedBastionId is not null)
+        var bastionId = ChooseSpawnBastionId(factory.OwnerId.Value, unitKind);
+        unit.AssignedBastionId = bastionId;
+        if (bastionId is not null)
         {
-            var bastion = World.GetEntity(factory.AssignedBastionId.Value);
+            var bastion = World.GetEntity(bastionId.Value);
             if (bastion is not null)
             {
                 ApplyBastionOrderToUnit(unit, bastion.Order);
@@ -2425,6 +2484,38 @@ public sealed class GameSimulation
         }
 
         World.AddEntity(unit);
+    }
+
+    /// <summary>
+    /// Lowest owned bastion Id that still needs <paramref name="unitKind"/> (living count vs template).
+    /// Falls back to the lowest owned bastion when none have a deficit (manual overshoot).
+    /// </summary>
+    private int? ChooseSpawnBastionId(PlayerId ownerId, EntityKind unitKind)
+    {
+        var bastions = World.Entities
+            .Where(entity => entity.IsAlive && entity.OwnerId == ownerId && entity.Kind == EntityKind.Bastion)
+            .OrderBy(entity => entity.Id)
+            .ToList();
+
+        foreach (var bastion in bastions)
+        {
+            var desired = bastion.BastionTemplate.GetValueOrDefault(unitKind);
+            if (desired <= 0)
+            {
+                continue;
+            }
+
+            var living = World.Entities.Count(entity =>
+                entity.IsAlive
+                && entity.AssignedBastionId == bastion.Id
+                && entity.Kind == unitKind);
+            if (living < desired)
+            {
+                return bastion.Id;
+            }
+        }
+
+        return bastions.Count > 0 ? bastions[0].Id : null;
     }
 
     private TilePosition FindSpawnTileNear(WorldEntity factory, EntityKind unitKind)

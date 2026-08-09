@@ -34,7 +34,8 @@ public sealed class ResearchPanelModelTests
 
         Assert.True(panel.SupportsAllocationToggle);
         Assert.Equal(2, snapshot.Tracks.Count);
-        Assert.Contains(panel.ToHudLines(), line => line.Contains("[T]", StringComparison.Ordinal));
+        Assert.Contains(panel.ToHudLines(), line => line.Contains("Alloc:", StringComparison.Ordinal));
+        Assert.DoesNotContain(panel.ToHudLines(), line => line.Contains("[T]", StringComparison.Ordinal));
     }
 
     [Fact]
