@@ -47,13 +47,15 @@ This document records architecture and game-design decisions made while implemen
 - Conveyor and inserter direction is core state and can be rotated through a simulation API. SFML only renders the arrows and translates hotkeys.
 - Conveyor item rendering reads directly from conveyor slots; detailed interpolation animation is deferred.
 - Oil is represented as `CrudeOil` items refined into `Fuel`. Full fluid pressure, pipe networks and reservoirs are deliberately deferred.
-- Energy is tracked as produced versus demanded per player. Shortage visibility is present, but production throttling is not yet strict.
+- Energy is tracked as produced versus demanded per player. Each powered consumer has an `EnergyBuffer` with capacity `PowerDemand × 100`. The grid fills buffers round-robin from `PowerProduced` each tick. Buildings drain `PowerDemand` from their buffer only while actively producing; empty buffer pauses work progress (soft craft-time inflate removed).
+- Assemblers and factories default to no recipe until selected (or bastion autofill). Smelters use a sticky auto-recipe from input; unused empty smelters refuse Ctrl+deposit.
 
 ## Commander Interaction
 
 - Right click with the БМК selected issues a deterministic move command.
 - `Ctrl+Left click` with the БМК selected withdraws from hub inventory or collects the clicked entity output buffer when the target is within `CommanderInteractRadius` and owned by the same player.
-- `Ctrl+Right click` with the БМК selected deposits commander inventory into hub storage or a building input buffer within `CommanderInteractRadius` and same ownership (instead of issuing a move). Failed/invalid deposit targets fall through to move.
+- `Ctrl+Right click` with the БМК selected deposits commander inventory into hub storage or a building input buffer within `CommanderInteractRadius` and same ownership (instead of issuing a move). Production buildings accept only current-recipe inputs; no recipe → deposit fails and falls through to move. Hub remains unfiltered.
+- Sidebar: RMB on an Input storage line (or hub inventory) deposits all of that item type from the БМК; LMB on an Output line (or hub inventory) withdraws all of that type into the БМК (same interact radius). Energy and craft progress bars are drawn on the selected building panel.
 - Hover/`R` rotate and selected rotate only apply to directed buildings owned by the local player.
 - Long-range queued collection is intentionally not implemented yet; only queued construction uses automatic movement.
 
@@ -108,14 +110,14 @@ This document records architecture and game-design decisions made while implemen
 ## Open Follow-Ups
 
 - Expand remaining non-research balance definitions from code to `config/` once the shape stabilizes.
-- Add stricter energy throttling once production loops are tuned.
+- Tune energy demand/production balance and optional priority tiers beyond round-robin once production loops are playtested.
 - Expand SFML research controls from prototype paging/hotkeys to a dedicated full tree panel.
 - Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.
 - Add tick-stamped command queue / state hash for multiplayer research lockstep.
 
 ## Simulation State Hash
 
-- `SimulationStateHasher.AlgorithmVersion` (currently `3`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (teamId/inventory/visibility/research), ordered entities (buffers, paths, combat/build fields, bastion order waypoints).
+- `SimulationStateHasher.AlgorithmVersion` (currently `4`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (teamId/inventory/visibility/research/energy RR cursor), ordered entities (buffers, energy buffer, sticky smelt recipe, work totals, paths, combat/build fields, bastion order waypoints).
 - Doubles use IEEE bit patterns (`DoubleToInt64Bits`). Unordered collections are sorted before hashing.
 - Primary quality gate: dual independent runs with the same seed/commands must match (`DeterminismHashTests`). A checked-in golden hex is optional; when adding/updating one, bump `AlgorithmVersion` if the surface changed, re-run the fixture, and commit the new constant intentionally.
 - Out of surface: SFML/UI, wall-clock, tick-stamped command logs.

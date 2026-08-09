@@ -9,7 +9,7 @@ namespace SteelConveyorWar.Core;
 /// </summary>
 public static class SimulationStateHasher
 {
-    public const int AlgorithmVersion = 3;
+    public const int AlgorithmVersion = 4;
 
     public static string Compute(GameSimulation simulation)
     {
@@ -62,6 +62,7 @@ public static class SimulationStateHasher
         writer.Write(player.IsDefeated);
         writer.Write(player.PowerProduced);
         writer.Write(player.PowerDemand);
+        writer.Write(player.EnergyRoundRobinIndex);
         WriteInventory(writer, player.Inventory);
 
         for (var y = 0; y < size.Height; y++)
@@ -112,7 +113,12 @@ public static class SimulationStateHasher
         writer.Write(entity.PendingOutputItem.HasValue ? (int)entity.PendingOutputItem.Value : 0);
         writer.Write(entity.PendingOutputAmount);
         writer.Write(entity.WorkTicksRemaining);
+        writer.Write(entity.WorkTicksTotal);
         writer.Write(entity.AttackCooldownRemaining);
+        writer.Write(entity.EnergyBuffer);
+        writer.Write(entity.EnergyBufferCapacity);
+        writer.Write(entity.ActiveSmeltRecipe.HasValue);
+        writer.Write(entity.ActiveSmeltRecipe.HasValue ? (int)entity.ActiveSmeltRecipe.Value : 0);
         writer.Write(entity.FilterItem.HasValue);
         writer.Write(entity.FilterItem.HasValue ? (int)entity.FilterItem.Value : 0);
         writer.Write(entity.AssignedBastionId.HasValue);

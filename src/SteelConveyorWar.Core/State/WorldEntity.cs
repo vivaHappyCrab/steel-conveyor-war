@@ -68,7 +68,19 @@ public sealed class WorldEntity
 
     public int WorkTicksRemaining { get; internal set; }
 
+    /// <summary>Total work ticks for the active craft cycle (progress UI). 0 when idle.</summary>
+    public int WorkTicksTotal { get; internal set; }
+
     public int AttackCooldownRemaining { get; internal set; }
+
+    /// <summary>Stored energy available for production drain.</summary>
+    public int EnergyBuffer { get; internal set; }
+
+    /// <summary>Max energy buffer; 0 when the entity has no <see cref="MvpDefinitions.PowerDemand"/>.</summary>
+    public int EnergyBufferCapacity { get; internal set; }
+
+    /// <summary>Last smelter recipe used; kept when input empties until a different valid input arrives.</summary>
+    public SmeltRecipeId? ActiveSmeltRecipe { get; internal set; }
 
     public ItemId? FilterItem { get; internal set; }
 

@@ -291,6 +291,16 @@ public sealed class ResearchSystem
                 var packConsumptions = 0;
                 foreach (var lab in labs)
                 {
+                    if (!activeProjects.Any(project => CanAfford(lab, project.Definition)))
+                    {
+                        continue;
+                    }
+
+                    if (!simulation.TryConsumeBuildingEnergy(lab))
+                    {
+                        continue;
+                    }
+
                     if (TryConsumePackForAnyActiveProject(lab, research, activeProjects))
                     {
                         packConsumptions++;

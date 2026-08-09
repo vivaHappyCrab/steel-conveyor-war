@@ -93,6 +93,17 @@ public static class MvpDefinitions
             [EntityKind.CoalPlant] = 20
         };
 
+    /// <summary>Per-building energy buffer capacity = demand × this factor (ticks of full drain).</summary>
+    public const int EnergyBufferCapacityFactor = 100;
+
+    public static int GetEnergyBufferCapacity(EntityKind kind)
+    {
+        var demand = PowerDemand.GetValueOrDefault(kind);
+        return demand <= 0 ? 0 : demand * EnergyBufferCapacityFactor;
+    }
+
+    public static int GetPowerDemand(EntityKind kind) => PowerDemand.GetValueOrDefault(kind);
+
     public static readonly IReadOnlyDictionary<ItemId, int> ItemStackSizes =
         new Dictionary<ItemId, int>
         {
