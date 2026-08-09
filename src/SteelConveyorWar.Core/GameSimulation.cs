@@ -529,16 +529,22 @@ public sealed class GameSimulation
         AddStartingCommanderInventory(commanderOne);
         var bastionOne = AddCompletedEntity(EntityKind.Bastion, new TilePosition(1, midY), playerOne);
         AddCompletedEntity(EntityKind.Hub, new TilePosition(5, midY + 2), playerOne);
-        PlaceStartingSolar(bastionOne, playerOne);
+        var solarOne = ChooseStartingSolarTile(bastionOne);
+        AddCompletedEntity(EntityKind.SolarPanel, solarOne, playerOne);
 
         var commanderTwo = AddCompletedEntity(EntityKind.Commander, new TilePosition(World.Size.Width - 5, midY), playerTwo);
         AddStartingCommanderInventory(commanderTwo);
         var bastionTwo = AddCompletedEntity(EntityKind.Bastion, new TilePosition(World.Size.Width - 4, midY), playerTwo);
         AddCompletedEntity(EntityKind.Hub, new TilePosition(World.Size.Width - 6, midY + 2), playerTwo);
-        PlaceStartingSolar(bastionTwo, playerTwo);
+        // Mirror Blue's solar across the map for PvP fairness (same relative placement).
+        var mirroredSolar = new TilePosition(World.Size.Width - 1 - solarOne.X, solarOne.Y);
+        var solarTwo = IsValidStartingSolarTile(bastionTwo, mirroredSolar)
+            ? mirroredSolar
+            : ChooseStartingSolarTile(bastionTwo);
+        AddCompletedEntity(EntityKind.SolarPanel, solarTwo, playerTwo);
     }
 
-    private void PlaceStartingSolar(WorldEntity bastion, PlayerId ownerId)
+    private TilePosition ChooseStartingSolarTile(WorldEntity bastion)
     {
         var bastionTiles = GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position).ToHashSet();
         var candidates = new List<TilePosition>();
@@ -554,18 +560,7 @@ public sealed class GameSimulation
                     }
 
                     var candidate = new TilePosition(tile.X + dx, tile.Y + dy);
-                    if (!World.IsInside(candidate) || bastionTiles.Contains(candidate))
-                    {
-                        continue;
-                    }
-
-                    // Chebyshev distance 1 from bastion footprint (adjacent including diagonals).
-                    if (World.GetTerrain(candidate) != TerrainType.Grass)
-                    {
-                        continue;
-                    }
-
-                    if (World.GetEntitiesAt(candidate).Any(entity => entity.IsAlive))
+                    if (!IsValidStartingSolarTile(bastion, candidate))
                     {
                         continue;
                     }
@@ -582,10 +577,39 @@ public sealed class GameSimulation
             .ToList();
         if (ordered.Count == 0)
         {
-            throw new InvalidOperationException($"No grass tile adjacent to bastion for starting solar (owner {ownerId.Value}).");
+            throw new InvalidOperationException($"No grass tile adjacent to bastion for starting solar (owner {bastion.OwnerId?.Value}).");
         }
 
-        AddCompletedEntity(EntityKind.SolarPanel, ordered[0], ownerId);
+        return ordered[0];
+    }
+
+    private bool IsValidStartingSolarTile(WorldEntity bastion, TilePosition candidate)
+    {
+        if (!World.IsInside(candidate))
+        {
+            return false;
+        }
+
+        var bastionTiles = GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position).ToHashSet();
+        if (bastionTiles.Contains(candidate))
+        {
+            return false;
+        }
+
+        // Chebyshev distance 1 from bastion footprint (adjacent including diagonals).
+        var adjacent = bastionTiles.Any(tile =>
+            Math.Max(Math.Abs(tile.X - candidate.X), Math.Abs(tile.Y - candidate.Y)) == 1);
+        if (!adjacent)
+        {
+            return false;
+        }
+
+        if (World.GetTerrain(candidate) != TerrainType.Grass)
+        {
+            return false;
+        }
+
+        return !World.GetEntitiesAt(candidate).Any(entity => entity.IsAlive);
     }
 
     private static void AddStartingCommanderInventory(WorldEntity commander)

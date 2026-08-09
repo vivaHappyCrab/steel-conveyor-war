@@ -456,6 +456,19 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void StartingSolar_IsMirroredAcrossMapForPvP()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var blueSolar = simulation.World.Entities.Single(entity =>
+            entity.Kind == EntityKind.SolarPanel && entity.OwnerId == new PlayerId(1));
+        var redSolar = simulation.World.Entities.Single(entity =>
+            entity.Kind == EntityKind.SolarPanel && entity.OwnerId == new PlayerId(2));
+
+        Assert.Equal(blueSolar.Position.Y, redSolar.Position.Y);
+        Assert.Equal(simulation.World.Size.Width - 1 - blueSolar.Position.X, redSolar.Position.X);
+    }
+
+    [Fact]
     public void GroundMovement_BlockedByBuildingsButNotLogistics()
     {
         var blockedSimulation = GameSimulation.CreateNewGame(randomSeed: 42);

@@ -22,16 +22,34 @@ internal static class EntityPictograms
                 DrawLine(target, cx - s * 0.25f, cy, cx + s * 0.25f, cy, ink);
                 break;
             case EntityKind.Mine:
-            case EntityKind.CoalMine:
-            case EntityKind.OilWell:
+                // Pickaxe V
                 DrawLine(target, cx - s * 0.3f, cy - s * 0.2f, cx, cy + s * 0.3f, ink);
                 DrawLine(target, cx + s * 0.3f, cy - s * 0.2f, cx, cy + s * 0.3f, ink);
                 break;
+            case EntityKind.CoalMine:
+                // Pickaxe V + crossbar
+                DrawLine(target, cx - s * 0.3f, cy - s * 0.2f, cx, cy + s * 0.3f, ink);
+                DrawLine(target, cx + s * 0.3f, cy - s * 0.2f, cx, cy + s * 0.3f, ink);
+                DrawLine(target, cx - s * 0.18f, cy - s * 0.05f, cx + s * 0.18f, cy - s * 0.05f, ink);
+                break;
+            case EntityKind.OilWell:
+                // Derrick: mast + two legs
+                DrawLine(target, cx, cy - s * 0.32f, cx, cy + s * 0.28f, ink);
+                DrawLine(target, cx - s * 0.28f, cy + s * 0.28f, cx, cy - s * 0.05f, ink);
+                DrawLine(target, cx + s * 0.28f, cy + s * 0.28f, cx, cy - s * 0.05f, ink);
+                break;
             case EntityKind.Smelter:
-            case EntityKind.Refinery:
+                // Open funnel
                 DrawLine(target, cx, cy + s * 0.3f, cx - s * 0.25f, cy - s * 0.1f, ink);
                 DrawLine(target, cx, cy + s * 0.3f, cx + s * 0.25f, cy - s * 0.1f, ink);
                 DrawLine(target, cx - s * 0.15f, cy - s * 0.25f, cx + s * 0.15f, cy - s * 0.25f, ink);
+                break;
+            case EntityKind.Refinery:
+                // Funnel with mid shelf
+                DrawLine(target, cx, cy + s * 0.3f, cx - s * 0.25f, cy - s * 0.1f, ink);
+                DrawLine(target, cx, cy + s * 0.3f, cx + s * 0.25f, cy - s * 0.1f, ink);
+                DrawLine(target, cx - s * 0.15f, cy - s * 0.25f, cx + s * 0.15f, cy - s * 0.25f, ink);
+                DrawLine(target, cx - s * 0.12f, cy + s * 0.05f, cx + s * 0.12f, cy + s * 0.05f, ink);
                 break;
             case EntityKind.SolarPanel:
                 DrawLine(target, cx - s * 0.3f, cy, cx + s * 0.3f, cy, ink);
@@ -49,9 +67,15 @@ internal static class EntityPictograms
                 DrawLine(target, cx - s * 0.22f, cy, cx + s * 0.22f, cy, ink);
                 break;
             case EntityKind.TankFactory:
-            case EntityKind.DroneCenter:
+                // Nested rings
                 DrawCircleOutline(target, cx, cy, s * 0.28f, ink);
                 DrawCircleOutline(target, cx, cy, s * 0.12f, ink);
+                break;
+            case EntityKind.DroneCenter:
+                // Nested rings + horizontal strut
+                DrawCircleOutline(target, cx, cy, s * 0.28f, ink);
+                DrawCircleOutline(target, cx, cy, s * 0.12f, ink);
+                DrawLine(target, cx - s * 0.28f, cy, cx + s * 0.28f, cy, ink);
                 break;
             case EntityKind.Laboratory:
                 DrawLine(target, cx - s * 0.15f, cy + s * 0.3f, cx - s * 0.15f, cy - s * 0.1f, ink);
@@ -60,16 +84,34 @@ internal static class EntityPictograms
                 DrawCircleOutline(target, cx, cy - s * 0.22f, s * 0.1f, ink);
                 break;
             case EntityKind.Wall:
-            case EntityKind.SteelWall:
                 DrawLine(target, cx - s * 0.3f, cy - s * 0.15f, cx + s * 0.3f, cy - s * 0.15f, ink);
                 DrawLine(target, cx - s * 0.3f, cy, cx + s * 0.3f, cy, ink);
                 DrawLine(target, cx - s * 0.3f, cy + s * 0.15f, cx + s * 0.3f, cy + s * 0.15f, ink);
                 break;
+            case EntityKind.SteelWall:
+                // Triple bars + vertical posts
+                DrawLine(target, cx - s * 0.3f, cy - s * 0.15f, cx + s * 0.3f, cy - s * 0.15f, ink);
+                DrawLine(target, cx - s * 0.3f, cy, cx + s * 0.3f, cy, ink);
+                DrawLine(target, cx - s * 0.3f, cy + s * 0.15f, cx + s * 0.3f, cy + s * 0.15f, ink);
+                DrawLine(target, cx - s * 0.22f, cy - s * 0.2f, cx - s * 0.22f, cy + s * 0.2f, ink);
+                DrawLine(target, cx + s * 0.22f, cy - s * 0.2f, cx + s * 0.22f, cy + s * 0.2f, ink);
+                break;
             case EntityKind.MachineGunTurret:
-            case EntityKind.CannonTurret:
-            case EntityKind.AntiAirTurret:
+                // Short barrel up
                 DrawCircleOutline(target, cx, cy + s * 0.05f, s * 0.12f, ink);
-                DrawLine(target, cx, cy + s * 0.05f, cx, cy - s * 0.3f, ink);
+                DrawLine(target, cx, cy + s * 0.05f, cx, cy - s * 0.22f, ink);
+                break;
+            case EntityKind.CannonTurret:
+                // Longer thick barrel (double line)
+                DrawCircleOutline(target, cx, cy + s * 0.05f, s * 0.12f, ink);
+                DrawLine(target, cx - 1.5f, cy + s * 0.05f, cx - 1.5f, cy - s * 0.32f, ink);
+                DrawLine(target, cx + 1.5f, cy + s * 0.05f, cx + 1.5f, cy - s * 0.32f, ink);
+                break;
+            case EntityKind.AntiAirTurret:
+                // Diagonal AA barrels
+                DrawCircleOutline(target, cx, cy + s * 0.05f, s * 0.12f, ink);
+                DrawLine(target, cx, cy + s * 0.05f, cx - s * 0.22f, cy - s * 0.28f, ink);
+                DrawLine(target, cx, cy + s * 0.05f, cx + s * 0.22f, cy - s * 0.28f, ink);
                 break;
             default:
                 DrawRectOutline(target, cx - s * 0.2f, cy - s * 0.2f, s * 0.4f, s * 0.4f, ink);
@@ -89,15 +131,30 @@ internal static class EntityPictograms
                 DrawLine(target, center.X, center.Y - size * 0.25f, center.X, center.Y + size * 0.15f, ink);
                 break;
             case EntityKind.LightBot:
-            case EntityKind.MediumBot:
-            case EntityKind.AntiAirBot:
+                // Small T
                 DrawLine(target, center.X - size * 0.25f, center.Y + size * 0.15f, center.X + size * 0.25f, center.Y + size * 0.15f, ink);
                 DrawLine(target, center.X, center.Y - size * 0.2f, center.X, center.Y + size * 0.15f, ink);
                 break;
+            case EntityKind.MediumBot:
+                // T with top bar
+                DrawLine(target, center.X - size * 0.25f, center.Y + size * 0.15f, center.X + size * 0.25f, center.Y + size * 0.15f, ink);
+                DrawLine(target, center.X, center.Y - size * 0.2f, center.X, center.Y + size * 0.15f, ink);
+                DrawLine(target, center.X - size * 0.18f, center.Y - size * 0.2f, center.X + size * 0.18f, center.Y - size * 0.2f, ink);
+                break;
+            case EntityKind.AntiAirBot:
+                // Inverted V (AA)
+                DrawLine(target, center.X, center.Y + size * 0.18f, center.X - size * 0.22f, center.Y - size * 0.18f, ink);
+                DrawLine(target, center.X, center.Y + size * 0.18f, center.X + size * 0.22f, center.Y - size * 0.18f, ink);
+                break;
             case EntityKind.BasicTank:
-            case EntityKind.MediumTank:
                 DrawRectOutline(target, center.X - size * 0.28f, center.Y - size * 0.18f, size * 0.56f, size * 0.36f, ink);
                 DrawLine(target, center.X, center.Y, center.X + size * 0.3f, center.Y, ink);
+                break;
+            case EntityKind.MediumTank:
+                // Hull + longer barrel + cupola
+                DrawRectOutline(target, center.X - size * 0.28f, center.Y - size * 0.18f, size * 0.56f, size * 0.36f, ink);
+                DrawLine(target, center.X, center.Y, center.X + size * 0.38f, center.Y, ink);
+                DrawCircleOutline(target, center.X - size * 0.05f, center.Y, size * 0.08f, ink);
                 break;
             case EntityKind.RocketLauncher:
                 DrawLine(target, center.X - size * 0.1f, center.Y + size * 0.25f, center.X - size * 0.1f, center.Y - size * 0.25f, ink);
