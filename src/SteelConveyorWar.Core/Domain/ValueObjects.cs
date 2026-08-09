@@ -75,7 +75,16 @@ public sealed record CommanderBuildOrder(
     Direction Direction = Direction.East,
     ItemRecipeId? SelectedItemRecipe = null);
 
-public sealed record EntityStats(int MaxHealth, int AttackDamage = 0, int AttackRange = 0, int AttackCooldownTicks = 30, int MoveEveryTicks = 10, int VisionRadius = 4);
+public sealed record EntityStats(
+    int MaxHealth,
+    int AttackDamage = 0,
+    int AttackRange = 0,
+    int AttackCooldownTicks = 30,
+    int MoveEveryTicks = 10,
+    int VisionRadius = 4,
+    int Armor = 0,
+    ProjectileKind ProjectileKind = ProjectileKind.GroundToGround,
+    int SplashRadius = 0);
 
 public sealed record ProductionRecipe(IReadOnlyDictionary<ItemId, int> Inputs, EntityKind OutputKind, int WorkTicks, TechnologyId? RequiredTechnology = null);
 

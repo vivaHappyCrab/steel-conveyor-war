@@ -606,23 +606,130 @@ public sealed class GameSimulation
     {
         var commander = World.GetEntity(commanderId);
         var target = World.GetEntity(targetEntityId);
+        if (!TryValidateCommanderInteract(commander, target))
+        {
+            return false;
+        }
+
+        foreach (var item in target!.OutputBuffer.Items.ToList())
+        {
+            commander!.Inventory.Add(item.Key, item.Value);
+        }
+
+        target.OutputBuffer.Clear();
+        return true;
+    }
+
+    /// <summary>
+    /// Withdraws from hub inventory or any entity output buffer within commander interact radius.
+    /// </summary>
+    public bool TryWithdrawFromHubOrOutput(int commanderId, int targetEntityId)
+    {
+        var commander = World.GetEntity(commanderId);
+        var target = World.GetEntity(targetEntityId);
+        if (!TryValidateCommanderInteract(commander, target))
+        {
+            return false;
+        }
+
+        if (target!.Kind == EntityKind.Hub)
+        {
+            foreach (var item in target.Inventory.Items.ToList())
+            {
+                commander!.Inventory.Add(item.Key, item.Value);
+            }
+
+            target.Inventory.Clear();
+            return true;
+        }
+
+        foreach (var item in target.OutputBuffer.Items.ToList())
+        {
+            commander!.Inventory.Add(item.Key, item.Value);
+        }
+
+        target.OutputBuffer.Clear();
+        return true;
+    }
+
+    /// <summary>
+    /// Deposits commander inventory into hub storage or a building input buffer within interact radius.
+    /// Transfers as many items as fit; returns true when the target is a valid deposit destination.
+    /// </summary>
+    public bool TryDepositToHubOrInput(int commanderId, int targetEntityId)
+    {
+        var commander = World.GetEntity(commanderId);
+        var target = World.GetEntity(targetEntityId);
+        if (!TryValidateCommanderInteract(commander, target))
+        {
+            return false;
+        }
+
+        if (target!.Kind == EntityKind.Hub)
+        {
+            var maxStacks = GetHubStorageStacks(target.OwnerId);
+            foreach (var item in commander!.Inventory.Items.ToList())
+            {
+                var remaining = item.Value;
+                while (remaining > 0)
+                {
+                    var chunk = Math.Min(remaining, MvpDefinitions.GetMaxStackSize(item.Key));
+                    while (chunk > 0 && !target.Inventory.TryAddWithinTotalStackLimit(item.Key, chunk, maxStacks))
+                    {
+                        chunk--;
+                    }
+
+                    if (chunk <= 0)
+                    {
+                        break;
+                    }
+
+                    commander.Inventory.TryRemove(item.Key, chunk);
+                    remaining -= chunk;
+                }
+            }
+
+            return true;
+        }
+
+        if (!IsBuildingWithBuffers(target.Kind))
+        {
+            return false;
+        }
+
+        foreach (var item in commander!.Inventory.Items.ToList())
+        {
+            var remaining = item.Value;
+            while (remaining > 0)
+            {
+                var chunk = Math.Min(remaining, MvpDefinitions.GetMaxStackSize(item.Key));
+                while (chunk > 0 && !TryAddToBuffer(target.InputBuffer, item.Key, chunk))
+                {
+                    chunk--;
+                }
+
+                if (chunk <= 0)
+                {
+                    break;
+                }
+
+                commander.Inventory.TryRemove(item.Key, chunk);
+                remaining -= chunk;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateCommanderInteract(WorldEntity? commander, WorldEntity? target)
+    {
         if (commander is null || target is null || commander.Kind != EntityKind.Commander || !commander.IsAlive)
         {
             return false;
         }
 
-        if (DistanceToFootprint(commander.WorldPosition, target.Kind, target.Position) > MvpDefinitions.CommanderInteractRadius)
-        {
-            return false;
-        }
-
-        foreach (var item in target.OutputBuffer.Items.ToList())
-        {
-            commander.Inventory.Add(item.Key, item.Value);
-        }
-
-        target.OutputBuffer.Clear();
-        return true;
+        return DistanceToFootprint(commander.WorldPosition, target.Kind, target.Position)
+            <= MvpDefinitions.CommanderInteractRadius;
     }
 
     public void DamageEntity(int entityId, int damage)

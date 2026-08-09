@@ -100,3 +100,8 @@ public enum BastionOrderKind
     Patrol,
     Scout
 }
+
+public enum ProjectileKind
+{
+    GroundToGround = 0
+}
