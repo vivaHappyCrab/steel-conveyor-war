@@ -30,6 +30,28 @@ public sealed class ResearchSystem
         ApplyTierBaselineUnlocks(research, ResearchTierIds.T1);
     }
 
+    public ResearchCommandResult TryCancelResearch(PlayerResearchState research, TechnologyId technologyId)
+    {
+        research.EnsureTracks(_profile);
+        var cancelled = false;
+        foreach (var track in research.Tracks.Values)
+        {
+            if (track.ActiveSerialTarget == technologyId)
+            {
+                track.ActiveSerialTarget = null;
+                cancelled = true;
+            }
+
+            if (track.ProjectWeightsMutable.Remove(technologyId))
+            {
+                cancelled = true;
+            }
+        }
+
+        // ProgressWorkUnits intentionally preserved so restart continues from prior progress.
+        return cancelled ? ResearchCommandResult.Ok : ResearchCommandResult.NotAvailable;
+    }
+
     public ResearchCommandResult TrySelectResearch(
         PlayerResearchState research,
         TechnologyId technologyId,

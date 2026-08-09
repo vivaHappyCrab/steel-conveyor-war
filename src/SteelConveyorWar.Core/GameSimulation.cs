@@ -258,6 +258,11 @@ public sealed class GameSimulation
         return TrySelectResearch(playerId, technology) == ResearchCommandResult.Ok;
     }
 
+    public bool TryCancelResearch(PlayerId playerId, TechnologyId technology)
+    {
+        return _researchSystem.TryCancelResearch(GetPlayer(playerId).Research, technology) == ResearchCommandResult.Ok;
+    }
+
     public ResearchCommandResult TrySelectResearch(
         PlayerId playerId,
         TechnologyId technology,
