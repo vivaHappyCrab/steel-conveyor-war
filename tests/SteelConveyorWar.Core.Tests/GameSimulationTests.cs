@@ -257,7 +257,11 @@ public class GameSimulationTests
         var factory = simulation.World.GetEntity(factoryId)!;
         Assert.Equal(secondBastion.Id, factory.AssignedBastionId);
         Assert.False(factory.IsManualProductionTarget);
-        Assert.Null(factory.ProductionTargetKind);
+
+        Assert.True(simulation.TryAssignFactoryBastion(factoryId, bastion.Id));
+        factory = simulation.World.GetEntity(factoryId)!;
+        Assert.Equal(bastion.Id, factory.AssignedBastionId);
+        Assert.False(factory.IsManualProductionTarget);
     }
 
     [Fact]
