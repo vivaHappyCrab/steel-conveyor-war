@@ -245,7 +245,7 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Conveyor,
-            new TilePosition(7, 14),
+            NearBlue(simulation, 7, 0),
             out var conveyorGhostId,
             Direction.North));
         Assert.Equal(Direction.North, simulation.World.GetEntity(conveyorGhostId)!.Direction);
@@ -255,7 +255,7 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Assembler,
-            new TilePosition(2, 18),
+            NearBlue(simulation, 2, 4),
             out var assemblerGhostId,
             Direction.East,
             ItemRecipeId.CopperWire));
