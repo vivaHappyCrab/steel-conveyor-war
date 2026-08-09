@@ -68,15 +68,18 @@ This document records architecture and game-design decisions made while implemen
 
 ## Bastions And Combat
 
-- Bastions own desired unit templates. Assigned factories can auto-pick missing units from the template.
-- Produced units move toward their assigned Bastion and can receive Bastion orders.
-- Combat uses deterministic range, cooldown and damage values. Friendly fire is disabled for MVP.
+- Bastions own desired unit templates (sum capped; research can raise capacity). Assigned factories can auto-pick missing units from the template.
+- Produced units inherit the Bastion's current order (Scout filter applies). Manual factory recipes keep producing after spawn; autofill clears and re-picks deficits.
+- Active defense garrisons units inside the Bastion; threats in Bastion vision trigger a sortie. Bastion death kills assigned units.
+- Combat uses deterministic Euclidean range, cooldown and damage values. Friendly fire is disabled for MVP.
 - Victory is evaluated by commander survival: the last player with a living БМК wins.
 
 ## Fog Of War And Tech Signatures
 
 - Each player has a tile visibility mask: unknown, explored, visible.
-- Owned entities reveal circular Manhattan-radius vision.
+- Owned entities reveal circular Euclidean-radius vision (integer `dx*dx+dy*dy <= r*r`).
+- Bastion vision radius is elevated relative to other buildings.
+- Combat attack range uses the same Euclidean tile check for determinism.
 - Tech signatures are aggregated into map zones and expose intensity without exact building identity.
 
 ## Map And Session Lifetime
@@ -102,7 +105,7 @@ This document records architecture and game-design decisions made while implemen
 
 ## Simulation State Hash
 
-- `SimulationStateHasher.AlgorithmVersion` (currently `1`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (inventory/visibility/research), ordered entities (buffers, paths, combat/build fields).
+- `SimulationStateHasher.AlgorithmVersion` (currently `2`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (inventory/visibility/research), ordered entities (buffers, paths, combat/build fields, bastion order waypoints).
 - Doubles use IEEE bit patterns (`DoubleToInt64Bits`). Unordered collections are sorted before hashing.
 - Primary quality gate: dual independent runs with the same seed/commands must match (`DeterminismHashTests`). A checked-in golden hex is optional; when adding/updating one, bump `AlgorithmVersion` if the surface changed, re-run the fixture, and commit the new constant intentionally.
 - Out of surface: SFML/UI, wall-clock, tick-stamped command logs.

@@ -56,6 +56,12 @@ public sealed class WorldEntity
 
     public EntityKind? ProductionTargetKind { get; internal set; }
 
+    /// <summary>
+    /// True when <see cref="ProductionTargetKind"/> was set by the player (continuous recipe).
+    /// Autofill clears the target after each spawn; manual production keeps it.
+    /// </summary>
+    public bool IsManualProductionTarget { get; internal set; }
+
     public ItemId? PendingOutputItem { get; internal set; }
 
     public int PendingOutputAmount { get; internal set; } = 1;

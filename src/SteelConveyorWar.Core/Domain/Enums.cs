@@ -98,5 +98,5 @@ public enum BastionOrderKind
     Defend,
     AttackArea,
     Patrol,
-    Support
+    Scout
 }

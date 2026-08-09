@@ -287,9 +287,15 @@ public sealed class GameSimulation
             return false;
         }
 
+        if (bastionId is not null && !TryValidateOwnedBastion(factory, bastionId.Value))
+        {
+            return false;
+        }
+
         if (outputKind is null)
         {
             factory.ProductionTargetKind = null;
+            factory.IsManualProductionTarget = false;
             if (bastionId is not null)
             {
                 factory.AssignedBastionId = bastionId;
@@ -305,8 +311,48 @@ public sealed class GameSimulation
         }
 
         factory.ProductionTargetKind = outputKind;
-        factory.AssignedBastionId = bastionId;
+        factory.IsManualProductionTarget = true;
+        if (bastionId is not null)
+        {
+            factory.AssignedBastionId = bastionId;
+        }
+
         return true;
+    }
+
+    /// <summary>
+    /// Reassigns a factory's bastion without changing recipe / manual-vs-autofill mode.
+    /// Autofill clears a sticky idle target so the next tick re-picks the new bastion's deficit.
+    /// </summary>
+    public bool TryAssignFactoryBastion(int factoryId, int bastionId)
+    {
+        var factory = World.GetEntity(factoryId);
+        if (factory is null || !MvpDefinitions.FactoryKinds.Contains(factory.Kind))
+        {
+            return false;
+        }
+
+        if (!TryValidateOwnedBastion(factory, bastionId))
+        {
+            return false;
+        }
+
+        factory.AssignedBastionId = bastionId;
+        if (!factory.IsManualProductionTarget && factory.WorkTicksRemaining <= 0)
+        {
+            factory.ProductionTargetKind = null;
+        }
+
+        return true;
+    }
+
+    private bool TryValidateOwnedBastion(WorldEntity factory, int bastionId)
+    {
+        var bastion = World.GetEntity(bastionId);
+        return bastion is not null
+            && bastion.IsAlive
+            && bastion.Kind == EntityKind.Bastion
+            && bastion.OwnerId == factory.OwnerId;
     }
 
     public bool TryForceCompleteResearch(PlayerId playerId, TechnologyId technologyId, bool confirmExclusive = true)
@@ -375,6 +421,19 @@ public sealed class GameSimulation
             return false;
         }
 
+        if (bastion.OwnerId is null)
+        {
+            return false;
+        }
+
+        var currentSum = bastion.BastionTemplate.Values.Sum();
+        var previous = bastion.BastionTemplate.GetValueOrDefault(unitKind);
+        var proposedSum = currentSum - previous + count;
+        if (proposedSum > GetBastionTemplateCapacity(bastion.OwnerId.Value))
+        {
+            return false;
+        }
+
         if (count == 0)
         {
             bastion.BastionTemplateMutable.Remove(unitKind);
@@ -385,6 +444,33 @@ public sealed class GameSimulation
         }
 
         return true;
+    }
+
+    public int GetBastionTemplateCapacity(PlayerId playerId)
+    {
+        return ResolveStat(
+            playerId,
+            ResearchStatIds.BastionTemplateCapacity,
+            MvpDefinitions.BaseBastionTemplateCapacity,
+            minValue: 1);
+    }
+
+    public int GetMaxBastionCount(PlayerId playerId)
+    {
+        var player = GetPlayer(playerId);
+        var baseline = CapabilityResolver.HasCapability(player.Research, ResearchCapabilityIds.AdditionalBastions)
+            ? MvpDefinitions.MaxBastionsAfterUnlock
+            : MvpDefinitions.BaseMaxBastions;
+        return ResolveStat(playerId, ResearchStatIds.MaxBastions, baseline, minValue: 1);
+    }
+
+    public int CountOwnedBastions(PlayerId playerId)
+    {
+        return World.Entities.Count(entity =>
+            entity.IsAlive
+            && entity.OwnerId == playerId
+            && (entity.Kind == EntityKind.Bastion
+                || (entity.Kind == EntityKind.GhostBuild && entity.BuildTargetKind == EntityKind.Bastion)));
     }
 
     public bool TrySetAssemblerRecipe(int assemblerId, ItemRecipeId recipeId)
@@ -410,15 +496,58 @@ public sealed class GameSimulation
             return false;
         }
 
-        bastion.Order = order;
-        foreach (var unit in World.Entities.Where(entity => entity.AssignedBastionId == bastionId && MvpDefinitions.UnitKinds.Contains(entity.Kind)))
+        if (!IsValidBastionOrder(order))
         {
-            unit.Order = order;
-            unit.IsGarrisoned = false;
+            return false;
+        }
+
+        var normalized = order with { WaypointIndex = 0 };
+        bastion.Order = normalized;
+        foreach (var unit in World.Entities.Where(entity =>
+                     entity.IsAlive
+                     && entity.AssignedBastionId == bastionId
+                     && MvpDefinitions.UnitKinds.Contains(entity.Kind)))
+        {
+            ApplyBastionOrderToUnit(unit, normalized);
         }
 
         return true;
     }
+
+    private static bool IsValidBastionOrder(BastionOrder order)
+    {
+        return order.Kind switch
+        {
+            BastionOrderKind.Defend => true,
+            BastionOrderKind.AttackArea or BastionOrderKind.Scout => order.Target is not null,
+            BastionOrderKind.Patrol => order.WaypointList.Count is >= 2 and <= 4,
+            _ => false
+        };
+    }
+
+    private static void ApplyBastionOrderToUnit(WorldEntity unit, BastionOrder bastionOrder)
+    {
+        unit.Order = ResolveOrderForUnit(unit.Kind, bastionOrder);
+        if (unit.Order.Kind == BastionOrderKind.Defend)
+        {
+            // Stay home / garrison unless Defend active defense ungarrisons them.
+            return;
+        }
+
+        unit.IsGarrisoned = false;
+    }
+
+    private static BastionOrder ResolveOrderForUnit(EntityKind unitKind, BastionOrder bastionOrder)
+    {
+        return bastionOrder.Kind switch
+        {
+            BastionOrderKind.Scout when unitKind != EntityKind.Scout => new BastionOrder(BastionOrderKind.Defend),
+            BastionOrderKind.AttackArea when unitKind == EntityKind.Scout => new BastionOrder(BastionOrderKind.Defend),
+            _ => bastionOrder
+        };
+    }
+
+    private static bool IsCombatUnit(EntityKind kind) => kind != EntityKind.Scout && MvpDefinitions.UnitKinds.Contains(kind);
 
     public void AddPlayerItems(PlayerId playerId, ItemId item, int amount)
     {
@@ -505,6 +634,7 @@ public sealed class GameSimulation
         }
 
         entity.Health = Math.Max(0, entity.Health - damage);
+        CascadeBastionDeaths();
         CheckVictory();
     }
 
@@ -538,6 +668,7 @@ public sealed class GameSimulation
         ProcessBastions();
         ProcessMovement();
         ProcessCombat();
+        CascadeBastionDeaths();
         ProcessRepairOutOfCombat();
         CheckVictory();
         World.RemoveDead();
@@ -886,9 +1017,9 @@ public sealed class GameSimulation
     private bool IsBuildUnlocked(PlayerId playerId, EntityKind kind)
     {
         var player = GetPlayer(playerId);
-        if (kind == EntityKind.Bastion && World.Entities.Any(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion))
+        if (kind == EntityKind.Bastion)
         {
-            return CapabilityResolver.HasCapability(player.Research, ResearchCapabilityIds.AdditionalBastions);
+            return CountOwnedBastions(playerId) < GetMaxBastionCount(playerId);
         }
 
         if (CapabilityResolver.IsEntityUnlocked(player.Research, kind, ResearchCatalog, ResearchProfile))
@@ -1348,13 +1479,17 @@ public sealed class GameSimulation
                 if (factory.WorkTicksRemaining == 0)
                 {
                     SpawnProducedUnit(factory, factory.ProductionTargetKind.Value);
-                    factory.ProductionTargetKind = null;
+                    if (!factory.IsManualProductionTarget)
+                    {
+                        factory.ProductionTargetKind = null;
+                    }
                 }
 
                 continue;
             }
 
-            if (factory.ProductionTargetKind is null && factory.AssignedBastionId is not null)
+            // Autofill re-resolves every idle tick so sticky locked/zeroed template entries cannot block later deficits.
+            if (!factory.IsManualProductionTarget && factory.AssignedBastionId is not null)
             {
                 factory.ProductionTargetKind = ChooseBastionDeficit(factory);
             }
@@ -1364,16 +1499,9 @@ public sealed class GameSimulation
                 continue;
             }
 
-            if (factory.OwnerId is not null && recipe.RequiredTechnology is not null)
+            if (!IsRecipeUnlockedForOwner(factory.OwnerId, recipe))
             {
-                var owner = GetPlayer(factory.OwnerId.Value);
-                var unlocked = owner.ResearchedTechnologies.Contains(recipe.RequiredTechnology.Value)
-                    || CapabilityResolver.IsRecipeUnlocked(owner.Research, recipe.OutputKind.ToString())
-                    || owner.Research.UnlockedEntityKinds.Contains(recipe.OutputKind.ToString());
-                if (!unlocked)
-                {
-                    continue;
-                }
+                continue;
             }
 
             if (!CanFactoryProduce(factory.Kind, recipe.OutputKind) || !factory.InputBuffer.TryRemoveAll(recipe.Inputs))
@@ -1407,12 +1535,18 @@ public sealed class GameSimulation
 
         foreach (var desired in bastion.BastionTemplate.OrderBy(pair => pair.Key))
         {
-            if (!CanFactoryProduce(factory.Kind, desired.Key))
+            if (desired.Value <= 0 || !CanFactoryProduce(factory.Kind, desired.Key))
             {
                 continue;
             }
 
-            var current = World.Entities.Count(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && entity.Kind == desired.Key);
+            if (!MvpDefinitions.ProductionRecipes.TryGetValue(desired.Key, out var recipe)
+                || !IsRecipeUnlockedForOwner(factory.OwnerId, recipe))
+            {
+                continue;
+            }
+
+            var current = CountBastionUnitSupply(bastion.Id, desired.Key);
             if (current < desired.Value)
             {
                 return desired.Key;
@@ -1420,6 +1554,34 @@ public sealed class GameSimulation
         }
 
         return null;
+    }
+
+    private int CountBastionUnitSupply(int bastionId, EntityKind unitKind)
+    {
+        var living = World.Entities.Count(entity =>
+            entity.IsAlive
+            && entity.AssignedBastionId == bastionId
+            && entity.Kind == unitKind);
+        var inFlight = World.Entities.Count(entity =>
+            entity.IsAlive
+            && MvpDefinitions.FactoryKinds.Contains(entity.Kind)
+            && entity.AssignedBastionId == bastionId
+            && entity.ProductionTargetKind == unitKind
+            && entity.WorkTicksRemaining > 0);
+        return living + inFlight;
+    }
+
+    private bool IsRecipeUnlockedForOwner(PlayerId? ownerId, ProductionRecipe recipe)
+    {
+        if (ownerId is null || recipe.RequiredTechnology is null)
+        {
+            return true;
+        }
+
+        var owner = GetPlayer(ownerId.Value);
+        return owner.ResearchedTechnologies.Contains(recipe.RequiredTechnology.Value)
+            || CapabilityResolver.IsRecipeUnlocked(owner.Research, recipe.OutputKind.ToString())
+            || owner.Research.UnlockedEntityKinds.Contains(recipe.OutputKind.ToString());
     }
 
     private static bool CanFactoryProduce(EntityKind factoryKind, EntityKind unitKind)
@@ -1436,6 +1598,15 @@ public sealed class GameSimulation
 
         var unit = CreateEntity(unitKind, FindSpawnTileNear(factory, unitKind), factory.OwnerId);
         unit.AssignedBastionId = factory.AssignedBastionId;
+        if (factory.AssignedBastionId is not null)
+        {
+            var bastion = World.GetEntity(factory.AssignedBastionId.Value);
+            if (bastion is not null)
+            {
+                ApplyBastionOrderToUnit(unit, bastion.Order);
+            }
+        }
+
         World.AddEntity(unit);
     }
 
@@ -1467,17 +1638,130 @@ public sealed class GameSimulation
 
     private void ProcessBastions()
     {
-        foreach (var bastion in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Bastion))
+        foreach (var bastion in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Bastion).OrderBy(entity => entity.Id))
         {
-            foreach (var unit in World.Entities.Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && MvpDefinitions.UnitKinds.Contains(entity.Kind)))
+            TryCompleteBastionOrder(bastion);
+
+            var units = World.Entities
+                .Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && MvpDefinitions.UnitKinds.Contains(entity.Kind))
+                .OrderBy(entity => entity.Id)
+                .ToList();
+
+            // Home units keep Defend while bastion is Scout/AttackArea; garrison them,
+            // but sortie only during active bastion Defend.
+            var allowSortie = bastion.Order.Kind == BastionOrderKind.Defend;
+            var threat = allowSortie
+                ? FindNearestEnemyInRange(bastion, GetBastionVisionRadius(bastion))
+                : null;
+
+            foreach (var unit in units)
             {
-                if (unit.Position.ManhattanDistance(bastion.Position) <= 1 && bastion.Order.Kind == BastionOrderKind.Defend)
+                if (unit.Order.Kind != BastionOrderKind.Defend)
+                {
+                    continue;
+                }
+
+                if (threat is not null)
+                {
+                    unit.IsGarrisoned = false;
+                    continue;
+                }
+
+                if (unit.Position.IsWithinEuclideanRange(bastion.Position, 1))
                 {
                     unit.Position = bastion.Position;
                     unit.WorldPosition = WorldPosition.FromTileCenter(bastion.Position);
                     ResetMovementPath(unit);
                     unit.IsGarrisoned = true;
                 }
+            }
+        }
+    }
+
+    private void TryCompleteBastionOrder(WorldEntity bastion)
+    {
+        if (bastion.Order.Kind == BastionOrderKind.AttackArea && bastion.Order.Target is not null)
+        {
+            var combatUnits = World.Entities
+                .Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && IsCombatUnit(entity.Kind))
+                .ToList();
+            if (combatUnits.Count > 0
+                && combatUnits.All(unit => unit.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1)))
+            {
+                SwitchBastionToDefend(bastion);
+            }
+
+            return;
+        }
+
+        if (bastion.Order.Kind == BastionOrderKind.Scout && bastion.Order.Target is not null)
+        {
+            var scouts = World.Entities
+                .Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && entity.Kind == EntityKind.Scout)
+                .ToList();
+            if (scouts.Count > 0
+                && scouts.All(unit => unit.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1)))
+            {
+                SwitchBastionToDefend(bastion);
+            }
+        }
+    }
+
+    private void SwitchBastionToDefend(WorldEntity bastion)
+    {
+        var defend = new BastionOrder(BastionOrderKind.Defend);
+        bastion.Order = defend;
+        foreach (var unit in World.Entities.Where(entity =>
+                     entity.IsAlive
+                     && entity.AssignedBastionId == bastion.Id
+                     && MvpDefinitions.UnitKinds.Contains(entity.Kind)))
+        {
+            unit.Order = defend;
+        }
+    }
+
+    private int GetBastionVisionRadius(WorldEntity bastion)
+    {
+        var radius = MvpDefinitions.GetStats(EntityKind.Bastion).VisionRadius;
+        if (bastion.OwnerId is not null)
+        {
+            radius = ResolveStat(bastion.OwnerId.Value, ResearchStatIds.VisionRadius, radius, minValue: 0);
+        }
+
+        return radius;
+    }
+
+    private WorldEntity? FindNearestEnemyInRange(WorldEntity origin, int radius)
+    {
+        if (origin.OwnerId is null)
+        {
+            return null;
+        }
+
+        return World.Entities
+            .Where(entity =>
+                entity.IsAlive
+                && !entity.IsGarrisoned
+                && entity.OwnerId is not null
+                && entity.OwnerId != origin.OwnerId
+                && origin.Position.IsWithinEuclideanRange(entity.Position, radius))
+            .OrderBy(entity => origin.Position.EuclideanDistanceSquared(entity.Position))
+            .ThenBy(entity => entity.Id)
+            .FirstOrDefault();
+    }
+
+    private void CascadeBastionDeaths()
+    {
+        foreach (var bastion in World.Entities.Where(entity => entity.Kind == EntityKind.Bastion && !entity.IsAlive).ToList())
+        {
+            foreach (var unit in World.Entities
+                         .Where(entity =>
+                             entity.AssignedBastionId == bastion.Id
+                             && entity.IsAlive
+                             && MvpDefinitions.UnitKinds.Contains(entity.Kind))
+                         .ToList())
+            {
+                unit.Health = 0;
             }
         }
     }
@@ -1499,14 +1783,51 @@ public sealed class GameSimulation
 
     private TilePosition? GetMovementTarget(WorldEntity unit)
     {
-        if (unit.Order.Kind == BastionOrderKind.AttackArea && unit.Order.Target is not null)
+        if (unit.IsGarrisoned)
+        {
+            return null;
+        }
+
+        if ((unit.Order.Kind is BastionOrderKind.AttackArea or BastionOrderKind.Scout) && unit.Order.Target is not null)
         {
             return unit.Order.Target;
         }
 
-        if (unit.Order.Kind == BastionOrderKind.Support && unit.Order.FollowEntityId is not null)
+        if (unit.Order.Kind == BastionOrderKind.Patrol && unit.Order.WaypointList.Count >= 2)
         {
-            return World.GetEntity(unit.Order.FollowEntityId.Value)?.Position;
+            var waypoints = unit.Order.WaypointList;
+            var index = ((unit.Order.WaypointIndex % waypoints.Count) + waypoints.Count) % waypoints.Count;
+            var waypoint = waypoints[index];
+            if (unit.Position.IsWithinEuclideanRange(waypoint, 0))
+            {
+                var nextIndex = (index + 1) % waypoints.Count;
+                unit.Order = unit.Order with { WaypointIndex = nextIndex };
+                return waypoints[nextIndex];
+            }
+
+            return waypoint;
+        }
+
+        if (unit.Order.Kind == BastionOrderKind.Defend && unit.AssignedBastionId is not null)
+        {
+            var bastion = World.GetEntity(unit.AssignedBastionId.Value);
+            if (bastion is null)
+            {
+                return null;
+            }
+
+            // Sortie only for active bastion Defend; Scout/AttackArea home units stay put.
+            if (bastion.Order.Kind == BastionOrderKind.Defend)
+            {
+                var visionRadius = GetBastionVisionRadius(bastion);
+                var threat = FindNearestEnemyInRange(bastion, visionRadius);
+                if (threat is not null)
+                {
+                    return threat.Position;
+                }
+            }
+
+            return bastion.Position;
         }
 
         if (unit.AssignedBastionId is not null)
@@ -1805,8 +2126,18 @@ public sealed class GameSimulation
 
     private void ProcessCombat()
     {
-        foreach (var attacker in World.Entities.Where(entity => entity.IsAlive && entity.OwnerId is not null && MvpDefinitions.GetStats(entity.Kind).AttackDamage > 0).OrderBy(entity => entity.Id).ToList())
+        foreach (var attacker in World.Entities.Where(entity =>
+                     entity.IsAlive
+                     && !entity.IsGarrisoned
+                     && entity.OwnerId is not null
+                     && MvpDefinitions.GetStats(entity.Kind).AttackDamage > 0).OrderBy(entity => entity.Id).ToList())
         {
+            // Cascade may have killed this attacker earlier in the same pass.
+            if (!attacker.IsAlive || attacker.IsGarrisoned)
+            {
+                continue;
+            }
+
             if (attacker.AttackCooldownRemaining > 0)
             {
                 attacker.AttackCooldownRemaining--;
@@ -1815,9 +2146,13 @@ public sealed class GameSimulation
 
             var stats = MvpDefinitions.GetStats(attacker.Kind);
             var target = World.Entities
-                .Where(entity => entity.IsAlive && entity.OwnerId is not null && entity.OwnerId != attacker.OwnerId)
-                .Where(entity => entity.Position.ManhattanDistance(attacker.Position) <= stats.AttackRange)
-                .OrderBy(entity => entity.Position.ManhattanDistance(attacker.Position))
+                .Where(entity =>
+                    entity.IsAlive
+                    && !entity.IsGarrisoned
+                    && entity.OwnerId is not null
+                    && entity.OwnerId != attacker.OwnerId)
+                .Where(entity => attacker.Position.IsWithinEuclideanRange(entity.Position, stats.AttackRange))
+                .OrderBy(entity => attacker.Position.EuclideanDistanceSquared(entity.Position))
                 .ThenBy(entity => entity.Id)
                 .FirstOrDefault();
             if (target is null)
@@ -1827,6 +2162,10 @@ public sealed class GameSimulation
 
             target.Health = Math.Max(0, target.Health - stats.AttackDamage);
             attacker.AttackCooldownRemaining = stats.AttackCooldownTicks;
+            if (!target.IsAlive)
+            {
+                CascadeBastionDeaths();
+            }
         }
     }
 
@@ -1851,7 +2190,8 @@ public sealed class GameSimulation
         foreach (var player in _players)
         {
             player.DecayVisibility();
-            foreach (var entity in World.Entities.Where(entity => entity.IsAlive && entity.OwnerId == player.Id))
+            foreach (var entity in World.Entities.Where(entity =>
+                         entity.IsAlive && !entity.IsGarrisoned && entity.OwnerId == player.Id))
             {
                 var radius = MvpDefinitions.GetStats(entity.Kind).VisionRadius;
                 if (entity.OwnerId is not null)
@@ -1863,7 +2203,7 @@ public sealed class GameSimulation
                     for (var x = entity.Position.X - radius; x <= entity.Position.X + radius; x++)
                     {
                         var position = new TilePosition(x, y);
-                        if (World.IsInside(position) && entity.Position.ManhattanDistance(position) <= radius)
+                        if (World.IsInside(position) && entity.Position.IsWithinEuclideanRange(position, radius))
                         {
                             player.SetVisible(position);
                         }

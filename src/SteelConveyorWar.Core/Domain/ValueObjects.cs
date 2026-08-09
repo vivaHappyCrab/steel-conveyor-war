@@ -20,6 +20,18 @@ public readonly record struct TilePosition(int X, int Y)
     {
         return Math.Abs(X - other.X) + Math.Abs(Y - other.Y);
     }
+
+    public int EuclideanDistanceSquared(TilePosition other)
+    {
+        var dx = X - other.X;
+        var dy = Y - other.Y;
+        return dx * dx + dy * dy;
+    }
+
+    public bool IsWithinEuclideanRange(TilePosition other, int radius)
+    {
+        return radius >= 0 && EuclideanDistanceSquared(other) <= radius * radius;
+    }
 }
 
 public readonly record struct WorldSize(int Width, int Height);
@@ -46,7 +58,14 @@ public readonly record struct WorldPosition(double X, double Y)
 
 public readonly record struct CollisionSize(double Radius);
 
-public sealed record BastionOrder(BastionOrderKind Kind, TilePosition? Target = null, int? FollowEntityId = null);
+public sealed record BastionOrder(
+    BastionOrderKind Kind,
+    TilePosition? Target = null,
+    IReadOnlyList<TilePosition>? Waypoints = null,
+    int WaypointIndex = 0)
+{
+    public IReadOnlyList<TilePosition> WaypointList => Waypoints ?? Array.Empty<TilePosition>();
+}
 
 public sealed record TechSignatureHotspot(int ZoneX, int ZoneY, int Intensity);
 
