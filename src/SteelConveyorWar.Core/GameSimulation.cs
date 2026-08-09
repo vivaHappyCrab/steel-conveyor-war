@@ -2676,7 +2676,9 @@ public sealed class GameSimulation
                     continue;
                 }
 
-                if (unit.Position.IsWithinEuclideanRange(bastion.Position, 1))
+                // Bastion is multi-tile; units stop on the footprint perimeter (building collision)
+                // and must hide when adjacent to any footprint tile — not only near bastion.Position.
+                if (IsWithinBastionGarrisonRange(bastion, unit.Position))
                 {
                     unit.Position = bastion.Position;
                     unit.WorldPosition = WorldPosition.FromTileCenter(bastion.Position);
@@ -2685,6 +2687,23 @@ public sealed class GameSimulation
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// True when <paramref name="unitPosition"/> is on or Chebyshev-adjacent to the bastion footprint
+    /// (units cannot occupy building tiles, so they garrison from the perimeter ring).
+    /// </summary>
+    private static bool IsWithinBastionGarrisonRange(WorldEntity bastion, TilePosition unitPosition)
+    {
+        var footprint = MvpDefinitions.GetFootprint(bastion.Kind);
+        var minX = bastion.Position.X - 1;
+        var maxX = bastion.Position.X + footprint.Width;
+        var minY = bastion.Position.Y - 1;
+        var maxY = bastion.Position.Y + footprint.Height;
+        return unitPosition.X >= minX
+            && unitPosition.X <= maxX
+            && unitPosition.Y >= minY
+            && unitPosition.Y <= maxY;
     }
 
     private void TryCompleteBastionOrder(WorldEntity bastion)

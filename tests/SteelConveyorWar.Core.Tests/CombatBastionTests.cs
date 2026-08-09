@@ -433,6 +433,33 @@ public sealed class CombatBastionTests
         Assert.DoesNotContain(simulation.World.GetEntitiesAt(bastion.Position), entity => entity.Id == tank.Id);
     }
 
+    [Fact]
+    public void ProcessBastions_Defend_GarrisonsFromFarFootprintEdgeAndHidesFromWorldQueries()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var footprint = MvpDefinitions.GetFootprint(EntityKind.Bastion);
+        var tank = ProduceTankForBastion(simulation, bastion.Id);
+
+        // Far side of the 3x3 footprint — outside Euclidean range 1 of bastion.Position,
+        // which previously left units visible on the perimeter.
+        var farEdge = new TilePosition(bastion.Position.X + footprint.Width, bastion.Position.Y + footprint.Height - 1);
+        Assert.False(farEdge.IsWithinEuclideanRange(bastion.Position, 1));
+        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, farEdge));
+
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
+        simulation.AdvanceTick();
+
+        tank = simulation.World.GetEntity(tank.Id)!;
+        Assert.True(tank.IsGarrisoned);
+        Assert.Equal(bastion.Position, tank.Position);
+        Assert.DoesNotContain(simulation.World.GetEntitiesAt(farEdge), entity => entity.Id == tank.Id);
+        Assert.DoesNotContain(simulation.World.GetEntitiesAt(bastion.Position), entity => entity.Id == tank.Id);
+        Assert.DoesNotContain(
+            simulation.World.Entities,
+            entity => entity.Id == tank.Id && entity.IsAlive && !entity.IsGarrisoned);
+    }
+
     private static WorldEntity ProduceScoutForBastion(GameSimulation simulation, int bastionId)
     {
         Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.Scout));
