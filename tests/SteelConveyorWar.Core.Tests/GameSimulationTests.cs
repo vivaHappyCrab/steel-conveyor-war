@@ -1125,14 +1125,20 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, ironTile, out var mineId));
         AdvanceTicks(simulation, 30);
 
+        var mine = simulation.World.GetEntity(mineId)!;
         var maxStack = MvpDefinitions.GetMaxStackSize(ItemId.IronOre);
-        Assert.True(simulation.TryAddOutputItemToEntity(mineId, ItemId.IronOre, maxStack));
+        var missing = maxStack - mine.OutputBuffer.Count(ItemId.IronOre);
+        if (missing > 0)
+        {
+            Assert.True(simulation.TryAddOutputItemToEntity(mineId, ItemId.IronOre, missing));
+        }
+
+        Assert.Equal(maxStack, mine.OutputBuffer.Count(ItemId.IronOre));
 
         var solar = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.SolarPanel);
         Assert.True(simulation.TrySetEntityHealthForTests(solar.Id, 0));
         Assert.True(simulation.TrySetEnergyBufferForTests(mineId, 100));
 
-        var mine = simulation.World.GetEntity(mineId)!;
         var before = mine.EnergyBuffer;
         AdvanceTicks(simulation, 15);
         Assert.Equal(before, mine.EnergyBuffer);
