@@ -1131,8 +1131,9 @@ public sealed class SfmlGameRunner
         var localTeam = simulation.GetPlayer(localPlayer).TeamId;
         foreach (var entity in world.Entities.Where(entity => entity.IsAlive && !entity.IsGarrisoned && entity.OwnerId is not null))
         {
-            var visibility = simulation.GetVisibility(localPlayer, entity.Position);
-            if (visibility == VisibilityState.Unknown)
+            // Match main playfield FoW: explored tiles keep terrain, but live enemy/ally
+            // positions only render while Visible (GDD §13).
+            if (!IsVisibleToLocalPlayer(simulation, localPlayer, entity))
             {
                 continue;
             }
