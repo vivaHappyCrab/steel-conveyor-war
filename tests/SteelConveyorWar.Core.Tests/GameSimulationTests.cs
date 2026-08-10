@@ -73,12 +73,12 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(mineId, int.MaxValue));
         Assert.True(simulation.TrySetEnergyBufferForTests(smelterId, int.MaxValue));
 
-        AdvanceTicks(simulation, 15);
+        AdvanceTicks(simulation, 30);
         Assert.True(simulation.World.GetEntity(mineId)!.OutputBuffer.Count(ItemId.IronOre) > 0);
 
         simulation.AddItemToEntity(smelterId, ItemId.IronOre, 1);
         Assert.True(simulation.TrySetEnergyBufferForTests(smelterId, int.MaxValue));
-        AdvanceTicks(simulation, 21);
+        AdvanceTicks(simulation, 41);
 
         Assert.Equal(1, simulation.World.GetEntity(smelterId)!.OutputBuffer.Count(ItemId.IronPlate));
     }
@@ -656,7 +656,7 @@ public class GameSimulationTests
         simulation.AddItemToEntity(smelterId, ItemId.IronPlate, 2);
         simulation.AddItemToEntity(smelterId, ItemId.Coal, 1);
         simulation.AddItemToEntity(refineryId, ItemId.CrudeOil, 1);
-        AdvanceTicks(simulation, 31);
+        AdvanceTicks(simulation, 61);
 
         Assert.Equal(1, simulation.World.GetEntity(smelterId)!.OutputBuffer.Count(ItemId.Steel));
         Assert.Equal(1, simulation.World.GetEntity(refineryId)!.OutputBuffer.Count(ItemId.Fuel));
@@ -725,10 +725,10 @@ public class GameSimulationTests
             NearBlue(simulation, 2, 4),
             out var assemblerGhostId,
             Direction.East,
-            ItemRecipeId.CopperWire));
-        Assert.Equal(ItemRecipeId.CopperWire, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
+            ItemRecipeId.Composite));
+        Assert.Equal(ItemRecipeId.Composite, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
         AdvanceTicks(simulation, 30);
-        Assert.Equal(ItemRecipeId.CopperWire, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
+        Assert.Equal(ItemRecipeId.Composite, simulation.World.GetEntity(assemblerGhostId)!.SelectedItemRecipe);
     }
 
     [Fact]
@@ -1029,17 +1029,14 @@ public class GameSimulationTests
         ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.IronGear, (ItemId.IronPlate, 2));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.IronGear));
 
-        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.CopperWire, (ItemId.CopperPlate, 1));
-        Assert.Equal(2, assembler.OutputBuffer.Count(ItemId.CopperWire));
-
-        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.Circuit, (ItemId.IronPlate, 1), (ItemId.CopperWire, 2));
-        Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.Circuit));
+        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.Composite, (ItemId.IronPlate, 1), (ItemId.CopperPlate, 1));
+        Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.Composite));
 
         ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT1, (ItemId.IronGear, 1), (ItemId.CopperPlate, 1));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.SciencePackT1));
 
         UnlockTier2ForTests(simulation, new PlayerId(1));
-        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT2, (ItemId.Circuit, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1));
+        ProduceAssemblerRecipe(simulation, assemblerId, ItemRecipeId.SciencePackT2, (ItemId.Composite, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1));
         Assert.Equal(1, assembler.OutputBuffer.Count(ItemId.SciencePackT2));
     }
 
@@ -1181,7 +1178,7 @@ public class GameSimulationTests
         Assert.False(simulation.TryDepositToHubOrInput(commander.Id, smelterId));
 
         simulation.AddItemToEntity(smelterId, ItemId.IronOre, 1);
-        AdvanceTicks(simulation, 25);
+        AdvanceTicks(simulation, 41);
         Assert.Equal(SmeltRecipeId.IronPlate, smelter.ActiveSmeltRecipe);
         Assert.Equal(1, smelter.OutputBuffer.Count(ItemId.IronPlate));
 
@@ -1197,7 +1194,7 @@ public class GameSimulationTests
 
         Assert.Equal(SmeltRecipeId.IronPlate, smelter.ActiveSmeltRecipe);
         simulation.AddItemToEntity(smelterId, ItemId.CopperOre, 1);
-        AdvanceTicks(simulation, 25);
+        AdvanceTicks(simulation, 41);
         Assert.Equal(SmeltRecipeId.CopperPlate, smelter.ActiveSmeltRecipe);
         Assert.Equal(1, smelter.OutputBuffer.Count(ItemId.CopperPlate));
     }
@@ -1242,6 +1239,116 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void EnergyStats_RecordsActualDrain_NotInstalledDemandWhenStarved()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Assembler, NearBlue(simulation, 5, -2), out var assemblerId));
+        AdvanceTicks(simulation, 30);
+
+        var solar = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.SolarPanel);
+        Assert.True(simulation.TrySetEntityHealthForTests(solar.Id, 0));
+
+        Assert.True(simulation.TrySetAssemblerRecipe(assemblerId, ItemRecipeId.IronGear));
+        simulation.AddItemToEntity(assemblerId, ItemId.IronPlate, 40);
+        var demand = MvpDefinitions.GetPowerDemand(EntityKind.Assembler);
+        Assert.True(demand > 0);
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
+        simulation.AdvanceTick(); // start craft
+        Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
+        // Fill a full 1s display bucket with working drains.
+        for (var i = 0; i < GameSimulation.TicksPerSecond; i++)
+        {
+            Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
+            simulation.AdvanceTick();
+        }
+
+        var working = simulation.GetPlayer(new PlayerId(1)).EnergyStats.Query(10);
+        Assert.Equal(1, EnergyStatsHistory.DisplayBucketSeconds(10));
+        Assert.Equal(demand, working.DemandSeries[^1]);
+        var assemblerWorking = working.ConsumerRows.Single(row => row.Kind == EntityKind.Assembler);
+        Assert.Equal(demand, assemblerWorking.Series[^1]);
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
+        for (var i = 0; i < GameSimulation.TicksPerSecond; i++)
+        {
+            Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
+            simulation.AdvanceTick();
+        }
+
+        var starved = simulation.GetPlayer(new PlayerId(1)).EnergyStats.Query(10);
+        Assert.Equal(0, starved.DemandSeries[^1]);
+        Assert.DoesNotContain(starved.ConsumerRows, row => row.Kind == EntityKind.Assembler && row.Series[^1] > 0);
+        Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
+    }
+
+    [Fact]
+    public void EnergyStats_Query_UsesFixedAbsoluteBuckets()
+    {
+        Assert.Equal(1, EnergyStatsHistory.DisplayBucketSeconds(10));
+        Assert.Equal(5, EnergyStatsHistory.DisplayBucketSeconds(300));
+        Assert.Equal(10, EnergyStatsHistory.DisplayBucketSeconds(600));
+
+        var history = new EnergyStatsHistory();
+        var empty = new Dictionary<EntityKind, int>();
+        var tps = GameSimulation.TicksPerSecond;
+
+        // Ticks 0..29 → bucket 0 avg 1; 30..59 → bucket 1 avg 9. Mid-bucket noise must not rewrite bucket 0.
+        for (long tick = 0; tick < tps; tick++)
+        {
+            history.Record(tick, 1, 1, empty, empty);
+        }
+
+        var afterFirst = history.Query(10);
+        Assert.Equal(1, afterFirst.SampleCount);
+        Assert.Equal(1, afterFirst.DemandSeries[0]);
+
+        for (long tick = tps; tick < tps + tps / 2; tick++)
+        {
+            history.Record(tick, 100, 100, empty, empty);
+        }
+
+        var midSecond = history.Query(10);
+        Assert.Equal(1, midSecond.SampleCount);
+        Assert.Equal(1, midSecond.DemandSeries[0]); // completed bucket unchanged
+
+        for (long tick = tps + tps / 2; tick < 2 * tps; tick++)
+        {
+            history.Record(tick, 9, 9, empty, empty);
+        }
+
+        var afterSecond = history.Query(10);
+        Assert.Equal(2, afterSecond.SampleCount);
+        Assert.Equal(1, afterSecond.DemandSeries[0]);
+        // Second bucket = 15 ticks of 100 + 15 ticks of 9 → avg 54.5 → 54 or 55
+        Assert.InRange(afterSecond.DemandSeries[1], 54, 55);
+    }
+
+    [Fact]
+    public void EnergyStats_Query_UsesLargerBucketsForLongWindows()
+    {
+        var history = new EnergyStatsHistory();
+        var empty = new Dictionary<EntityKind, int>();
+        for (long tick = 0; tick < 10 * GameSimulation.TicksPerSecond; tick++)
+        {
+            history.Record(tick, 5, 4, empty, empty);
+        }
+
+        var shortWindow = history.Query(10);
+        Assert.Equal(10, shortWindow.SampleCount);
+        Assert.All(shortWindow.DemandSeries, value => Assert.Equal(4, value));
+
+        for (long tick = 10 * GameSimulation.TicksPerSecond; tick < 5 * 60 * GameSimulation.TicksPerSecond; tick++)
+        {
+            history.Record(tick, 5, 4, empty, empty);
+        }
+
+        var fiveMin = history.Query(300);
+        Assert.Equal(60, fiveMin.SampleCount);
+        Assert.All(fiveMin.DemandSeries, value => Assert.Equal(4, value));
+    }
+
+    [Fact]
     public void Mine_DrivesWorkTicksAndConsumesEnergyOnCycleComplete()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
@@ -1254,9 +1361,9 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(mineId, int.MaxValue));
         var beforeOre = mine.OutputBuffer.Count(ItemId.IronOre);
         simulation.AdvanceTick();
-        Assert.Equal(MvpDefinitions.MineWorkTicks, mine.WorkTicksTotal);
+        Assert.Equal(MvpDefinitions.OreMineWorkTicks, mine.WorkTicksTotal);
         Assert.True(mine.WorkTicksRemaining > 0);
-        Assert.True(mine.WorkTicksRemaining < MvpDefinitions.MineWorkTicks);
+        Assert.True(mine.WorkTicksRemaining < MvpDefinitions.OreMineWorkTicks);
 
         var energyBefore = mine.EnergyBuffer;
         AdvanceTicks(simulation, mine.WorkTicksRemaining);
@@ -1288,7 +1395,7 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(mineId, 100));
 
         var before = mine.EnergyBuffer;
-        AdvanceTicks(simulation, MvpDefinitions.MineWorkTicks);
+        AdvanceTicks(simulation, MvpDefinitions.OreMineWorkTicks);
         Assert.Equal(before, mine.EnergyBuffer);
         Assert.Equal(maxStack, mine.OutputBuffer.Count(ItemId.IronOre));
         Assert.Equal(0, mine.WorkTicksRemaining);
@@ -1435,6 +1542,180 @@ public class GameSimulationTests
         Assert.Equal(0, stats.SplashRadius);
         Assert.True(stats.VisionRadius > 0);
         Assert.True(stats.AttackDamage > 0);
+    }
+
+    [Fact]
+    public void Demolish_RefundsHalfCostAndReturnsBuffers()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var player = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
+        ClearInventory(commander.Inventory);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 15));
+
+        var tile = NearBlue(simulation, 6, 0);
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(commander.Id, EntityKind.Smelter, tile, out var smelterId));
+        AdvanceTicks(simulation, 30);
+        var smelter = simulation.World.GetEntity(smelterId)!;
+        Assert.Equal(EntityKind.Smelter, smelter.Kind);
+        Assert.True(simulation.AddItemToEntity(smelterId, ItemId.IronOre, 3));
+        Assert.True(simulation.TryAddOutputItemToEntity(smelterId, ItemId.IronPlate, 2));
+
+        ClearInventory(commander.Inventory);
+        Assert.True(simulation.TryDemolishBuilding(commander.Id, smelterId));
+        AdvanceTicks(simulation, 1);
+
+        Assert.Null(simulation.World.GetEntity(smelterId));
+        // Half of BuildCosts Smelter = 15/2 = 7 iron plate + 2 from output + 3 ore from input
+        Assert.Equal(9, commander.Inventory.Count(ItemId.IronPlate));
+        Assert.Equal(3, commander.Inventory.Count(ItemId.IronOre));
+    }
+
+    [Fact]
+    public void Demolish_OverflowGoesToHubThenDiscard()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var player = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
+        var hub = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Hub && entity.OwnerId == player);
+        ClearInventory(commander.Inventory);
+        ClearInventory(hub.Inventory);
+
+        var maxIron = MvpDefinitions.GetMaxStackSize(ItemId.IronPlate);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, maxIron));
+        // Fill hub completely with copper so iron overflow cannot deposit (and iron-only refund discards).
+        var hubCap = maxIron * MvpDefinitions.HubStorageStacks;
+        Assert.True(simulation.AddItemToEntity(hub.Id, ItemId.CopperPlate, hubCap));
+
+        ClearInventory(commander.Inventory);
+        // Leave commander one below max so half-cost (7) fits partially? Use conveyor cost 1 → refund 0, put plates in buffer.
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 1));
+        var tile = NearBlue(simulation, 7, 2);
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(commander.Id, EntityKind.Conveyor, tile, out var beltId));
+        AdvanceTicks(simulation, 30);
+        Assert.True(simulation.AddItemToEntity(beltId, ItemId.IronPlate, 1));
+        Assert.True(simulation.AddItemToEntity(beltId, ItemId.IronPlate, 1));
+
+        // Fill commander to stack cap so belt items + refund must go to hub / discard.
+        ClearInventory(commander.Inventory);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, maxIron));
+        var hubIronBefore = hub.Inventory.Count(ItemId.IronPlate);
+
+        Assert.True(simulation.TryDemolishBuilding(commander.Id, beltId));
+        AdvanceTicks(simulation, 1);
+
+        Assert.Equal(maxIron, commander.Inventory.Count(ItemId.IronPlate));
+        // Hub full of copper — iron discarded; refund for conveyor is 1/2=0.
+        Assert.Equal(hubIronBefore, hub.Inventory.Count(ItemId.IronPlate));
+        Assert.Null(simulation.World.GetEntity(beltId));
+    }
+
+    [Fact]
+    public void Demolish_HubDoesNotRedepositIntoDyingHub()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var player = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
+        var survivorHub = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Hub && entity.OwnerId == player);
+        ClearInventory(commander.Inventory);
+        ClearInventory(survivorHub.Inventory);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 20));
+
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Hub,
+            NearBlue(simulation, 6, 0),
+            out var victimHubId));
+        AdvanceTicks(simulation, 30);
+        var victimHub = simulation.World.GetEntity(victimHubId)!;
+        Assert.Equal(EntityKind.Hub, victimHub.Kind);
+
+        ClearInventory(commander.Inventory);
+        ClearInventory(survivorHub.Inventory);
+        ClearInventory(victimHub.Inventory);
+        Assert.True(simulation.AddItemToEntity(victimHubId, ItemId.CopperPlate, 5));
+
+        var maxIron = MvpDefinitions.GetMaxStackSize(ItemId.IronPlate);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, maxIron));
+        Assert.True(simulation.TryTeleportEntityForTests(commander.Id, victimHub.Position));
+
+        Assert.True(simulation.TryDemolishBuilding(commander.Id, victimHubId));
+        AdvanceTicks(simulation, 1);
+
+        Assert.Null(simulation.World.GetEntity(victimHubId));
+        Assert.Equal(maxIron, commander.Inventory.Count(ItemId.IronPlate));
+        // Copper fits on the commander; iron refund (20/2=10) overflows to the surviving hub.
+        // Without excluding the scrap target, that overflow would re-deposit into the dying hub and vanish.
+        Assert.Equal(5, commander.Inventory.Count(ItemId.CopperPlate));
+        Assert.Equal(10, survivorHub.Inventory.Count(ItemId.IronPlate));
+        Assert.Equal(0, survivorHub.Inventory.Count(ItemId.CopperPlate));
+    }
+
+    [Fact]
+    public void Demolish_RejectsBastionAndEnemy()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var player = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
+        var bastion = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Bastion && entity.OwnerId == player);
+        Assert.False(simulation.TryDemolishBuilding(commander.Id, bastion.Id));
+
+        var enemyHub = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Hub && entity.OwnerId == new PlayerId(2));
+        Assert.False(simulation.IsDemolishableTarget(commander.Id, enemyHub.Id));
+        Assert.False(simulation.TryDemolishBuilding(commander.Id, enemyHub.Id));
+    }
+
+    [Fact]
+    public void StopCommander_ClearsQueuedBuildDemolishAndMove()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var player = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
+        ClearInventory(commander.Inventory);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 40));
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.CopperPlate, 20));
+
+        var farTile = NearBlue(simulation, 20, 0);
+        Assert.True(simulation.TryQueueCommanderBuild(commander.Id, EntityKind.Smelter, farTile));
+        Assert.NotNull(commander.QueuedBuildOrder);
+
+        Assert.True(simulation.TryStopCommander(commander.Id));
+        Assert.Null(commander.QueuedBuildOrder);
+        Assert.Null(commander.QueuedDemolishOrder);
+        Assert.Null(commander.MoveTarget);
+        Assert.Empty(commander.MovementPath);
+        Assert.Null(commander.CurrentWaypoint);
+
+        var nearTile = NearBlue(simulation, 7, -1);
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(commander.Id, EntityKind.Conveyor, nearTile, out var targetId));
+        AdvanceTicks(simulation, 30);
+        Assert.True(simulation.TryTeleportEntityForTests(commander.Id, NearBlue(simulation, 4, 20)));
+        Assert.True(simulation.TryQueueCommanderDemolish(commander.Id, targetId));
+        Assert.NotNull(commander.QueuedDemolishOrder);
+        Assert.True(simulation.TryStopCommander(commander.Id));
+        Assert.Null(commander.QueuedDemolishOrder);
+        Assert.NotNull(simulation.World.GetEntity(targetId));
+    }
+
+    [Fact]
+    public void SmelterAndRecipes_UseBalancedWorkTicks()
+    {
+        Assert.Equal(40, MvpDefinitions.ItemRecipes[ItemRecipeId.IronGear].WorkTicks);
+        Assert.Equal(60, MvpDefinitions.ItemRecipes[ItemRecipeId.Composite].WorkTicks);
+
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var player = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
+        ClearInventory(commander.Inventory);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 40));
+        var tile = NearBlue(simulation, 6, -2);
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(commander.Id, EntityKind.Smelter, tile, out var smelterId));
+        AdvanceTicks(simulation, 30);
+        Assert.True(simulation.TrySetEnergyBufferForTests(smelterId, int.MaxValue));
+        Assert.True(simulation.AddItemToEntity(smelterId, ItemId.IronOre, 1));
+        simulation.AdvanceTick();
+        var smelter = simulation.World.GetEntity(smelterId)!;
+        Assert.Equal(40, smelter.WorkTicksTotal);
     }
 
     private static void AdvanceTicks(GameSimulation simulation, int ticks)

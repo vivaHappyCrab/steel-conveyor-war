@@ -7,7 +7,12 @@ public static class MvpDefinitions
     public const int ConveyorMoveTicks = 10;
     public const int InserterTransferTicks = 12;
     public const int ConveyorMaxItemsPerTile = 2;
+    /// <summary>Oil well mine cycle (unchanged baseline).</summary>
     public const int MineWorkTicks = 15;
+    /// <summary>Iron/copper ore mine cycle (2× baseline).</summary>
+    public const int OreMineWorkTicks = 30;
+    /// <summary>Coal mine cycle (3× baseline).</summary>
+    public const int CoalMineWorkTicks = 45;
     public const int HubStorageStacks = 20;
     public const double MobileMoveWorldUnitsPerTick = 0.125;
     public const int BaseBastionTemplateCapacity = 10;
@@ -117,8 +122,7 @@ public static class MvpDefinitions
             [ItemId.Steel] = 50,
             [ItemId.Fuel] = 50,
             [ItemId.IronGear] = 100,
-            [ItemId.CopperWire] = 200,
-            [ItemId.Circuit] = 100,
+            [ItemId.Composite] = 100,
             [ItemId.SciencePackT1] = 50,
             [ItemId.SciencePackT2] = 50,
             [ItemId.Ammo] = 100,
@@ -223,7 +227,7 @@ public static class MvpDefinitions
         {
             [EntityKind.LightBot] = new(Cost((ItemId.IronPlate, 5)), EntityKind.LightBot, 60, TechnologyId.LightBot),
             [EntityKind.BasicTank] = new(Cost((ItemId.IronPlate, 12), (ItemId.CopperPlate, 4)), EntityKind.BasicTank, 105),
-            [EntityKind.Scout] = new(Cost((ItemId.CopperPlate, 8)), EntityKind.Scout, 60, TechnologyId.Scout),
+            [EntityKind.Scout] = new(Cost((ItemId.Composite, 4)), EntityKind.Scout, 60, TechnologyId.Scout),
             [EntityKind.MediumBot] = new(Cost((ItemId.Steel, 5)), EntityKind.MediumBot, 105, TechnologyId.MediumBot),
             [EntityKind.MediumTank] = new(Cost((ItemId.Steel, 10), (ItemId.Fuel, 3)), EntityKind.MediumTank, 150, TechnologyId.MediumTank),
             [EntityKind.AntiAirBot] = new(Cost((ItemId.Steel, 6), (ItemId.CopperPlate, 8)), EntityKind.AntiAirBot, 120, TechnologyId.AntiAirTurret),
@@ -233,11 +237,10 @@ public static class MvpDefinitions
     public static readonly IReadOnlyDictionary<ItemRecipeId, ItemRecipeDefinition> ItemRecipes =
         new Dictionary<ItemRecipeId, ItemRecipeDefinition>
         {
-            [ItemRecipeId.IronGear] = new(ItemRecipeId.IronGear, Cost((ItemId.IronPlate, 2)), ItemId.IronGear, 1, 20),
-            [ItemRecipeId.CopperWire] = new(ItemRecipeId.CopperWire, Cost((ItemId.CopperPlate, 1)), ItemId.CopperWire, 2, 15),
-            [ItemRecipeId.Circuit] = new(ItemRecipeId.Circuit, Cost((ItemId.IronPlate, 1), (ItemId.CopperWire, 2)), ItemId.Circuit, 1, 30),
+            [ItemRecipeId.IronGear] = new(ItemRecipeId.IronGear, Cost((ItemId.IronPlate, 2)), ItemId.IronGear, 1, 40),
+            [ItemRecipeId.Composite] = new(ItemRecipeId.Composite, Cost((ItemId.IronPlate, 1), (ItemId.CopperPlate, 1)), ItemId.Composite, 1, 60),
             [ItemRecipeId.SciencePackT1] = new(ItemRecipeId.SciencePackT1, Cost((ItemId.IronGear, 1), (ItemId.CopperPlate, 1)), ItemId.SciencePackT1, 1, 35),
-            [ItemRecipeId.SciencePackT2] = new(ItemRecipeId.SciencePackT2, Cost((ItemId.Circuit, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1)), ItemId.SciencePackT2, 1, 45)
+            [ItemRecipeId.SciencePackT2] = new(ItemRecipeId.SciencePackT2, Cost((ItemId.Composite, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1)), ItemId.SciencePackT2, 1, 45)
         };
 
     // Research catalog moved to Research/MvpResearchCatalog.cs

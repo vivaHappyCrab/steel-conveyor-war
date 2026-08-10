@@ -54,8 +54,7 @@ public enum ItemId
     Steel,
     Fuel,
     IronGear,
-    CopperWire,
-    Circuit,
+    Composite,
     SciencePackT1,
     SciencePackT2,
     Ammo,
@@ -66,8 +65,7 @@ public enum ItemId
 public enum ItemRecipeId
 {
     IronGear,
-    CopperWire,
-    Circuit,
+    Composite,
     SciencePackT1,
     SciencePackT2
 }

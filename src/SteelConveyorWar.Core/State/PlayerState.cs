@@ -32,6 +32,9 @@ public sealed class PlayerState
 
     public int PowerDemand { get; internal set; }
 
+    /// <summary>Presentation-only energy time series; not part of determinism hash.</summary>
+    public EnergyStatsHistory EnergyStats { get; } = new();
+
     public IReadOnlyList<TechSignatureHotspot> TechSignatures => _techSignatures.AsReadOnly();
 
     public VisibilityState GetVisibility(TilePosition position)

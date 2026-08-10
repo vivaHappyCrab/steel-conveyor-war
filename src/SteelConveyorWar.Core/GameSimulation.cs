@@ -7,6 +7,10 @@ public sealed class GameSimulation
     private readonly List<PlayerState> _players;
     private readonly ResearchSystem _researchSystem;
     private readonly List<CombatShotEvent> _combatShotsThisTick = new();
+    private readonly Dictionary<PlayerId, int> _tickPowerProduced = new();
+    private readonly Dictionary<PlayerId, int> _tickPowerConsumed = new();
+    private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickProducedByKind = new();
+    private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickConsumedByKind = new();
     private int _nextEntityId = 1;
 
     private GameSimulation(
@@ -104,6 +108,7 @@ public sealed class GameSimulation
             options.Entities);
         simulation.CreateStartingEntities();
         simulation.UpdatePower();
+        simulation.RecordEnergyStatsSample();
         simulation.UpdateFogOfWar();
         simulation.UpdateTechSignatures();
         return simulation;
@@ -193,6 +198,7 @@ public sealed class GameSimulation
         ghostId = ghost.Id;
         World.AddEntity(ghost);
         commander.QueuedBuildOrder = null;
+        commander.QueuedDemolishOrder = null;
         return true;
     }
 
@@ -220,6 +226,7 @@ public sealed class GameSimulation
         }
 
         commander.QueuedBuildOrder = new CommanderBuildOrder(targetKind, position, direction, selectedItemRecipe);
+        commander.QueuedDemolishOrder = null;
         commander.IsGarrisoned = false;
         commander.MoveTarget = null;
         ResetMovementPath(commander);
@@ -255,9 +262,257 @@ public sealed class GameSimulation
 
         entity.MoveTarget = target;
         entity.QueuedBuildOrder = null;
+        entity.QueuedDemolishOrder = null;
         entity.IsGarrisoned = false;
         ResetMovementPath(entity);
         return true;
+    }
+
+    public bool TryStopCommander(int commanderId)
+    {
+        var commander = World.GetEntity(commanderId);
+        if (commander is null || commander.Kind != EntityKind.Commander || !commander.IsAlive)
+        {
+            return false;
+        }
+
+        commander.MoveTarget = null;
+        commander.QueuedBuildOrder = null;
+        commander.QueuedDemolishOrder = null;
+        ResetMovementPath(commander);
+        return true;
+    }
+
+    /// <summary>
+    /// True when the commander can demolish/queue-demolish the target (ownership, kind, alive).
+    /// </summary>
+    public bool IsDemolishableTarget(int commanderId, int targetEntityId)
+    {
+        var commander = World.GetEntity(commanderId);
+        var target = World.GetEntity(targetEntityId);
+        return TryResolveDemolishCostKind(commander, target, out _);
+    }
+
+    public bool TryQueueCommanderDemolish(int commanderId, int targetEntityId)
+    {
+        var commander = World.GetEntity(commanderId);
+        var target = World.GetEntity(targetEntityId);
+        if (!TryResolveDemolishCostKind(commander, target, out var costKind))
+        {
+            return false;
+        }
+
+        if (IsWithinBuildRadius(commander!, costKind, target!.Position))
+        {
+            return TryDemolishBuilding(commanderId, targetEntityId);
+        }
+
+        commander!.QueuedDemolishOrder = new CommanderDemolishOrder(targetEntityId);
+        commander.QueuedBuildOrder = null;
+        commander.IsGarrisoned = false;
+        commander.MoveTarget = null;
+        ResetMovementPath(commander);
+        return true;
+    }
+
+    public bool TryDemolishBuilding(int commanderId, int targetEntityId)
+    {
+        var commander = World.GetEntity(commanderId);
+        var target = World.GetEntity(targetEntityId);
+        if (!TryResolveDemolishCostKind(commander, target, out var costKind))
+        {
+            return false;
+        }
+
+        if (!IsWithinBuildRadius(commander!, costKind, target!.Position))
+        {
+            return false;
+        }
+
+        if (!MvpDefinitions.BuildCosts.TryGetValue(costKind, out var fullCost))
+        {
+            return false;
+        }
+
+        var transfer = new Dictionary<ItemId, int>();
+        CollectInventoryInto(transfer, target.Inventory);
+        CollectInventoryInto(transfer, target.InputBuffer);
+        CollectInventoryInto(transfer, target.OutputBuffer);
+        foreach (var slot in target.ConveyorItems)
+        {
+            AddTransferAmount(transfer, slot.Item, 1);
+        }
+
+        if (target.HeldItem is { } held)
+        {
+            AddTransferAmount(transfer, held, 1);
+        }
+
+        if (target.PendingOutputItem is { } pending)
+        {
+            AddTransferAmount(transfer, pending, Math.Max(1, target.PendingOutputAmount));
+        }
+
+        foreach (var pair in fullCost.OrderBy(entry => entry.Key))
+        {
+            var refund = pair.Value / 2;
+            if (refund > 0)
+            {
+                AddTransferAmount(transfer, pair.Key, refund);
+            }
+        }
+
+        target.Inventory.Clear();
+        target.InputBuffer.Clear();
+        target.OutputBuffer.Clear();
+        target.ConveyorItemsMutable.Clear();
+        target.HeldItem = null;
+        target.HeldTransferTicksRemaining = 0;
+        target.PendingOutputItem = null;
+        target.PendingOutputAmount = 1;
+        target.WorkTicksRemaining = 0;
+        target.WorkTicksTotal = 0;
+
+        // Exclude the demolish target so hub scrap/overflow cannot re-deposit into the dying hub.
+        DepositItemsToCommanderOrNearbyHubs(commander!, transfer, excludeEntityId: target.Id);
+
+        target.Health = 0;
+        if (commander!.QueuedDemolishOrder?.TargetEntityId == targetEntityId)
+        {
+            commander.QueuedDemolishOrder = null;
+        }
+
+        return true;
+    }
+
+    public int GetResolvedConveyorMoveTicks(WorldEntity conveyor)
+    {
+        var moveTicks = MvpDefinitions.ConveyorMoveTicks;
+        if (conveyor.OwnerId is not null)
+        {
+            moveTicks = ResolveStat(conveyor.OwnerId.Value, ResearchStatIds.ConveyorMoveTicks, moveTicks);
+        }
+
+        return Math.Max(1, moveTicks);
+    }
+
+    private static bool TryResolveDemolishCostKind(WorldEntity? commander, WorldEntity? target, out EntityKind costKind)
+    {
+        costKind = default;
+        if (commander is null
+            || commander.Kind != EntityKind.Commander
+            || commander.OwnerId is null
+            || !commander.IsAlive
+            || target is null
+            || !target.IsAlive
+            || target.OwnerId != commander.OwnerId)
+        {
+            return false;
+        }
+
+        if (target.Kind == EntityKind.GhostBuild)
+        {
+            if (target.BuildTargetKind is not { } ghostTarget
+                || ghostTarget == EntityKind.Bastion
+                || !MvpDefinitions.BuildCosts.ContainsKey(ghostTarget))
+            {
+                return false;
+            }
+
+            costKind = ghostTarget;
+            return true;
+        }
+
+        if (target.Kind == EntityKind.Bastion
+            || target.Kind == EntityKind.Commander
+            || MvpDefinitions.UnitKinds.Contains(target.Kind)
+            || !MvpDefinitions.BuildCosts.ContainsKey(target.Kind))
+        {
+            return false;
+        }
+
+        costKind = target.Kind;
+        return true;
+    }
+
+    private static void CollectInventoryInto(Dictionary<ItemId, int> transfer, Inventory inventory)
+    {
+        foreach (var pair in inventory.Items)
+        {
+            AddTransferAmount(transfer, pair.Key, pair.Value);
+        }
+    }
+
+    private static void AddTransferAmount(Dictionary<ItemId, int> transfer, ItemId item, int amount)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        transfer[item] = transfer.GetValueOrDefault(item) + amount;
+    }
+
+    /// <summary>
+    /// Deposits into commander first (per-item stack cap), then owned hubs in interact radius by id.
+    /// Remaining amounts are discarded.
+    /// </summary>
+    private void DepositItemsToCommanderOrNearbyHubs(
+        WorldEntity commander,
+        IReadOnlyDictionary<ItemId, int> items,
+        int? excludeEntityId = null)
+    {
+        if (items.Count == 0 || commander.OwnerId is null)
+        {
+            return;
+        }
+
+        var hubs = World.Entities
+            .Where(entity =>
+                entity.IsAlive
+                && entity.Kind == EntityKind.Hub
+                && entity.OwnerId == commander.OwnerId
+                && (excludeEntityId is null || entity.Id != excludeEntityId.Value)
+                && DistanceToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
+                    <= MvpDefinitions.CommanderInteractRadius)
+            .OrderBy(entity => entity.Id)
+            .ToList();
+
+        foreach (var pair in items.OrderBy(entry => entry.Key))
+        {
+            var left = pair.Value;
+            if (left <= 0)
+            {
+                continue;
+            }
+
+            var commanderRoom = MvpDefinitions.GetMaxStackSize(pair.Key) - commander.Inventory.Count(pair.Key);
+            if (commanderRoom > 0)
+            {
+                var toCommander = Math.Min(commanderRoom, left);
+                commander.Inventory.Add(pair.Key, toCommander);
+                left -= toCommander;
+            }
+
+            if (left <= 0)
+            {
+                continue;
+            }
+
+            var hubStacks = GetHubStorageStacks(commander.OwnerId);
+            foreach (var hub in hubs)
+            {
+                if (left <= 0)
+                {
+                    break;
+                }
+
+                while (left > 0 && hub.Inventory.TryAddWithinTotalStackLimit(pair.Key, 1, hubStacks))
+                {
+                    left--;
+                }
+            }
+        }
     }
 
     public bool TryStartResearch(PlayerId playerId, TechnologyId technology)
@@ -625,6 +880,8 @@ public sealed class GameSimulation
     private static void ApplyBastionOrderToUnit(WorldEntity unit, BastionOrder bastionOrder)
     {
         unit.Order = ResolveOrderForUnit(unit.Kind, bastionOrder);
+        // Drop stale Attack/Scout waypoints so Defend/home (or a new target) can repath immediately.
+        ResetMovementPath(unit);
         if (unit.Order.Kind == BastionOrderKind.Defend)
         {
             // Stay home / garrison unless Defend active defense ungarrisons them.
@@ -639,12 +896,9 @@ public sealed class GameSimulation
         return bastionOrder.Kind switch
         {
             BastionOrderKind.Scout when unitKind != EntityKind.Scout => new BastionOrder(BastionOrderKind.Defend),
-            BastionOrderKind.AttackArea when unitKind == EntityKind.Scout => new BastionOrder(BastionOrderKind.Defend),
             _ => bastionOrder
         };
     }
-
-    private static bool IsCombatUnit(EntityKind kind) => kind != EntityKind.Scout && MvpDefinitions.UnitKinds.Contains(kind);
 
     public void AddPlayerItems(PlayerId playerId, ItemId item, int amount)
     {
@@ -975,8 +1229,9 @@ public sealed class GameSimulation
     }
 
     /// <summary>
-    /// Drains this tick's power demand from the building buffer. Returns false when the building
-    /// cannot afford to run (no demand configured is treated as success / unpowered-free).
+    /// Drains <see cref="MvpDefinitions.GetPowerDemand"/> from the building buffer when it can afford to run.
+    /// Returns false when the buffer is too low (work must pause). No demand configured → success (unpowered-free).
+    /// Successful drains accumulate into this tick's energy-stats consumption sample.
     /// </summary>
     public bool TryConsumeBuildingEnergy(WorldEntity building)
     {
@@ -992,6 +1247,19 @@ public sealed class GameSimulation
         }
 
         building.EnergyBuffer -= demand;
+        if (building.OwnerId is not null)
+        {
+            var ownerId = building.OwnerId.Value;
+            _tickPowerConsumed[ownerId] = _tickPowerConsumed.GetValueOrDefault(ownerId) + demand;
+            if (!_tickConsumedByKind.TryGetValue(ownerId, out var byKind))
+            {
+                byKind = new Dictionary<EntityKind, int>();
+                _tickConsumedByKind[ownerId] = byKind;
+            }
+
+            byKind[building.Kind] = byKind.GetValueOrDefault(building.Kind) + demand;
+        }
+
         return true;
     }
 
@@ -1043,6 +1311,7 @@ public sealed class GameSimulation
 
         Tick++;
         ProcessCommanderBuildOrders();
+        ProcessCommanderDemolishOrders();
         ProcessCommanderMoveCommands();
         CompleteGhostBuilds();
         UpdatePower();
@@ -1056,6 +1325,7 @@ public sealed class GameSimulation
         ProcessCombat();
         CascadeBastionDeaths();
         ProcessRepairOutOfCombat();
+        RecordEnergyStatsSample();
         CheckVictory();
         World.RemoveDead();
         UpdateFogOfWar();
@@ -1505,9 +1775,36 @@ public sealed class GameSimulation
         }
     }
 
+    private void ProcessCommanderDemolishOrders()
+    {
+        foreach (var commander in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Commander && entity.QueuedDemolishOrder is not null).ToList())
+        {
+            var order = commander.QueuedDemolishOrder!;
+            var target = World.GetEntity(order.TargetEntityId);
+            if (!TryResolveDemolishCostKind(commander, target, out var costKind))
+            {
+                commander.QueuedDemolishOrder = null;
+                continue;
+            }
+
+            if (IsWithinBuildRadius(commander, costKind, target!.Position))
+            {
+                TryDemolishBuilding(commander.Id, order.TargetEntityId);
+                continue;
+            }
+
+            MoveMobileEntityTowardTile(commander, target.Position);
+        }
+    }
+
     private void ProcessCommanderMoveCommands()
     {
-        foreach (var commander in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Commander && entity.MoveTarget is not null && entity.QueuedBuildOrder is null))
+        foreach (var commander in World.Entities.Where(entity =>
+                     entity.IsAlive
+                     && entity.Kind == EntityKind.Commander
+                     && entity.MoveTarget is not null
+                     && entity.QueuedBuildOrder is null
+                     && entity.QueuedDemolishOrder is null).ToList())
         {
             if (commander.Position == commander.MoveTarget && commander.CurrentWaypoint is null && commander.MovementPath.Count == 0)
             {
@@ -1766,6 +2063,8 @@ public sealed class GameSimulation
 
     private void UpdatePower()
     {
+        ResetEnergyTickAccumulators();
+
         foreach (var player in _players)
         {
             player.PowerProduced = 0;
@@ -1775,18 +2074,59 @@ public sealed class GameSimulation
         foreach (var entity in World.Entities.Where(entity => entity.IsAlive && entity.OwnerId is not null))
         {
             var player = GetPlayer(entity.OwnerId!.Value);
-            player.PowerProduced += entity.Kind switch
+            var produced = entity.Kind switch
             {
                 EntityKind.SolarPanel => MvpDefinitions.PowerProduction.GetValueOrDefault(EntityKind.SolarPanel),
                 EntityKind.CoalPlant when entity.InputBuffer.TryRemove(ItemId.Coal, 1) => MvpDefinitions.PowerProduction.GetValueOrDefault(EntityKind.CoalPlant),
                 _ => 0
             };
+            if (produced > 0)
+            {
+                player.PowerProduced += produced;
+                _tickPowerProduced[player.Id] = _tickPowerProduced.GetValueOrDefault(player.Id) + produced;
+                var producedMap = _tickProducedByKind[player.Id];
+                producedMap[entity.Kind] = producedMap.GetValueOrDefault(entity.Kind) + produced;
+            }
+
+            // HUD demand = installed consumer rating (not actual drain this tick).
             player.PowerDemand += MvpDefinitions.GetPowerDemand(entity.Kind);
         }
 
         foreach (var player in _players)
         {
             FillEnergyBuffersEmptiestFirst(player);
+        }
+    }
+
+    private void ResetEnergyTickAccumulators()
+    {
+        _tickPowerProduced.Clear();
+        _tickPowerConsumed.Clear();
+        _tickProducedByKind.Clear();
+        _tickConsumedByKind.Clear();
+        foreach (var player in _players)
+        {
+            _tickProducedByKind[player.Id] = new Dictionary<EntityKind, int>();
+            _tickConsumedByKind[player.Id] = new Dictionary<EntityKind, int>();
+            _tickPowerProduced[player.Id] = 0;
+            _tickPowerConsumed[player.Id] = 0;
+        }
+    }
+
+    /// <summary>
+    /// Records this tick's production and <b>actual</b> buffer drains into presentation-only energy history.
+    /// Must run after all <see cref="TryConsumeBuildingEnergy"/> call sites for the tick.
+    /// </summary>
+    private void RecordEnergyStatsSample()
+    {
+        foreach (var player in _players)
+        {
+            player.EnergyStats.Record(
+                Tick,
+                _tickPowerProduced.GetValueOrDefault(player.Id),
+                _tickPowerConsumed.GetValueOrDefault(player.Id),
+                _tickProducedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>(),
+                _tickConsumedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>());
         }
     }
 
@@ -1856,8 +2196,14 @@ public sealed class GameSimulation
 
             if (entity.WorkTicksRemaining <= 0)
             {
-                entity.WorkTicksTotal = MvpDefinitions.MineWorkTicks;
-                entity.WorkTicksRemaining = MvpDefinitions.MineWorkTicks;
+                var cycleTicks = entity.Kind switch
+                {
+                    EntityKind.Mine => MvpDefinitions.OreMineWorkTicks,
+                    EntityKind.CoalMine => MvpDefinitions.CoalMineWorkTicks,
+                    _ => MvpDefinitions.MineWorkTicks
+                };
+                entity.WorkTicksTotal = cycleTicks;
+                entity.WorkTicksRemaining = cycleTicks;
             }
 
             entity.WorkTicksRemaining--;
@@ -1970,7 +2316,7 @@ public sealed class GameSimulation
                 }
 
                 smelter.ActiveSmeltRecipe = SmeltRecipeId.IronPlate;
-                StartItemRecipe(smelter, ItemId.IronOre, ItemId.IronPlate, 20);
+                StartItemRecipe(smelter, ItemId.IronOre, ItemId.IronPlate, 40);
                 return smelter.PendingOutputItem is not null;
 
             case SmeltRecipeId.CopperPlate:
@@ -1980,7 +2326,7 @@ public sealed class GameSimulation
                 }
 
                 smelter.ActiveSmeltRecipe = SmeltRecipeId.CopperPlate;
-                StartItemRecipe(smelter, ItemId.CopperOre, ItemId.CopperPlate, 20);
+                StartItemRecipe(smelter, ItemId.CopperOre, ItemId.CopperPlate, 40);
                 return smelter.PendingOutputItem is not null;
 
             case SmeltRecipeId.Steel:
@@ -1994,7 +2340,7 @@ public sealed class GameSimulation
                 smelter.ActiveSmeltRecipe = SmeltRecipeId.Steel;
                 smelter.PendingOutputItem = ItemId.Steel;
                 smelter.PendingOutputAmount = 1;
-                var steelTicks = 30;
+                var steelTicks = 60;
                 if (smelter.OwnerId is not null)
                 {
                     steelTicks = ResolveStat(smelter.OwnerId.Value, ResearchStatIds.SmelterWorkTicks, steelTicks);
@@ -2678,7 +3024,9 @@ public sealed class GameSimulation
                     continue;
                 }
 
-                if (unit.Position.IsWithinEuclideanRange(bastion.Position, 1))
+                // Bastion is multi-tile; units stop on the footprint perimeter (building collision)
+                // and must hide when adjacent to any footprint tile — not only near bastion.Position.
+                if (IsWithinBastionGarrisonRange(bastion, unit.Position))
                 {
                     unit.Position = bastion.Position;
                     unit.WorldPosition = WorldPosition.FromTileCenter(bastion.Position);
@@ -2689,15 +3037,38 @@ public sealed class GameSimulation
         }
     }
 
+    /// <summary>
+    /// True when <paramref name="unitPosition"/> is on or Chebyshev-adjacent to the bastion footprint
+    /// (units cannot occupy building tiles, so they garrison from the perimeter ring).
+    /// </summary>
+    private static bool IsWithinBastionGarrisonRange(WorldEntity bastion, TilePosition unitPosition)
+    {
+        var footprint = MvpDefinitions.GetFootprint(bastion.Kind);
+        var minX = bastion.Position.X - 1;
+        var maxX = bastion.Position.X + footprint.Width;
+        var minY = bastion.Position.Y - 1;
+        var maxY = bastion.Position.Y + footprint.Height;
+        return unitPosition.X >= minX
+            && unitPosition.X <= maxX
+            && unitPosition.Y >= minY
+            && unitPosition.Y <= maxY;
+    }
+
     private void TryCompleteBastionOrder(WorldEntity bastion)
     {
         if (bastion.Order.Kind == BastionOrderKind.AttackArea && bastion.Order.Target is not null)
         {
-            var combatUnits = World.Entities
-                .Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && IsCombatUnit(entity.Kind))
+            // Scouts join AttackArea for FoW; completion waits for every assigned unit still on
+            // AttackArea (combat and scouts), so scout-only pushes and post-wipe leftovers can finish.
+            var attackUnits = World.Entities
+                .Where(entity =>
+                    entity.IsAlive
+                    && entity.AssignedBastionId == bastion.Id
+                    && MvpDefinitions.UnitKinds.Contains(entity.Kind)
+                    && entity.Order.Kind == BastionOrderKind.AttackArea)
                 .ToList();
-            if (combatUnits.Count > 0
-                && combatUnits.All(unit => unit.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1)))
+            if (attackUnits.Count > 0
+                && attackUnits.All(unit => unit.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1)))
             {
                 SwitchBastionToDefend(bastion);
             }
@@ -2728,6 +3099,7 @@ public sealed class GameSimulation
                      && MvpDefinitions.UnitKinds.Contains(entity.Kind)))
         {
             unit.Order = defend;
+            ResetMovementPath(unit);
         }
     }
 
@@ -3110,6 +3482,12 @@ public sealed class GameSimulation
                 continue;
             }
 
+            // Moving units ignore unit↔unit collision (radius effectively 0); stopped units keep full size.
+            if (IsMobileEntityMoving(mover) || IsMobileEntityMoving(entity))
+            {
+                continue;
+            }
+
             var otherRadius = MvpDefinitions.GetCollisionSize(entity.Kind).Radius;
             if (otherRadius <= 0)
             {
@@ -3134,6 +3512,24 @@ public sealed class GameSimulation
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// True when a mobile entity has active movement (waypoint, path, or move target) and is not garrisoned.
+    /// </summary>
+    private static bool IsMobileEntityMoving(WorldEntity entity)
+    {
+        if (entity.IsGarrisoned)
+        {
+            return false;
+        }
+
+        if (entity.CurrentWaypoint is not null || entity.MovementPath.Count > 0)
+        {
+            return true;
+        }
+
+        return entity.MoveTarget is not null && entity.MoveTarget.Value != entity.Position;
     }
 
     private static bool CircleIntersectsEntityFootprint(WorldPosition position, double radius, WorldEntity obstacle)

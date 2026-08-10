@@ -90,6 +90,8 @@ public sealed class WorldEntity
 
     public CommanderBuildOrder? QueuedBuildOrder { get; internal set; }
 
+    public CommanderDemolishOrder? QueuedDemolishOrder { get; internal set; }
+
     public TilePosition? MoveTarget { get; internal set; }
 
     public IReadOnlyList<TilePosition> MovementPath => _movementPath.AsReadOnly();

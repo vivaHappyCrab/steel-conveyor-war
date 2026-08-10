@@ -18,10 +18,14 @@ public sealed class CombatBastionTests
         Assert.Equal(target, tank.Order.Target);
         Assert.False(tank.IsGarrisoned);
 
-        AdvanceTicks(simulation, 120);
+        AdvanceTicks(simulation, 5);
         tank = simulation.World.GetEntity(tank.Id)!;
-        Assert.NotEqual(start, tank.Position);
-        Assert.True(tank.Position.ManhattanDistance(target) <= start.ManhattanDistance(target));
+        Assert.Equal(BastionOrderKind.AttackArea, bastion.Order.Kind);
+        Assert.Equal(BastionOrderKind.AttackArea, tank.Order.Kind);
+        Assert.True(
+            tank.Position != start
+            || tank.CurrentWaypoint is not null
+            || tank.MovementPath.Count > 0);
     }
 
     [Fact]
@@ -61,7 +65,7 @@ public sealed class CombatBastionTests
     }
 
     [Fact]
-    public void TryIssueBastionOrder_AttackArea_KeepsScoutsOnDefend()
+    public void TryIssueBastionOrder_AttackArea_AssignsScoutsSameTarget()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
@@ -71,7 +75,64 @@ public sealed class CombatBastionTests
 
         Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, target)));
         Assert.Equal(BastionOrderKind.AttackArea, tank.Order.Kind);
+        Assert.Equal(BastionOrderKind.AttackArea, scout.Order.Kind);
+        Assert.Equal(target, scout.Order.Target);
+    }
+
+    [Fact]
+    public void TryIssueBastionOrder_AttackArea_CompletesResetsScoutToDefend()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var tank = ProduceTankForBastion(simulation, bastion.Id);
+        var scout = ProduceScoutForBastion(simulation, bastion.Id);
+        // Completion waits for combat and scouts; start both one tile from the target.
+        var target = new TilePosition(bastion.Position.X + 4, bastion.Position.Y);
+        var staging = new TilePosition(target.X - 1, target.Y);
+        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, staging));
+        Assert.True(simulation.TryTeleportEntityForTests(scout.Id, staging));
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, target)));
+
+        AdvanceTicks(simulation, 80);
+
+        Assert.Equal(BastionOrderKind.Defend, bastion.Order.Kind);
+        Assert.Equal(BastionOrderKind.Defend, simulation.World.GetEntity(tank.Id)!.Order.Kind);
+        Assert.Equal(BastionOrderKind.Defend, simulation.World.GetEntity(scout.Id)!.Order.Kind);
+    }
+
+    [Fact]
+    public void TryIssueBastionOrder_AttackArea_ScoutOnlyCompletesToDefend()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var scout = ProduceScoutForBastion(simulation, bastion.Id);
+        var target = new TilePosition(scout.Position.X + 1, scout.Position.Y);
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, target)));
+
+        AdvanceTicks(simulation, 80);
+
+        Assert.Equal(BastionOrderKind.Defend, bastion.Order.Kind);
+        Assert.Equal(BastionOrderKind.Defend, simulation.World.GetEntity(scout.Id)!.Order.Kind);
+    }
+
+    [Fact]
+    public void TryIssueBastionOrder_Defend_ClearsInFlightAttackPath()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var scout = ProduceScoutForBastion(simulation, bastion.Id);
+        var attackTarget = new TilePosition(bastion.Position.X + 8, bastion.Position.Y);
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, attackTarget)));
+
+        AdvanceTicks(simulation, 12);
+        scout = simulation.World.GetEntity(scout.Id)!;
+        Assert.True(scout.CurrentWaypoint is not null || scout.MovementPath.Count > 0);
+
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
+        scout = simulation.World.GetEntity(scout.Id)!;
         Assert.Equal(BastionOrderKind.Defend, scout.Order.Kind);
+        Assert.Null(scout.CurrentWaypoint);
+        Assert.Empty(scout.MovementPath);
     }
 
     [Fact]
@@ -184,6 +245,25 @@ public sealed class CombatBastionTests
         Assert.True(simulation.CanOccupyWorldPositionForTests(
             tankB.Id,
             WorldPosition.FromTileCenter(new TilePosition(40, 40))));
+    }
+
+    [Fact]
+    public void CanOccupyWorldPosition_AllowsOverlapWhileMoverIsMoving()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var tankA = ProduceTankForBastion(simulation, bastion.Id);
+        var tankB = ProduceTankForBastion(simulation, bastion.Id);
+        Assert.True(simulation.TryTeleportEntityForTests(tankA.Id, new TilePosition(20, 20)));
+        Assert.True(simulation.TryTeleportEntityForTests(tankB.Id, new TilePosition(22, 20)));
+        var attackTarget = new TilePosition(40, 20);
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, attackTarget)));
+
+        AdvanceTicks(simulation, 5);
+        tankB = simulation.World.GetEntity(tankB.Id)!;
+        Assert.True(tankB.CurrentWaypoint is not null || tankB.MovementPath.Count > 0);
+
+        Assert.True(simulation.CanOccupyWorldPositionForTests(tankB.Id, tankA.WorldPosition));
     }
 
     [Fact]
@@ -359,20 +439,22 @@ public sealed class CombatBastionTests
     }
 
     [Fact]
-    public void ProcessBastions_AttackArea_GarrisonsHomeScouts()
+    public void ProcessBastions_AttackArea_ScoutsJoinAttack()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
         var tank = ProduceTankForBastion(simulation, bastion.Id);
         var scout = ProduceScoutForBastion(simulation, bastion.Id);
-        Assert.True(PlaceAdjacent(simulation, scout, bastion.Position));
+        var start = scout.Position;
         var target = new TilePosition(tank.Position.X + 3, tank.Position.Y);
         Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.AttackArea, target)));
-        Assert.Equal(BastionOrderKind.Defend, scout.Order.Kind);
+        Assert.Equal(BastionOrderKind.AttackArea, scout.Order.Kind);
+        Assert.Equal(target, scout.Order.Target);
 
-        simulation.AdvanceTick();
+        AdvanceTicks(simulation, 80);
         scout = simulation.World.GetEntity(scout.Id)!;
-        Assert.True(scout.IsGarrisoned);
+        Assert.False(scout.IsGarrisoned);
+        Assert.NotEqual(start, scout.Position);
     }
 
     [Fact]
@@ -388,6 +470,33 @@ public sealed class CombatBastionTests
         tank = simulation.World.GetEntity(tank.Id)!;
         Assert.True(tank.IsGarrisoned);
         Assert.DoesNotContain(simulation.World.GetEntitiesAt(bastion.Position), entity => entity.Id == tank.Id);
+    }
+
+    [Fact]
+    public void ProcessBastions_Defend_GarrisonsFromFarFootprintEdgeAndHidesFromWorldQueries()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var footprint = MvpDefinitions.GetFootprint(EntityKind.Bastion);
+        var tank = ProduceTankForBastion(simulation, bastion.Id);
+
+        // Far side of the 3x3 footprint — outside Euclidean range 1 of bastion.Position,
+        // which previously left units visible on the perimeter.
+        var farEdge = new TilePosition(bastion.Position.X + footprint.Width, bastion.Position.Y + footprint.Height - 1);
+        Assert.False(farEdge.IsWithinEuclideanRange(bastion.Position, 1));
+        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, farEdge));
+
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new BastionOrder(BastionOrderKind.Defend)));
+        simulation.AdvanceTick();
+
+        tank = simulation.World.GetEntity(tank.Id)!;
+        Assert.True(tank.IsGarrisoned);
+        Assert.Equal(bastion.Position, tank.Position);
+        Assert.DoesNotContain(simulation.World.GetEntitiesAt(farEdge), entity => entity.Id == tank.Id);
+        Assert.DoesNotContain(simulation.World.GetEntitiesAt(bastion.Position), entity => entity.Id == tank.Id);
+        Assert.DoesNotContain(
+            simulation.World.Entities,
+            entity => entity.Id == tank.Id && entity.IsAlive && !entity.IsGarrisoned);
     }
 
     private static WorldEntity ProduceScoutForBastion(GameSimulation simulation, int bastionId)
@@ -409,7 +518,7 @@ public sealed class CombatBastionTests
         }
 
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
-        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 20);
+        simulation.AddItemToEntity(factoryId, ItemId.Composite, 20);
         Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.Scout, bastionId));
         AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.Scout].WorkTicks + 5);
         return simulation.World.Entities

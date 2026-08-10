@@ -285,8 +285,7 @@ public static class MvpResearchCatalog
                     UnlockContentEffect.Entity(EntityKind.CannonTurret),
                     UnlockContentEffect.Recipe(EntityKind.BasicTank.ToString()),
                     UnlockContentEffect.ItemRecipe(ItemRecipeId.IronGear),
-                    UnlockContentEffect.ItemRecipe(ItemRecipeId.CopperWire),
-                    UnlockContentEffect.ItemRecipe(ItemRecipeId.Circuit),
+                    UnlockContentEffect.ItemRecipe(ItemRecipeId.Composite),
                     UnlockContentEffect.ItemRecipe(ItemRecipeId.SciencePackT1)
                 ]),
             [ResearchTierIds.T2] = new(
