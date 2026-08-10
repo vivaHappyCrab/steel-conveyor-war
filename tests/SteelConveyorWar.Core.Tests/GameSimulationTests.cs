@@ -230,7 +230,7 @@ public class GameSimulationTests
         var playerId = new PlayerId(1);
         var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
         var hub = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Hub);
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(hub.Id, ItemId.IronPlate, 1));
         Assert.Equal(1, hub.Inventory.Count(ItemId.IronPlate));
 
@@ -251,8 +251,8 @@ public class GameSimulationTests
         var playerId = new PlayerId(1);
         var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
         var hub = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Hub);
-        ClearInventory(commander.Inventory);
-        Assert.True(commander.Inventory.TryAddWithinTotalStackLimit(ItemId.IronPlate, 1, 40));
+        ClearInventory(simulation, commander.Id);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 1));
         Assert.True(simulation.AddItemToEntity(hub.Id, ItemId.IronPlate, 1));
         // Inserter costs 2 iron + 1 copper; commander+hub have only 2 iron and no copper.
         Assert.False(simulation.TryPlaceGhostBuildFromCommander(
@@ -270,7 +270,7 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerId = new PlayerId(1);
         var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
-        Assert.True(commander.Inventory.TryAddWithinTotalStackLimit(ItemId.IronPlate, 20, 100));
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 20));
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Hub,
@@ -280,10 +280,10 @@ public class GameSimulationTests
         var farHub = simulation.World.GetEntity(farGhostId)!;
         Assert.Equal(EntityKind.Hub, farHub.Kind);
 
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         var nearHub = simulation.World.Entities.Single(entity =>
             entity.OwnerId == playerId && entity.Kind == EntityKind.Hub && entity.Id != farHub.Id);
-        ClearInventory(nearHub.Inventory);
+        ClearInventory(simulation, nearHub.Id);
         Assert.True(simulation.AddItemToEntity(farHub.Id, ItemId.IronPlate, 1));
         Assert.False(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
@@ -301,8 +301,8 @@ public class GameSimulationTests
         var playerId = new PlayerId(1);
         var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
         var startHub = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Hub);
-        ClearInventory(commander.Inventory);
-        Assert.True(commander.Inventory.TryAddWithinTotalStackLimit(ItemId.IronPlate, 20, 40));
+        ClearInventory(simulation, commander.Id);
+        Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 20));
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Hub,
@@ -312,9 +312,9 @@ public class GameSimulationTests
         var secondHub = simulation.World.GetEntity(secondHubGhostId)!;
         Assert.Equal(EntityKind.Hub, secondHub.Kind);
 
-        ClearInventory(commander.Inventory);
-        ClearInventory(startHub.Inventory);
-        ClearInventory(secondHub.Inventory);
+        ClearInventory(simulation, commander.Id);
+        ClearInventory(simulation, startHub.Id);
+        ClearInventory(simulation, secondHub.Id);
         Assert.True(simulation.AddItemToEntity(startHub.Id, ItemId.IronPlate, 1));
         Assert.True(simulation.AddItemToEntity(secondHub.Id, ItemId.IronPlate, 1));
 
@@ -1056,7 +1056,6 @@ public class GameSimulationTests
         }
 
         var assembler = simulation.World.GetEntity(assemblerId)!;
-        Assert.True(assembler.OutputBuffer.TryRemove(ItemId.SciencePackT1, 30));
         Assert.True(simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 30));
         Assert.True(simulation.TryStartResearch(new PlayerId(1), TechnologyId.LightBot));
         AdvanceTicks(simulation, ResearchSystem.LabCycleTicks * 30);
@@ -1115,7 +1114,7 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
         var hub = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Hub);
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.CopperPlate, 6));
         var hubBefore = hub.Inventory.Count(ItemId.CopperPlate);
 
@@ -1135,7 +1134,7 @@ public class GameSimulationTests
         var lab = simulation.World.GetEntity(labId)!;
         Assert.True(simulation.TryIssueMoveCommand(commander.Id, new PlayerId(1), lab.Position));
         AdvanceTicks(simulation, 240);
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.SciencePackT1, 3));
 
         Assert.True(simulation.TryDepositToHubOrInput(commander.Id, labId));
@@ -1154,7 +1153,7 @@ public class GameSimulationTests
         var assembler = simulation.World.GetEntity(assemblerId)!;
         Assert.Null(assembler.SelectedItemRecipe);
         Assert.True(simulation.TryTeleportEntityForTests(commander.Id, assembler.Position));
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 4));
 
         Assert.False(simulation.TryDepositToHubOrInput(commander.Id, assemblerId));
@@ -1173,7 +1172,7 @@ public class GameSimulationTests
         var smelter = simulation.World.GetEntity(smelterId)!;
         Assert.Null(smelter.ActiveSmeltRecipe);
         Assert.True(simulation.TryTeleportEntityForTests(commander.Id, smelter.Position));
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronOre, 2));
         Assert.False(simulation.TryDepositToHubOrInput(commander.Id, smelterId));
 
@@ -1187,10 +1186,7 @@ public class GameSimulationTests
         Assert.True(smelter.InputBuffer.Count(ItemId.IronOre) >= 1);
 
         // Empty input keeps sticky recipe; copper ore in buffer switches recipe.
-        while (smelter.InputBuffer.Count(ItemId.IronOre) > 0)
-        {
-            smelter.InputBuffer.TryRemove(ItemId.IronOre, 1);
-        }
+        Assert.True(simulation.ClearEntityInputBufferForTests(smelterId));
 
         Assert.Equal(SmeltRecipeId.IronPlate, smelter.ActiveSmeltRecipe);
         simulation.AddItemToEntity(smelterId, ItemId.CopperOre, 1);
@@ -1468,7 +1464,7 @@ public class GameSimulationTests
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
         var hub = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Hub);
         Assert.True(simulation.TryTeleportEntityForTests(commander.Id, hub.Position));
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 7));
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.CopperPlate, 4));
 
@@ -1524,7 +1520,7 @@ public class GameSimulationTests
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
         var enemyHub = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(2) && entity.Kind == EntityKind.Hub);
         Assert.True(simulation.TryTeleportEntityForTests(commander.Id, enemyHub.Position));
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.CopperPlate, 4));
         var hubBefore = enemyHub.Inventory.Count(ItemId.CopperPlate);
 
@@ -1550,7 +1546,7 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var player = new PlayerId(1);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 15));
 
         var tile = NearBlue(simulation, 6, 0);
@@ -1561,7 +1557,7 @@ public class GameSimulationTests
         Assert.True(simulation.AddItemToEntity(smelterId, ItemId.IronOre, 3));
         Assert.True(simulation.TryAddOutputItemToEntity(smelterId, ItemId.IronPlate, 2));
 
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.TryDemolishBuilding(commander.Id, smelterId));
         AdvanceTicks(simulation, 1);
 
@@ -1578,8 +1574,8 @@ public class GameSimulationTests
         var player = new PlayerId(1);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
         var hub = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Hub && entity.OwnerId == player);
-        ClearInventory(commander.Inventory);
-        ClearInventory(hub.Inventory);
+        ClearInventory(simulation, commander.Id);
+        ClearInventory(simulation, hub.Id);
 
         var maxIron = MvpDefinitions.GetMaxStackSize(ItemId.IronPlate);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, maxIron));
@@ -1587,7 +1583,7 @@ public class GameSimulationTests
         var hubCap = maxIron * MvpDefinitions.HubStorageStacks;
         Assert.True(simulation.AddItemToEntity(hub.Id, ItemId.CopperPlate, hubCap));
 
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         // Leave commander one below max so half-cost (7) fits partially? Use conveyor cost 1 → refund 0, put plates in buffer.
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 1));
         var tile = NearBlue(simulation, 7, 2);
@@ -1597,7 +1593,7 @@ public class GameSimulationTests
         Assert.True(simulation.AddItemToEntity(beltId, ItemId.IronPlate, 1));
 
         // Fill commander to stack cap so belt items + refund must go to hub / discard.
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, maxIron));
         var hubIronBefore = hub.Inventory.Count(ItemId.IronPlate);
 
@@ -1617,8 +1613,8 @@ public class GameSimulationTests
         var player = new PlayerId(1);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
         var survivorHub = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Hub && entity.OwnerId == player);
-        ClearInventory(commander.Inventory);
-        ClearInventory(survivorHub.Inventory);
+        ClearInventory(simulation, commander.Id);
+        ClearInventory(simulation, survivorHub.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 20));
 
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
@@ -1630,9 +1626,9 @@ public class GameSimulationTests
         var victimHub = simulation.World.GetEntity(victimHubId)!;
         Assert.Equal(EntityKind.Hub, victimHub.Kind);
 
-        ClearInventory(commander.Inventory);
-        ClearInventory(survivorHub.Inventory);
-        ClearInventory(victimHub.Inventory);
+        ClearInventory(simulation, commander.Id);
+        ClearInventory(simulation, survivorHub.Id);
+        ClearInventory(simulation, victimHub.Id);
         Assert.True(simulation.AddItemToEntity(victimHubId, ItemId.CopperPlate, 5));
 
         var maxIron = MvpDefinitions.GetMaxStackSize(ItemId.IronPlate);
@@ -1671,7 +1667,7 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var player = new PlayerId(1);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 40));
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.CopperPlate, 20));
 
@@ -1706,7 +1702,7 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var player = new PlayerId(1);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == player);
-        ClearInventory(commander.Inventory);
+        ClearInventory(simulation, commander.Id);
         Assert.True(simulation.AddItemToEntity(commander.Id, ItemId.IronPlate, 40));
         var tile = NearBlue(simulation, 6, -2);
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(commander.Id, EntityKind.Smelter, tile, out var smelterId));
@@ -1726,12 +1722,9 @@ public class GameSimulationTests
         }
     }
 
-    private static void ClearInventory(Inventory inventory)
+    private static void ClearInventory(GameSimulation simulation, int entityId)
     {
-        foreach (var pair in inventory.Items.ToList())
-        {
-            Assert.True(inventory.TryRemove(pair.Key, pair.Value));
-        }
+        Assert.True(simulation.ClearEntityInventoryForTests(entityId));
     }
 
     private static void ProduceAssemblerRecipe(GameSimulation simulation, int assemblerId, ItemRecipeId recipeId, params (ItemId Item, int Amount)[] inputs)

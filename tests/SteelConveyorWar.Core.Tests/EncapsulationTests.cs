@@ -14,18 +14,15 @@ public sealed class EncapsulationTests
     }
 
     [Fact]
-    public void Inventory_Add_IsNotPublic()
+    public void Inventory_Mutators_AreNotPublic()
     {
-        var add = typeof(Inventory).GetMethod(
-            "Add",
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(ItemId), typeof(int)],
-            modifiers: null);
-
-        Assert.NotNull(add);
-        Assert.False(add!.IsPublic);
-        Assert.True(add.IsAssembly);
+        AssertAssemblyOnly(typeof(Inventory), "Add", typeof(ItemId), typeof(int));
+        AssertAssemblyOnly(typeof(Inventory), "Clear");
+        AssertAssemblyOnly(typeof(Inventory), "TryRemove", typeof(ItemId), typeof(int));
+        AssertAssemblyOnly(typeof(Inventory), "TryRemoveAll", typeof(IReadOnlyDictionary<ItemId, int>));
+        AssertAssemblyOnly(typeof(Inventory), "TryTakeFirst", typeof(Func<ItemId, bool>), typeof(ItemId).MakeByRefType());
+        AssertAssemblyOnly(typeof(Inventory), "TryAddWithinStackLimit", typeof(ItemId), typeof(int));
+        AssertAssemblyOnly(typeof(Inventory), "TryAddWithinTotalStackLimit", typeof(ItemId), typeof(int), typeof(int));
     }
 
     [Fact]
@@ -60,5 +57,19 @@ public sealed class EncapsulationTests
         var setter = property!.GetSetMethod(nonPublic: true);
         Assert.NotNull(setter);
         return setter!.IsPublic;
+    }
+
+    private static void AssertAssemblyOnly(Type type, string methodName, params Type[] parameterTypes)
+    {
+        var method = type.GetMethod(
+            methodName,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            types: parameterTypes,
+            modifiers: null);
+
+        Assert.NotNull(method);
+        Assert.False(method!.IsPublic);
+        Assert.True(method.IsAssembly);
     }
 }

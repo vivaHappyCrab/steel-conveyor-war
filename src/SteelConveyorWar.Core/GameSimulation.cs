@@ -1,17 +1,45 @@
 namespace SteelConveyorWar.Core;
 
-public sealed class GameSimulation
+public sealed partial class GameSimulation
 {
+    /// <summary>
+    /// Default fixed tick rate used by Core for duration-in-ticks conversions
+    /// (build timing fallbacks, energy history windows, tests). Host loops must
+    /// drive wall-clock pacing from <see cref="GameSettings.TicksPerSecond"/>
+    /// (loaded from <c>game.json</c>); keep that value aligned with this default
+    /// unless intentionally retiming the match.
+    /// </summary>
     public const int TicksPerSecond = 30;
 
     private readonly List<PlayerState> _players;
     private readonly ResearchSystem _researchSystem;
-    private readonly List<CombatShotEvent> _combatShotsThisTick = new();
+    private readonly SimulationPresentationSink _presentation = new();
+    private readonly List<PlayerState> _fogAlliedScratch = new();
     private readonly Dictionary<PlayerId, int> _tickPowerProduced = new();
     private readonly Dictionary<PlayerId, int> _tickPowerConsumed = new();
     private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickProducedByKind = new();
     private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickConsumedByKind = new();
+    // Reused across ticks to avoid LINQ/ToList allocations on hot simulation paths.
+    private readonly List<WorldEntity> _scratchEntities = new();
+    private readonly List<WorldEntity> _scratchEntitiesSecondary = new();
+    private readonly List<WorldEntity> _scratchDeadBastions = new();
+    private readonly List<WorldEntity> _scratchCascadeUnits = new();
+    private readonly List<ConveyorItem> _scratchConveyorItems = new();
+    private readonly List<(int SourceId, WorldEntity Inserter, WorldEntity Source)> _scratchInserterExtracts = new();
     private int _nextEntityId = 1;
+
+    /// <summary>
+    /// Orders fill candidates by fill fraction ascending (<c>buffer/capacity</c> via cross-multiply), then entity id.
+    /// </summary>
+    private static readonly Comparer<(int Buffer, int Capacity, int Id)> EnergyFillPriorityComparer =
+        Comparer<(int Buffer, int Capacity, int Id)>.Create(static (left, right) =>
+            EnergyFillRatioComparer.CompareRatios(
+                left.Buffer,
+                left.Capacity,
+                left.Id,
+                right.Buffer,
+                right.Capacity,
+                right.Id));
 
     private GameSimulation(
         GameWorld world,
@@ -20,7 +48,8 @@ public sealed class GameSimulation
         ResearchCatalog catalog,
         ResearchProfileDefinition profile,
         TileCatalog tiles,
-        EntityCatalog entities)
+        EntityCatalog entities,
+        BuildCostCatalog buildCosts)
     {
         World = world;
         _players = players.ToList();
@@ -29,6 +58,7 @@ public sealed class GameSimulation
         ResearchProfile = profile;
         TileCatalog = tiles;
         EntityCatalog = entities;
+        BuildCostCatalog = buildCosts;
         _researchSystem = new ResearchSystem(catalog, profile);
         foreach (var player in _players)
         {
@@ -48,15 +78,23 @@ public sealed class GameSimulation
 
     public EntityCatalog EntityCatalog { get; }
 
+    public BuildCostCatalog BuildCostCatalog { get; }
+
     public long Tick { get; private set; }
 
     public IReadOnlyList<PlayerState> Players => _players;
 
     /// <summary>
-    /// Presentation-only shots fired during the last <see cref="AdvanceTick"/> combat pass.
-    /// Not included in determinism hashing.
+    /// Presentation side-channels (combat tracers, etc.). Not hashed; see
+    /// <c>docs/MVP_IMPLEMENTATION_DECISIONS.md</c> § Presentation state in Core.
     /// </summary>
-    public IReadOnlyList<CombatShotEvent> CombatShotsThisTick => _combatShotsThisTick;
+    public SimulationPresentationSink Presentation => _presentation;
+
+    /// <summary>
+    /// Convenience alias for <see cref="SimulationPresentationSink.CombatShotsThisTick"/>.
+    /// Presentation-only; not included in determinism hashing.
+    /// </summary>
+    public IReadOnlyList<CombatShotEvent> CombatShotsThisTick => _presentation.CombatShotsThisTick;
 
     public GameStatus Status { get; private set; } = GameStatus.InProgress;
 
@@ -105,7 +143,8 @@ public sealed class GameSimulation
             options.Catalog,
             profile,
             options.Tiles,
-            options.Entities);
+            options.Entities,
+            options.ResolvedBuildCosts);
         simulation.CreateStartingEntities();
         simulation.UpdatePower();
         simulation.RecordEnergyStatsSample();
@@ -156,7 +195,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        if (!World.IsInside(position) || !MvpDefinitions.BuildCosts.TryGetValue(targetKind, out var cost))
+        if (!World.IsInside(position) || !BuildCostCatalog.Costs.TryGetValue(targetKind, out var cost))
         {
             return false;
         }
@@ -188,7 +227,7 @@ public sealed class GameSimulation
             ghost.SelectedItemRecipe = selectedItemRecipe;
         }
 
-        var buildTicks = MvpDefinitions.BuildTicks.GetValueOrDefault(targetKind, TicksPerSecond);
+        var buildTicks = BuildCostCatalog.BuildTicks.GetValueOrDefault(targetKind, TicksPerSecond);
         if (commander.OwnerId is not null)
         {
             buildTicks = ResolveStat(commander.OwnerId.Value, ResearchStatIds.ConstructionTicks, buildTicks);
@@ -215,7 +254,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        if (!MvpDefinitions.BuildCosts.ContainsKey(targetKind) || !IsBuildUnlocked(commander.OwnerId.Value, targetKind) || !CanPlaceBuilding(targetKind, position))
+        if (!BuildCostCatalog.Costs.ContainsKey(targetKind) || !IsBuildUnlocked(commander.OwnerId.Value, targetKind) || !CanPlaceBuilding(targetKind, position))
         {
             return false;
         }
@@ -336,7 +375,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        if (!MvpDefinitions.BuildCosts.TryGetValue(costKind, out var fullCost))
+        if (!BuildCostCatalog.Costs.TryGetValue(costKind, out var fullCost))
         {
             return false;
         }
@@ -403,7 +442,7 @@ public sealed class GameSimulation
         return Math.Max(1, moveTicks);
     }
 
-    private static bool TryResolveDemolishCostKind(WorldEntity? commander, WorldEntity? target, out EntityKind costKind)
+    private bool TryResolveDemolishCostKind(WorldEntity? commander, WorldEntity? target, out EntityKind costKind)
     {
         costKind = default;
         if (commander is null
@@ -421,7 +460,7 @@ public sealed class GameSimulation
         {
             if (target.BuildTargetKind is not { } ghostTarget
                 || ghostTarget == EntityKind.Bastion
-                || !MvpDefinitions.BuildCosts.ContainsKey(ghostTarget))
+                || !BuildCostCatalog.Costs.ContainsKey(ghostTarget))
             {
                 return false;
             }
@@ -433,7 +472,7 @@ public sealed class GameSimulation
         if (target.Kind == EntityKind.Bastion
             || target.Kind == EntityKind.Commander
             || MvpDefinitions.UnitKinds.Contains(target.Kind)
-            || !MvpDefinitions.BuildCosts.ContainsKey(target.Kind))
+            || !BuildCostCatalog.Costs.ContainsKey(target.Kind))
         {
             return false;
         }
@@ -480,8 +519,8 @@ public sealed class GameSimulation
                 && entity.Kind == EntityKind.Hub
                 && entity.OwnerId == commander.OwnerId
                 && (excludeEntityId is null || entity.Id != excludeEntityId.Value)
-                && DistanceToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
-                    <= MvpDefinitions.CommanderInteractRadius)
+                && DistanceSquaredToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
+                    <= Square(MvpDefinitions.CommanderInteractRadius))
             .OrderBy(entity => entity.Id)
             .ToList();
 
@@ -616,7 +655,10 @@ public sealed class GameSimulation
         return false;
     }
 
-    public bool TryForceCompleteResearch(PlayerId playerId, TechnologyId technologyId, bool confirmExclusive = true)
+    /// <summary>
+    /// Test/debug helper: instantly completes a technology. Not part of the production command surface.
+    /// </summary>
+    internal bool TryForceCompleteResearch(PlayerId playerId, TechnologyId technologyId, bool confirmExclusive = true)
     {
         var research = GetPlayer(playerId).Research;
         if (research.CompletedTechnologies.Contains(technologyId))
@@ -643,7 +685,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test helper: snaps an entity to a tile and clears movement/garrison/cooldown so combat setups stay deterministic.
     /// </summary>
-    public bool TryTeleportEntityForTests(int entityId, TilePosition position)
+    internal bool TryTeleportEntityForTests(int entityId, TilePosition position)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null || !entity.IsAlive)
@@ -651,7 +693,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        entity.Position = position;
+        World.RelocateEntity(entity, position);
         entity.WorldPosition = WorldPosition.FromTileCenter(position);
         entity.MoveTarget = null;
         ResetMovementPath(entity);
@@ -661,7 +703,7 @@ public sealed class GameSimulation
     }
 
     /// <summary>Test helper: whether <paramref name="entityId"/> may occupy <paramref name="position"/>.</summary>
-    public bool CanOccupyWorldPositionForTests(int entityId, WorldPosition position)
+    internal bool CanOccupyWorldPositionForTests(int entityId, WorldPosition position)
     {
         var entity = World.GetEntity(entityId);
         return entity is not null && CanOccupyWorldPosition(entity, position);
@@ -670,7 +712,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test helper: sets entity health within [0, MaxHealth] for combat/victory scenarios.
     /// </summary>
-    public bool TrySetEntityHealthForTests(int entityId, int health)
+    internal bool TrySetEntityHealthForTests(int entityId, int health)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null || health < 0 || health > entity.MaxHealth)
@@ -682,10 +724,36 @@ public sealed class GameSimulation
         return true;
     }
 
+    /// <summary>Test helper: clears an entity's primary inventory (not input/output buffers).</summary>
+    internal bool ClearEntityInventoryForTests(int entityId)
+    {
+        var entity = World.GetEntity(entityId);
+        if (entity is null)
+        {
+            return false;
+        }
+
+        entity.Inventory.Clear();
+        return true;
+    }
+
+    /// <summary>Test helper: clears an entity's input buffer.</summary>
+    internal bool ClearEntityInputBufferForTests(int entityId)
+    {
+        var entity = World.GetEntity(entityId);
+        if (entity is null)
+        {
+            return false;
+        }
+
+        entity.InputBuffer.Clear();
+        return true;
+    }
+
     /// <summary>
     /// Test helper: fills or sets a building energy buffer within capacity.
     /// </summary>
-    public bool TrySetEnergyBufferForTests(int entityId, int energy)
+    internal bool TrySetEnergyBufferForTests(int entityId, int energy)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null || !entity.IsAlive || entity.EnergyBufferCapacity <= 0)
@@ -700,7 +768,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test helper: spawns a completed entity (skips ghost construction) for combat setups.
     /// </summary>
-    public bool TrySpawnEntityForTests(EntityKind kind, TilePosition position, PlayerId ownerId, out int entityId)
+    internal bool TrySpawnEntityForTests(EntityKind kind, TilePosition position, PlayerId ownerId, out int entityId)
     {
         entityId = -1;
         if (!World.IsInside(position) || kind == EntityKind.GhostBuild)
@@ -716,7 +784,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test helper: injects a research modifier without completing a technology.
     /// </summary>
-    public void ApplyResearchModifierForTests(PlayerId playerId, AddModifierEffect effect)
+    internal void ApplyResearchModifierForTests(PlayerId playerId, AddModifierEffect effect)
     {
         GetPlayer(playerId).Research.AppliedModifiersMutable.Add(effect);
         SyncResolvedMaxHealthForPlayer(playerId);
@@ -725,7 +793,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test/helper: formula-C damage for the current research-scaled stats of attacker and target.
     /// </summary>
-    public int ComputeCombatDamageForTests(int attackerId, int targetId)
+    internal int ComputeCombatDamageForTests(int attackerId, int targetId)
     {
         var attacker = World.GetEntity(attackerId);
         var target = World.GetEntity(targetId);
@@ -911,12 +979,18 @@ public sealed class GameSimulation
         };
     }
 
-    public void AddPlayerItems(PlayerId playerId, ItemId item, int amount)
+    /// <summary>
+    /// Test/debug helper: grants items to player inventory without a gameplay source. Not part of the production command surface.
+    /// </summary>
+    internal void AddPlayerItems(PlayerId playerId, ItemId item, int amount)
     {
         GetPlayer(playerId).Inventory.Add(item, amount);
     }
 
-    public bool AddItemToEntity(int entityId, ItemId item, int amount)
+    /// <summary>
+    /// Test/debug helper: injects items into an entity buffer/inventory. Not part of the production command surface.
+    /// </summary>
+    internal bool AddItemToEntity(int entityId, ItemId item, int amount)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null)
@@ -1286,11 +1360,14 @@ public sealed class GameSimulation
             return false;
         }
 
-        return DistanceToFootprint(commander.WorldPosition, target.Kind, target.Position)
-            <= MvpDefinitions.CommanderInteractRadius;
+        return DistanceSquaredToFootprint(commander.WorldPosition, target.Kind, target.Position)
+            <= Square(MvpDefinitions.CommanderInteractRadius);
     }
 
-    public void DamageEntity(int entityId, int damage)
+    /// <summary>
+    /// Test/debug helper: applies raw damage and runs death/victory cascades. Not part of the production command surface.
+    /// </summary>
+    internal void DamageEntity(int entityId, int damage)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null || !entity.IsAlive || damage <= 0)
@@ -1313,14 +1390,27 @@ public sealed class GameSimulation
         return GetPlayer(playerId).TechSignatures;
     }
 
+    /// <summary>
+    /// Creates a per-player observation surface. Prefer <see cref="PlayerObservationMode.Fair"/> for bots/net clients;
+    /// <see cref="PlayerObservationMode.Cheat"/> keeps unfiltered <see cref="World"/> access for tests/tools.
+    /// </summary>
+    public IPlayerView CreatePlayerView(PlayerId playerId, PlayerObservationMode mode = PlayerObservationMode.Fair)
+    {
+        return new PlayerView(this, playerId, mode);
+    }
+
     public void AdvanceTick()
     {
         if (Status != GameStatus.InProgress)
         {
+            // DamageEntity / similar APIs may kill a commander and end the match without
+            // reaching RemoveDead; still purge corpses if a host advances after game-over.
+            World.RemoveDead();
             return;
         }
 
         Tick++;
+        ApplyQueuedCommandsForCurrentTick();
         ProcessCommanderBuildOrders();
         ProcessCommanderDemolishOrders();
         ProcessCommanderMoveCommands();
@@ -1579,7 +1669,11 @@ public sealed class GameSimulation
     /// Ballistic and AirToGround ignore walls. Buildings/walls as targets are never covered.
     /// Allied means same TeamId (static map-config alliances).
     /// </summary>
-    private bool IsGroundToGroundBlockedByAlliedWall(WorldEntity attacker, WorldEntity target, ProjectileKind projectileKind)
+    private bool IsGroundToGroundBlockedByAlliedWall(
+        WorldEntity attacker,
+        WorldEntity target,
+        ProjectileKind projectileKind,
+        CombatSpatialIndex spatial)
     {
         if (projectileKind != ProjectileKind.GroundToGround)
         {
@@ -1598,10 +1692,7 @@ public sealed class GameSimulation
                 continue;
             }
 
-            if (World.GetEntitiesAt(tile).Any(entity =>
-                    entity.IsAlive
-                    && MvpDefinitions.IsWallKind(entity.Kind)
-                    && AreAllied(entity.OwnerId, target.OwnerId)))
+            if (spatial.HasAlliedWallAt(tile, target.OwnerId.Value, AreAllied))
             {
                 return true;
             }
@@ -1870,7 +1961,8 @@ public sealed class GameSimulation
 
     private static bool IsWithinBuildRadius(WorldEntity commander, EntityKind targetKind, TilePosition anchor)
     {
-        return DistanceToFootprint(commander.WorldPosition, targetKind, anchor) <= MvpDefinitions.CommanderBuildRadius;
+        return DistanceSquaredToFootprint(commander.WorldPosition, targetKind, anchor)
+            <= Square(MvpDefinitions.CommanderBuildRadius);
     }
 
     /// <summary>
@@ -1902,8 +1994,8 @@ public sealed class GameSimulation
                 entity.IsAlive
                 && entity.Kind == EntityKind.Hub
                 && entity.OwnerId == commander.OwnerId
-                && DistanceToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
-                    <= MvpDefinitions.CommanderInteractRadius)
+                && DistanceSquaredToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
+                    <= Square(MvpDefinitions.CommanderInteractRadius))
             .OrderBy(entity => entity.Id)
             .ToList();
 
@@ -1982,15 +2074,17 @@ public sealed class GameSimulation
             .Min(tile => from.ManhattanDistance(tile));
     }
 
-    private static double DistanceToFootprint(WorldPosition from, EntityKind targetKind, TilePosition anchor)
+    private static double DistanceSquaredToFootprint(WorldPosition from, EntityKind targetKind, TilePosition anchor)
     {
         var footprint = MvpDefinitions.GetFootprint(targetKind);
         var closestX = Math.Clamp(from.X, anchor.X, anchor.X + footprint.Width);
         var closestY = Math.Clamp(from.Y, anchor.Y, anchor.Y + footprint.Height);
         var dx = from.X - closestX;
         var dy = from.Y - closestY;
-        return Math.Sqrt(dx * dx + dy * dy);
+        return dx * dx + dy * dy;
     }
+
+    private static double Square(double value) => value * value;
 
     private static Direction Rotate(Direction direction, bool clockwise)
     {
@@ -2017,7 +2111,7 @@ public sealed class GameSimulation
             return true;
         }
 
-        if (MvpDefinitions.BuildRequirements.TryGetValue(kind, out var requiredTechnology))
+        if (BuildCostCatalog.Requirements.TryGetValue(kind, out var requiredTechnology))
         {
             return player.ResearchedTechnologies.Contains(requiredTechnology);
         }
@@ -2141,6 +2235,11 @@ public sealed class GameSimulation
         }
     }
 
+    /// <summary>
+    /// Distributes this tick's <see cref="PlayerState.PowerProduced"/> into owned consumer buffers
+    /// emptiest-first: lowest <c>EnergyBuffer/Capacity</c> (exact rational order via cross-multiply),
+    /// then lowest entity id. Uses a min-heap so each unit is O(log N) instead of re-sorting all consumers.
+    /// </summary>
     private void FillEnergyBuffersEmptiestFirst(PlayerState player)
     {
         var remaining = player.PowerProduced;
@@ -2149,32 +2248,29 @@ public sealed class GameSimulation
             return;
         }
 
-        var consumers = World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && entity.OwnerId == player.Id
-                && entity.EnergyBufferCapacity > 0)
-            .ToList();
-
-        if (consumers.Count == 0)
+        var heap = new PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)>(EnergyFillPriorityComparer);
+        foreach (var entity in World.Entities)
         {
-            return;
-        }
-
-        while (remaining > 0)
-        {
-            var target = consumers
-                .Where(entity => entity.EnergyBuffer < entity.EnergyBufferCapacity)
-                .OrderBy(entity => (double)entity.EnergyBuffer / entity.EnergyBufferCapacity)
-                .ThenBy(entity => entity.Id)
-                .FirstOrDefault();
-            if (target is null)
+            if (!entity.IsAlive
+                || entity.OwnerId != player.Id
+                || entity.EnergyBufferCapacity <= 0
+                || entity.EnergyBuffer >= entity.EnergyBufferCapacity)
             {
-                break;
+                continue;
             }
 
+            heap.Enqueue(entity, (entity.EnergyBuffer, entity.EnergyBufferCapacity, entity.Id));
+        }
+
+        while (remaining > 0 && heap.Count > 0)
+        {
+            var target = heap.Dequeue();
             target.EnergyBuffer++;
             remaining--;
+            if (target.EnergyBuffer < target.EnergyBufferCapacity)
+            {
+                heap.Enqueue(target, (target.EnergyBuffer, target.EnergyBufferCapacity, target.Id));
+            }
         }
     }
 
@@ -2437,32 +2533,51 @@ public sealed class GameSimulation
 
     private void ProcessInserters()
     {
-        var inserters = World.Entities
-            .Where(entity => entity.IsAlive && entity.Kind == EntityKind.Inserter)
-            .OrderBy(entity => entity.Id)
-            .ToList();
+        CollectSortedAliveEntities(_scratchEntities, static entity => entity.Kind == EntityKind.Inserter);
 
         // Empty-handed extract: at most one pull per source entity per tick (fair share by tick + source id).
-        var extractGroups = inserters
-            .Where(inserter => inserter.HeldItem is null)
-            .Select(inserter =>
-            {
-                var source = World.GetTopEntityAt(inserter.Position.Offset(Opposite(inserter.Direction)));
-                return (Inserter: inserter, Source: source);
-            })
-            .Where(pair => pair.Source is not null)
-            .GroupBy(pair => pair.Source!.Id)
-            .OrderBy(group => group.Key);
-
-        foreach (var group in extractGroups)
+        _scratchInserterExtracts.Clear();
+        for (var i = 0; i < _scratchEntities.Count; i++)
         {
-            var candidates = group.OrderBy(pair => pair.Inserter.Id).ToList();
-            var start = (int)((Tick + group.Key) % candidates.Count);
-            for (var offset = 0; offset < candidates.Count; offset++)
+            var inserter = _scratchEntities[i];
+            if (inserter.HeldItem is not null)
             {
-                var index = (start + offset) % candidates.Count;
-                var (inserter, source) = candidates[index];
-                if (TryExtractItem(source!, inserter.FilterItem, out var item))
+                continue;
+            }
+
+            var source = World.GetTopEntityAt(inserter.Position.Offset(Opposite(inserter.Direction)));
+            if (source is null)
+            {
+                continue;
+            }
+
+            _scratchInserterExtracts.Add((source.Id, inserter, source));
+        }
+
+        _scratchInserterExtracts.Sort(static (left, right) =>
+        {
+            var bySource = left.SourceId.CompareTo(right.SourceId);
+            return bySource != 0 ? bySource : left.Inserter.Id.CompareTo(right.Inserter.Id);
+        });
+
+        var extractIndex = 0;
+        while (extractIndex < _scratchInserterExtracts.Count)
+        {
+            var sourceId = _scratchInserterExtracts[extractIndex].SourceId;
+            var groupStart = extractIndex;
+            while (extractIndex < _scratchInserterExtracts.Count
+                   && _scratchInserterExtracts[extractIndex].SourceId == sourceId)
+            {
+                extractIndex++;
+            }
+
+            var groupCount = extractIndex - groupStart;
+            var start = (int)((Tick + sourceId) % groupCount);
+            for (var offset = 0; offset < groupCount; offset++)
+            {
+                var index = groupStart + ((start + offset) % groupCount);
+                var (_, inserter, source) = _scratchInserterExtracts[index];
+                if (TryExtractItem(source, inserter.FilterItem, out var item))
                 {
                     inserter.HeldItem = item;
                     inserter.HeldTransferTicksRemaining = MvpDefinitions.InserterTransferTicks;
@@ -2471,8 +2586,14 @@ public sealed class GameSimulation
             }
         }
 
-        foreach (var inserter in inserters.Where(entity => entity.HeldItem is not null))
+        for (var i = 0; i < _scratchEntities.Count; i++)
         {
+            var inserter = _scratchEntities[i];
+            if (inserter.HeldItem is null)
+            {
+                continue;
+            }
+
             if (inserter.HeldTransferTicksRemaining > 0)
             {
                 inserter.HeldTransferTicksRemaining--;
@@ -2489,10 +2610,23 @@ public sealed class GameSimulation
 
     private void ProcessConveyors()
     {
-        foreach (var conveyor in World.Entities.Where(entity => entity.IsAlive && (entity.Kind == EntityKind.Conveyor || entity.Kind == EntityKind.UndergroundConveyor)).OrderBy(entity => entity.Id).ToList())
+        CollectSortedAliveEntities(
+            _scratchEntities,
+            static entity => entity.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor);
+
+        for (var conveyorIndex = 0; conveyorIndex < _scratchEntities.Count; conveyorIndex++)
         {
-            foreach (var conveyorItem in conveyor.ConveyorItems.ToList())
+            var conveyor = _scratchEntities[conveyorIndex];
+            _scratchConveyorItems.Clear();
+            var liveItems = conveyor.ConveyorItemsMutable;
+            for (var itemIndex = 0; itemIndex < liveItems.Count; itemIndex++)
             {
+                _scratchConveyorItems.Add(liveItems[itemIndex]);
+            }
+
+            for (var itemIndex = 0; itemIndex < _scratchConveyorItems.Count; itemIndex++)
+            {
+                var conveyorItem = _scratchConveyorItems[itemIndex];
                 conveyorItem.ProgressTicks++;
                 var moveTicks = MvpDefinitions.ConveyorMoveTicks;
                 if (conveyor.OwnerId is not null)
@@ -2530,13 +2664,26 @@ public sealed class GameSimulation
     {
         if (source.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor)
         {
-            var conveyorItem = source.ConveyorItems
-                .OrderBy(slot => slot.Item)
-                .FirstOrDefault(slot => filter is null || slot.Item == filter.Value);
-            if (conveyorItem is not null)
+            ConveyorItem? selected = null;
+            var slots = source.ConveyorItemsMutable;
+            for (var i = 0; i < slots.Count; i++)
             {
-                item = conveyorItem.Item;
-                source.ConveyorItemsMutable.Remove(conveyorItem);
+                var slot = slots[i];
+                if (filter is not null && slot.Item != filter.Value)
+                {
+                    continue;
+                }
+
+                if (selected is null || slot.Item.CompareTo(selected.Item) < 0)
+                {
+                    selected = slot;
+                }
+            }
+
+            if (selected is not null)
+            {
+                item = selected.Item;
+                source.ConveyorItemsMutable.Remove(selected);
                 return true;
             }
         }
@@ -3039,7 +3186,7 @@ public sealed class GameSimulation
                 // and must hide when adjacent to any footprint tile — not only near bastion.Position.
                 if (IsWithinBastionGarrisonRange(bastion, unit.Position))
                 {
-                    unit.Position = bastion.Position;
+                    World.RelocateEntity(unit, bastion.Position);
                     unit.WorldPosition = WorldPosition.FromTileCenter(bastion.Position);
                     ResetMovementPath(unit);
                     unit.IsGarrisoned = true;
@@ -3132,38 +3279,75 @@ public sealed class GameSimulation
             return null;
         }
 
-        return World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && !entity.IsGarrisoned
-                && entity.OwnerId is not null
-                && !AreAllied(origin.OwnerId, entity.OwnerId)
-                && origin.Position.IsWithinEuclideanRange(entity.Position, radius))
-            .OrderBy(entity => origin.Position.EuclideanDistanceSquared(entity.Position))
-            .ThenBy(entity => entity.Id)
-            .FirstOrDefault();
+        WorldEntity? best = null;
+        var bestDistanceSquared = 0;
+        var entities = World.Entities;
+        for (var i = 0; i < entities.Count; i++)
+        {
+            var entity = entities[i];
+            if (!entity.IsAlive
+                || entity.IsGarrisoned
+                || entity.OwnerId is null
+                || AreAllied(origin.OwnerId, entity.OwnerId)
+                || !origin.Position.IsWithinEuclideanRange(entity.Position, radius))
+            {
+                continue;
+            }
+
+            var distanceSquared = origin.Position.EuclideanDistanceSquared(entity.Position);
+            if (best is null
+                || distanceSquared < bestDistanceSquared
+                || (distanceSquared == bestDistanceSquared && entity.Id < best.Id))
+            {
+                best = entity;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return best;
     }
 
     private void CascadeBastionDeaths()
     {
-        foreach (var bastion in World.Entities.Where(entity => entity.Kind == EntityKind.Bastion && !entity.IsAlive).ToList())
+        _scratchDeadBastions.Clear();
+        var entities = World.Entities;
+        for (var i = 0; i < entities.Count; i++)
         {
-            foreach (var unit in World.Entities
-                         .Where(entity =>
-                             entity.AssignedBastionId == bastion.Id
-                             && entity.IsAlive
-                             && MvpDefinitions.UnitKinds.Contains(entity.Kind))
-                         .ToList())
+            var entity = entities[i];
+            if (entity.Kind == EntityKind.Bastion && !entity.IsAlive)
             {
-                unit.Health = 0;
+                _scratchDeadBastions.Add(entity);
+            }
+        }
+
+        for (var bastionIndex = 0; bastionIndex < _scratchDeadBastions.Count; bastionIndex++)
+        {
+            var bastion = _scratchDeadBastions[bastionIndex];
+            _scratchCascadeUnits.Clear();
+            for (var i = 0; i < entities.Count; i++)
+            {
+                var entity = entities[i];
+                if (entity.AssignedBastionId == bastion.Id
+                    && entity.IsAlive
+                    && MvpDefinitions.UnitKinds.Contains(entity.Kind))
+                {
+                    _scratchCascadeUnits.Add(entity);
+                }
+            }
+
+            for (var unitIndex = 0; unitIndex < _scratchCascadeUnits.Count; unitIndex++)
+            {
+                _scratchCascadeUnits[unitIndex].Health = 0;
             }
         }
     }
 
     private void ProcessMovement()
     {
-        foreach (var unit in World.Entities.Where(entity => entity.IsAlive && MvpDefinitions.UnitKinds.Contains(entity.Kind)).OrderBy(entity => entity.Id))
+        CollectSortedAliveEntities(_scratchEntities, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
+        for (var i = 0; i < _scratchEntities.Count; i++)
         {
+            var unit = _scratchEntities[i];
             var target = GetMovementTarget(unit);
             if (target is null || unit.Position == target.Value)
             {
@@ -3274,7 +3458,7 @@ public sealed class GameSimulation
             }
 
             entity.WorldPosition = waypointPosition;
-            entity.Position = entity.CurrentWaypoint.Value;
+            World.RelocateEntity(entity, entity.CurrentWaypoint.Value);
             entity.CurrentWaypoint = null;
             return entity.MovementPath.Count == 0 && (entity.Position == target || !IsGroundPassable(entity, target));
         }
@@ -3291,7 +3475,7 @@ public sealed class GameSimulation
         }
 
         entity.WorldPosition = nextPosition;
-        entity.Position = nextPosition.ToTilePosition();
+        World.RelocateEntity(entity, nextPosition.ToTilePosition());
         return false;
     }
 
@@ -3316,9 +3500,9 @@ public sealed class GameSimulation
             return [];
         }
 
-        var open = new PriorityQueue<TilePosition, (double F, double H, int Y, int X)>();
+        var open = new PriorityQueue<TilePosition, (int F, int H, int Y, int X)>();
         var previous = new Dictionary<TilePosition, TilePosition?>();
-        var costSoFar = new Dictionary<TilePosition, double>();
+        var costSoFar = new Dictionary<TilePosition, int>();
         previous[start] = null;
         costSoFar[start] = 0;
         open.Enqueue(start, (OctileDistance(start, target), OctileDistance(start, target), start.Y, start.X));
@@ -3442,18 +3626,22 @@ public sealed class GameSimulation
         return from.X != to.X && from.Y != to.Y;
     }
 
-    private static double GetStepCost(TilePosition from, TilePosition to)
+    /// <summary>Integer A* step cost (straight=10, diagonal=14 ≈ 10√2). See ADR 0001.</summary>
+    private const int PathCostStraight = 10;
+    private const int PathCostDiagonal = 14;
+
+    private static int GetStepCost(TilePosition from, TilePosition to)
     {
-        return IsDiagonalStep(from, to) ? Math.Sqrt(2) : 1;
+        return IsDiagonalStep(from, to) ? PathCostDiagonal : PathCostStraight;
     }
 
-    private static double OctileDistance(TilePosition from, TilePosition to)
+    private static int OctileDistance(TilePosition from, TilePosition to)
     {
         var dx = Math.Abs(from.X - to.X);
         var dy = Math.Abs(from.Y - to.Y);
         var diagonal = Math.Min(dx, dy);
         var straight = Math.Max(dx, dy) - diagonal;
-        return diagonal * Math.Sqrt(2) + straight;
+        return diagonal * PathCostDiagonal + straight * PathCostStraight;
     }
 
     private bool IsGroundPassable(WorldEntity mover, TilePosition tile)
@@ -3506,14 +3694,15 @@ public sealed class GameSimulation
             }
 
             var minDistance = radius + otherRadius;
-            var nextDistance = position.DistanceTo(entity.WorldPosition);
-            if (nextDistance >= minDistance)
+            var minDistanceSq = minDistance * minDistance;
+            var nextDistanceSq = position.DistanceSquaredTo(entity.WorldPosition);
+            if (nextDistanceSq >= minDistanceSq)
             {
                 continue;
             }
 
-            var currentDistance = mover.WorldPosition.DistanceTo(entity.WorldPosition);
-            if (currentDistance < minDistance && nextDistance > currentDistance)
+            var currentDistanceSq = mover.WorldPosition.DistanceSquaredTo(entity.WorldPosition);
+            if (currentDistanceSq < minDistanceSq && nextDistanceSq > currentDistanceSq)
             {
                 // Allow sliding out of an existing overlap.
                 continue;
@@ -3545,21 +3734,22 @@ public sealed class GameSimulation
 
     private static bool CircleIntersectsEntityFootprint(WorldPosition position, double radius, WorldEntity obstacle)
     {
-        return DistanceToEntityFootprint(position, obstacle) < radius;
+        return DistanceSquaredToEntityFootprint(position, obstacle) < radius * radius;
     }
 
     private static bool MovesOutOfExistingOverlap(WorldEntity mover, WorldPosition nextPosition, double radius, WorldEntity obstacle)
     {
-        var currentDistance = DistanceToEntityFootprint(mover.WorldPosition, obstacle);
-        if (currentDistance >= radius)
+        var currentDistanceSq = DistanceSquaredToEntityFootprint(mover.WorldPosition, obstacle);
+        var radiusSq = radius * radius;
+        if (currentDistanceSq >= radiusSq)
         {
             return false;
         }
 
-        return DistanceToEntityFootprint(nextPosition, obstacle) > currentDistance;
+        return DistanceSquaredToEntityFootprint(nextPosition, obstacle) > currentDistanceSq;
     }
 
-    private static double DistanceToEntityFootprint(WorldPosition position, WorldEntity obstacle)
+    private static double DistanceSquaredToEntityFootprint(WorldPosition position, WorldEntity obstacle)
     {
         var footprintKind = obstacle.Kind == EntityKind.GhostBuild && obstacle.BuildTargetKind is not null
             ? obstacle.BuildTargetKind.Value
@@ -3569,7 +3759,7 @@ public sealed class GameSimulation
         var closestY = Math.Clamp(position.Y, obstacle.Position.Y, obstacle.Position.Y + footprint.Height);
         var dx = position.X - closestX;
         var dy = position.Y - closestY;
-        return Math.Sqrt(dx * dx + dy * dy);
+        return dx * dx + dy * dy;
     }
 
     private static void ResetMovementPath(WorldEntity entity)
@@ -3580,13 +3770,19 @@ public sealed class GameSimulation
 
     private void ProcessCombat()
     {
-        _combatShotsThisTick.Clear();
-        foreach (var attacker in World.Entities.Where(entity =>
-                     entity.IsAlive
-                     && !entity.IsGarrisoned
-                     && entity.OwnerId is not null
-                     && MvpDefinitions.GetStats(entity.Kind).AttackDamage > 0).OrderBy(entity => entity.Id).ToList())
+        _presentation.ClearCombatShots();
+        // Per-pass combat index keeps range/splash queries neighborhood-limited; GameWorld tile
+        // occupancy (#66) does not replace position-radius combat scans yet.
+        var spatial = CombatSpatialIndex.Build(World.Entities);
+        CollectSortedAliveEntities(
+            _scratchEntities,
+            static entity => !entity.IsGarrisoned
+                             && entity.OwnerId is not null
+                             && MvpDefinitions.GetStats(entity.Kind).AttackDamage > 0);
+
+        for (var attackerIndex = 0; attackerIndex < _scratchEntities.Count; attackerIndex++)
         {
+            var attacker = _scratchEntities[attackerIndex];
             // Cascade may have killed this attacker earlier in the same pass.
             if (!attacker.IsAlive || attacker.IsGarrisoned)
             {
@@ -3601,16 +3797,7 @@ public sealed class GameSimulation
 
             var stats = MvpDefinitions.GetStats(attacker.Kind);
             var attackRange = stats.AttackRange;
-            var target = World.Entities
-                .Where(entity =>
-                    entity.IsAlive
-                    && !entity.IsGarrisoned
-                    && entity.OwnerId is not null
-                    && !AreAllied(attacker.OwnerId, entity.OwnerId))
-                .Where(entity => attacker.Position.IsWithinEuclideanRange(entity.Position, attackRange))
-                .OrderBy(entity => attacker.Position.EuclideanDistanceSquared(entity.Position))
-                .ThenBy(entity => entity.Id)
-                .FirstOrDefault();
+            var target = FindNearestCombatTarget(attacker, attackRange, spatial);
             if (target is null)
             {
                 continue;
@@ -3623,12 +3810,12 @@ public sealed class GameSimulation
 
             attacker.AttackCooldownRemaining = ResolveAttackCooldown(attacker, stats);
 
-            if (IsGroundToGroundBlockedByAlliedWall(attacker, target, stats.ProjectileKind))
+            if (IsGroundToGroundBlockedByAlliedWall(attacker, target, stats.ProjectileKind, spatial))
             {
                 continue;
             }
 
-            _combatShotsThisTick.Add(new CombatShotEvent(
+            _presentation.AddCombatShot(new CombatShotEvent(
                 attacker.Id,
                 target.Id,
                 attacker.WorldPosition,
@@ -3641,17 +3828,26 @@ public sealed class GameSimulation
 
             if (stats.SplashRadius > 0)
             {
-                foreach (var splashTarget in World.Entities
-                             .Where(entity =>
-                                 entity.IsAlive
-                                 && !entity.IsGarrisoned
-                                 && entity.Id != target.Id
-                                 && entity.OwnerId is not null
-                                 && !AreAllied(attacker.OwnerId, entity.OwnerId)
-                                 && target.Position.IsWithinEuclideanRange(entity.Position, stats.SplashRadius))
-                             .OrderBy(entity => entity.Id)
-                             .ToList())
+                _scratchEntitiesSecondary.Clear();
+                foreach (var entity in spatial.QueryByPositionInEuclideanRange(target.Position, stats.SplashRadius))
                 {
+                    if (!entity.IsAlive
+                        || entity.IsGarrisoned
+                        || entity.Id == target.Id
+                        || entity.OwnerId is null
+                        || AreAllied(attacker.OwnerId, entity.OwnerId))
+                    {
+                        continue;
+                    }
+
+                    _scratchEntitiesSecondary.Add(entity);
+                }
+
+                _scratchEntitiesSecondary.Sort(static (left, right) => left.Id.CompareTo(right.Id));
+
+                for (var splashIndex = 0; splashIndex < _scratchEntitiesSecondary.Count; splashIndex++)
+                {
+                    var splashTarget = _scratchEntitiesSecondary[splashIndex];
                     var splashDamage = ComputeDamageAgainst(attacker, stats, splashTarget);
                     ApplyCombatDamage(splashTarget, splashDamage);
                     if (!splashTarget.IsAlive)
@@ -3668,12 +3864,64 @@ public sealed class GameSimulation
         }
     }
 
+    private WorldEntity? FindNearestCombatTarget(
+        WorldEntity attacker,
+        int attackRange,
+        CombatSpatialIndex spatial)
+    {
+        WorldEntity? best = null;
+        var bestDistanceSquared = 0;
+        foreach (var entity in spatial.QueryByPositionInEuclideanRange(attacker.Position, attackRange))
+        {
+            if (!entity.IsAlive
+                || entity.IsGarrisoned
+                || entity.OwnerId is null
+                || AreAllied(attacker.OwnerId, entity.OwnerId))
+            {
+                continue;
+            }
+
+            var distanceSquared = attacker.Position.EuclideanDistanceSquared(entity.Position);
+            if (best is null
+                || distanceSquared < bestDistanceSquared
+                || (distanceSquared == bestDistanceSquared && entity.Id < best.Id))
+            {
+                best = entity;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return best;
+    }
+
+    private void CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate)
+    {
+        into.Clear();
+        var entities = World.Entities;
+        for (var i = 0; i < entities.Count; i++)
+        {
+            var entity = entities[i];
+            if (entity.IsAlive && predicate(entity))
+            {
+                into.Add(entity);
+            }
+        }
+
+        into.Sort(static (left, right) => left.Id.CompareTo(right.Id));
+    }
+
     private void CheckVictory()
     {
+        var lossKinds = ResolveDefeatLossKinds();
         foreach (var player in _players)
         {
-            var commanderAlive = World.Entities.Any(entity => entity.OwnerId == player.Id && entity.Kind == EntityKind.Commander && entity.IsAlive);
-            player.IsDefeated = !commanderAlive;
+            // Empty loss set (catalog loaded with no Defeat entries) means no entity-based defeat.
+            var criticalAlive = lossKinds.Count == 0
+                || World.Entities.Any(entity =>
+                    entity.OwnerId == player.Id
+                    && entity.IsAlive
+                    && lossKinds.Contains(entity.Kind));
+            player.IsDefeated = !criticalAlive;
         }
 
         var activePlayers = _players.Where(player => !player.IsDefeated).ToList();
@@ -3684,31 +3932,83 @@ public sealed class GameSimulation
         }
     }
 
+    /// <summary>
+    /// Defeat kinds come from <see cref="EntityCatalog"/> when loaded; empty catalog keeps MVP
+    /// commander-survival fallback so headless tests without JSON stay valid.
+    /// </summary>
+    private IReadOnlySet<EntityKind> ResolveDefeatLossKinds()
+    {
+        if (EntityCatalog.Entities.Count == 0)
+        {
+            return s_defaultDefeatLossKinds;
+        }
+
+        return EntityCatalog.GetDefeatLossKinds();
+    }
+
+    private static readonly HashSet<EntityKind> s_defaultDefeatLossKinds = [EntityKind.Commander];
+
     private void UpdateFogOfWar()
     {
+        // Decay only previously visible tiles (dirty list), then repaint once per vision source.
         foreach (var player in _players)
         {
             player.DecayVisibility();
-            foreach (var entity in World.Entities.Where(entity =>
-                         entity.IsAlive
-                         && !entity.IsGarrisoned
-                         && entity.OwnerId is not null
-                         && AreAllied(entity.OwnerId.Value, player.Id)))
+        }
+
+        var entities = World.Entities;
+        for (var entityIndex = 0; entityIndex < entities.Count; entityIndex++)
+        {
+            var entity = entities[entityIndex];
+            if (!entity.IsAlive || entity.IsGarrisoned || entity.OwnerId is null)
             {
-                var radius = MvpDefinitions.GetStats(entity.Kind).VisionRadius;
-                if (entity.OwnerId is not null)
+                continue;
+            }
+
+            var ownerId = entity.OwnerId.Value;
+            _fogAlliedScratch.Clear();
+            for (var playerIndex = 0; playerIndex < _players.Count; playerIndex++)
+            {
+                var player = _players[playerIndex];
+                if (AreAllied(ownerId, player.Id))
                 {
-                    radius = ResolveStat(entity.OwnerId.Value, ResearchStatIds.VisionRadius, radius, minValue: 0);
+                    _fogAlliedScratch.Add(player);
                 }
-                for (var y = entity.Position.Y - radius; y <= entity.Position.Y + radius; y++)
+            }
+
+            if (_fogAlliedScratch.Count == 0)
+            {
+                continue;
+            }
+
+            var radius = ResolveStat(
+                ownerId,
+                ResearchStatIds.VisionRadius,
+                MvpDefinitions.GetStats(entity.Kind).VisionRadius,
+                minValue: 0);
+
+            var origin = entity.Position;
+            var radiusSquared = radius * radius;
+            for (var y = origin.Y - radius; y <= origin.Y + radius; y++)
+            {
+                for (var x = origin.X - radius; x <= origin.X + radius; x++)
                 {
-                    for (var x = entity.Position.X - radius; x <= entity.Position.X + radius; x++)
+                    var dx = x - origin.X;
+                    var dy = y - origin.Y;
+                    if (dx * dx + dy * dy > radiusSquared)
                     {
-                        var position = new TilePosition(x, y);
-                        if (World.IsInside(position) && entity.Position.IsWithinEuclideanRange(position, radius))
-                        {
-                            player.SetVisible(position);
-                        }
+                        continue;
+                    }
+
+                    var position = new TilePosition(x, y);
+                    if (!World.IsInside(position))
+                    {
+                        continue;
+                    }
+
+                    for (var allyIndex = 0; allyIndex < _fogAlliedScratch.Count; allyIndex++)
+                    {
+                        _fogAlliedScratch[allyIndex].SetVisible(position);
                     }
                 }
             }

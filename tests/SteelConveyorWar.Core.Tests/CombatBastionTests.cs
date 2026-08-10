@@ -305,6 +305,7 @@ public sealed class CombatBastionTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var attacker = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
         var defender = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        var defenderId = defender.Id;
         Assert.True(PlaceAdjacent(simulation, attacker, defender.Position));
         var lethal = simulation.ComputeCombatDamageForTests(attacker.Id, defender.Id);
         Assert.True(simulation.TrySetEntityHealthForTests(defender.Id, lethal));
@@ -314,6 +315,35 @@ public sealed class CombatBastionTests
         Assert.Equal(GameStatus.PlayerWon, simulation.Status);
         Assert.Equal(new PlayerId(1), simulation.WinnerId);
         Assert.False(defender.IsAlive);
+        Assert.Null(simulation.World.GetEntity(defenderId));
+        Assert.DoesNotContain(
+            simulation.World.Entities,
+            entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        Assert.Contains(
+            simulation.World.Entities,
+            entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1) && entity.IsAlive);
+    }
+
+    [Fact]
+    public void DamageEntity_WhenCommanderDies_RemovesDefeatedCommanderOnNextAdvance()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var defender = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        var defenderId = defender.Id;
+
+        simulation.DamageEntity(defenderId, defender.Health);
+
+        Assert.Equal(GameStatus.PlayerWon, simulation.Status);
+        Assert.Equal(new PlayerId(1), simulation.WinnerId);
+        Assert.False(defender.IsAlive);
+        Assert.NotNull(simulation.World.GetEntity(defenderId));
+
+        simulation.AdvanceTick();
+
+        Assert.Null(simulation.World.GetEntity(defenderId));
+        Assert.DoesNotContain(
+            simulation.World.Entities,
+            entity => entity.Kind == EntityKind.Commander && !entity.IsAlive);
     }
 
     [Fact]
