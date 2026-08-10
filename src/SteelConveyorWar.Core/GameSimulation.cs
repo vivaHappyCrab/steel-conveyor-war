@@ -956,7 +956,7 @@ public sealed partial class GameSimulation
         };
     }
 
-    private static void ApplyBastionOrderToUnit(WorldEntity unit, BastionOrder bastionOrder)
+    private void ApplyBastionOrderToUnit(WorldEntity unit, BastionOrder bastionOrder)
     {
         unit.Order = ResolveOrderForUnit(unit.Kind, bastionOrder);
         // Drop stale Attack/Scout waypoints so Defend/home (or a new target) can repath immediately.
@@ -967,7 +967,7 @@ public sealed partial class GameSimulation
             return;
         }
 
-        unit.IsGarrisoned = false;
+        TryEjectFromGarrison(unit);
     }
 
     private static BastionOrder ResolveOrderForUnit(EntityKind unitKind, BastionOrder bastionOrder)

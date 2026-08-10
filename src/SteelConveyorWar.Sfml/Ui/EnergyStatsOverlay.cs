@@ -61,7 +61,7 @@ internal static class EnergyStatsOverlay
             target.Draw(produceTitle);
         }
 
-        var sharedMax = 1;
+        var sharedMax = 1f;
         foreach (var value in panel.Stats.DemandSeries)
         {
             sharedMax = Math.Max(sharedMax, value);
@@ -137,9 +137,9 @@ internal static class EnergyStatsOverlay
         IRenderTarget target,
         Font? font,
         FloatRect bounds,
-        IReadOnlyList<int> totalSeries,
-        (Color Color, IReadOnlyList<int> Series)[] kindSeries,
-        int maxValue,
+        IReadOnlyList<float> totalSeries,
+        (Color Color, IReadOnlyList<float> Series)[] kindSeries,
+        float maxValue,
         int windowSeconds)
     {
         using var frame = new RectangleShape(new Vector2f(bounds.Width, bounds.Height))
@@ -157,13 +157,22 @@ internal static class EnergyStatsOverlay
                 Math.Max(1f, bounds.Width - EnergyStatsPanelModel.AxisLeftPad),
                 Math.Max(1f, bounds.Height - EnergyStatsPanelModel.AxisBottomPad)));
 
+        using var plotFrame = new RectangleShape(new Vector2f(plot.Width, plot.Height))
+        {
+            Position = new Vector2f(plot.Left, plot.Top),
+            FillColor = Color.Transparent,
+            OutlineColor = new Color(90, 110, 140),
+            OutlineThickness = 1f
+        };
+        target.Draw(plotFrame);
+
         if (font is not null)
         {
-            var yLabels = new[] { maxValue, maxValue / 2, 0 };
+            var yLabels = new[] { maxValue, maxValue / 2f, 0f };
             var yPositions = new[] { plot.Top + 2f, plot.Top + plot.Height * 0.5f - 6f, plot.Top + plot.Height - 14f };
             for (var i = 0; i < yLabels.Length; i++)
             {
-                using var label = new Text(font, yLabels[i].ToString(), 11)
+                using var label = new Text(font, FormatAxisValue(yLabels[i]), 11)
                 {
                     FillColor = new Color(180, 190, 200),
                     Position = new Vector2f(bounds.Left + 2f, yPositions[i])
@@ -196,6 +205,9 @@ internal static class EnergyStatsOverlay
         }
     }
 
+    internal static string FormatAxisValue(float value) =>
+        value >= 10f || value == MathF.Floor(value) ? ((int)MathF.Round(value)).ToString() : value.ToString("0.#");
+
     internal static string FormatEnergyWindowEnd(int windowSeconds) =>
         windowSeconds >= 60 ? $"{windowSeconds / 60}m" : $"{windowSeconds}s";
 
@@ -205,8 +217,8 @@ internal static class EnergyStatsOverlay
     internal static void DrawEnergyPolyline(
         IRenderTarget target,
         FloatRect bounds,
-        IReadOnlyList<int> series,
-        int maxValue,
+        IReadOnlyList<float> series,
+        float maxValue,
         Color color)
     {
         if (series.Count < 2)
@@ -218,7 +230,7 @@ internal static class EnergyStatsOverlay
         for (var i = 0; i < series.Count; i++)
         {
             var x = bounds.Left + i / (float)(series.Count - 1) * bounds.Width;
-            var y = bounds.Top + bounds.Height - series[i] / (float)maxValue * (bounds.Height - 4f) - 2f;
+            var y = bounds.Top + bounds.Height - series[i] / maxValue * (bounds.Height - 4f) - 2f;
             vertexArray.Append(new Vertex(new Vector2f(x, y), color));
         }
 

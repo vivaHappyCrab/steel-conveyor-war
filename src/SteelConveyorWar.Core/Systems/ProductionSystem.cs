@@ -53,16 +53,15 @@ public sealed partial class GameSimulation
                 entity.WorkTicksRemaining = cycleTicks;
             }
 
-            entity.WorkTicksRemaining--;
-            if (entity.WorkTicksRemaining > 0)
+            // Drain each active work tick (same as smelters/assemblers); empty buffer pauses progress.
+            if (!TryConsumeBuildingEnergy(entity))
             {
                 continue;
             }
 
-            if (!TryConsumeBuildingEnergy(entity))
+            entity.WorkTicksRemaining--;
+            if (entity.WorkTicksRemaining > 0)
             {
-                // Stay at zero until energy is available; next tick restarts the cycle.
-                entity.WorkTicksTotal = 0;
                 continue;
             }
 
