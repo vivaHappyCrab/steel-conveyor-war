@@ -142,12 +142,17 @@ public sealed class GameWorld
         IndexEntity(entity);
     }
 
+    /// <summary>
+    /// Purges all non-alive entities, including defeated commanders.
+    /// Call only after victory evaluation for the tick — <see cref="GameSimulation"/> runs
+    /// <c>CheckVictory</c> before this so commander-kill win conditions stay correct.
+    /// </summary>
     internal void RemoveDead()
     {
         for (var i = _entities.Count - 1; i >= 0; i--)
         {
             var entity = _entities[i];
-            if (entity.IsAlive || entity.Kind == EntityKind.Commander)
+            if (entity.IsAlive)
             {
                 continue;
             }
