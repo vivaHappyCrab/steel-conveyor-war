@@ -51,8 +51,8 @@ public sealed partial class GameSimulation
         ArgumentNullException.ThrowIfNull(command);
         return command switch
         {
-            IssueMoveCommand c => TryIssueMoveCommand(c.EntityId, c.Target),
-            StopCommanderCommand c => TryStopCommander(c.CommanderId),
+            IssueMoveCommand c => TryIssueMoveCommand(c.EntityId, c.Actor, c.Target),
+            StopCommanderCommand c => TryStopCommander(c.CommanderId, c.Actor),
             QueueCommanderBuildCommand c => TryQueueCommanderBuild(
                 c.CommanderId, c.TargetKind, c.Position, c.Direction, c.SelectedItemRecipe),
             QueueCommanderDemolishCommand c => TryQueueCommanderDemolish(c.CommanderId, c.TargetEntityId),
@@ -62,11 +62,12 @@ public sealed partial class GameSimulation
             StartResearchCommand c => TryStartResearch(c.Actor, c.Technology),
             CancelResearchCommand c => TryCancelResearch(c.Actor, c.Technology),
             SetTrackAllocationCommand c => TrySetTrackAllocation(c.Actor, c.Allocations) == ResearchCommandResult.Ok,
-            SetFactoryProductionCommand c => TrySetFactoryProduction(c.FactoryId, c.OutputKind, c.BastionId),
+            SetFactoryProductionCommand c => TrySetFactoryProduction(
+                c.FactoryId, c.Actor, c.OutputKind, c.BastionId),
             AssignFactoryBastionCommand c => TryAssignFactoryBastion(c.FactoryId, c.BastionId),
-            SetBastionTemplateCommand c => TrySetBastionTemplate(c.BastionId, c.UnitKind, c.Count),
-            IssueBastionOrderCommand c => TryIssueBastionOrder(c.BastionId, c.Order),
-            SetAssemblerRecipeCommand c => TrySetAssemblerRecipe(c.AssemblerId, c.RecipeId),
+            SetBastionTemplateCommand c => TrySetBastionTemplate(c.BastionId, c.Actor, c.UnitKind, c.Count),
+            IssueBastionOrderCommand c => TryIssueBastionOrder(c.BastionId, c.Actor, c.Order),
+            SetAssemblerRecipeCommand c => TrySetAssemblerRecipe(c.AssemblerId, c.Actor, c.RecipeId),
             CollectOutputBufferCommand c => TryCollectOutputBuffer(c.CommanderId, c.TargetEntityId),
             WithdrawFromHubOrOutputCommand c => TryWithdrawFromHubOrOutput(c.CommanderId, c.TargetEntityId),
             DepositToHubOrInputCommand c => TryDepositToHubOrInput(c.CommanderId, c.TargetEntityId),

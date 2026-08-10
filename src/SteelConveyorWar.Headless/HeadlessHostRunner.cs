@@ -61,7 +61,7 @@ public static class HeadlessHostRunner
             return false;
         }
 
-        return simulation.TryIssueMoveCommand(commander.Id, target);
+        return simulation.TryIssueMoveCommand(commander.Id, playerId, target);
     }
 }
 

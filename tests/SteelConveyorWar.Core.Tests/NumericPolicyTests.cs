@@ -58,7 +58,7 @@ public sealed class NumericPolicyTests
         var simulation = GameSimulation.CreateNewGame(seed);
         var commander = simulation.World.Entities.First(entity =>
             entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Commander);
-        Assert.True(simulation.TryIssueMoveCommand(commander.Id, new TilePosition(18, 14)));
+        Assert.True(simulation.TryIssueMoveCommand(commander.Id, new PlayerId(1), new TilePosition(18, 14)));
         for (var i = 0; i < ticks; i++)
         {
             simulation.AdvanceTick();
