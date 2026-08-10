@@ -150,6 +150,39 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void TrySetBastionTemplate_RejectsPlayerWideSumOverCapacityAcrossBastions()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
+        var bastionA = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+
+        UnlockTier2ForTests(simulation, playerId);
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.AdditionalBastions));
+        var capacity = simulation.GetBastionTemplateCapacity(playerId);
+        Assert.True(capacity >= MvpDefinitions.BaseBastionTemplateCapacity);
+
+        Assert.True(simulation.TryPlaceGhostBuildFromCommander(
+            commander.Id,
+            EntityKind.Bastion,
+            NearBlue(simulation, 8, -4),
+            out var ghostId));
+        AdvanceTicks(simulation, 60);
+        var bastionB = simulation.World.Entities.Single(entity =>
+            entity.IsAlive && entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion && entity.Id != bastionA.Id);
+        Assert.NotEqual(0, ghostId);
+
+        Assert.True(simulation.TrySetBastionTemplate(bastionA.Id, EntityKind.BasicTank, capacity));
+        Assert.False(simulation.TrySetBastionTemplate(bastionB.Id, EntityKind.BasicTank, 1));
+        Assert.Equal(capacity, bastionA.BastionTemplate[EntityKind.BasicTank]);
+        Assert.False(bastionB.BastionTemplate.ContainsKey(EntityKind.BasicTank));
+
+        Assert.True(simulation.TrySetBastionTemplate(bastionA.Id, EntityKind.BasicTank, capacity - 1));
+        Assert.True(simulation.TrySetBastionTemplate(bastionB.Id, EntityKind.LightBot, 1));
+        Assert.False(simulation.TrySetBastionTemplate(bastionB.Id, EntityKind.BasicTank, 1));
+    }
+
+    [Fact]
     public void GetBastionUnitSupply_CountsLivingAssignedUnitsAndInFlightProduction()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
@@ -350,6 +383,72 @@ public class GameSimulationTests
         AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
         Assert.Equal(2, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id));
         Assert.Equal(EntityKind.BasicTank, simulation.World.GetEntity(factoryId)!.ProductionTargetKind);
+    }
+
+    [Fact]
+    public void FactoryProduction_DefersSpawnWhenNoFreeCollisionTile_ThenResumes()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 1));
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
+        AdvanceTicks(simulation, 30);
+
+        var factory = simulation.World.GetEntity(factoryId)!;
+        var footprint = MvpDefinitions.GetFootprint(EntityKind.TankFactory);
+        var minX = factory.Position.X - 6;
+        var maxX = factory.Position.X + footprint.Width - 1 + 6;
+        var minY = factory.Position.Y - 6;
+        var maxY = factory.Position.Y + footprint.Height - 1 + 6;
+        var wallIds = new List<int>();
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = minX; x <= maxX; x++)
+            {
+                var tile = new TilePosition(x, y);
+                if (!simulation.World.IsInside(tile))
+                {
+                    continue;
+                }
+
+                if (x >= factory.Position.X
+                    && x < factory.Position.X + footprint.Width
+                    && y >= factory.Position.Y
+                    && y < factory.Position.Y + footprint.Height)
+                {
+                    continue;
+                }
+
+                if (simulation.World.GetEntitiesAt(tile).Any(entity => entity.IsAlive))
+                {
+                    continue;
+                }
+
+                Assert.True(simulation.TrySpawnEntityForTests(EntityKind.Wall, tile, playerId, out var wallId));
+                wallIds.Add(wallId);
+            }
+        }
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
+        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
+        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, EntityKind.BasicTank));
+        AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5);
+
+        factory = simulation.World.GetEntity(factoryId)!;
+        Assert.Equal(0, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.OwnerId == playerId));
+        Assert.Equal(EntityKind.BasicTank, factory.ProductionTargetKind);
+        Assert.Equal(1, factory.WorkTicksRemaining);
+
+        var clearWall = simulation.World.GetEntity(wallIds[0])!;
+        simulation.DamageEntity(clearWall.Id, clearWall.Health);
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
+        AdvanceTicks(simulation, 3);
+
+        Assert.Equal(1, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.BasicTank && entity.OwnerId == playerId && entity.IsAlive));
+        factory = simulation.World.GetEntity(factoryId)!;
+        Assert.Equal(0, factory.WorkTicksRemaining);
     }
 
     [Fact]
