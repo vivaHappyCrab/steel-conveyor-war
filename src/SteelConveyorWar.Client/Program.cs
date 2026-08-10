@@ -1,3 +1,4 @@
+using SteelConveyorWar.Client;
 using SteelConveyorWar.Core;
 using SteelConveyorWar.Sfml;
 
@@ -15,7 +16,8 @@ if (!File.Exists(gameConfigPath))
     throw new FileNotFoundException("Required game settings file is missing.", gameConfigPath);
 }
 
-var gameSettings = GameSettingsLoader.Parse(File.ReadAllText(gameConfigPath));
+var gameJson = File.ReadAllText(gameConfigPath);
+var gameSettings = GameSettingsLoader.Parse(gameJson);
 var catalog = LoadRequiredJson(configDirectory, gameSettings.ResearchContentFile, ResearchContentLoader.Parse, "research catalog");
 var tiles = LoadRequiredJson(configDirectory, "tiles.json", TileContentLoader.Parse, "tile catalog");
 var entities = LoadRequiredJson(configDirectory, "entities.json", EntityContentLoader.Parse, "entity catalog");
@@ -30,11 +32,7 @@ var options = new GameCreationOptions(
     map);
 
 var simulation = GameSimulation.CreateNewGame(options);
-var display = new SfmlDisplayOptions(
-    gameSettings.Window.Width,
-    gameSettings.Window.Height,
-    gameSettings.Window.Title,
-    gameSettings.TicksPerSecond);
+var display = HostDisplayOptionsLoader.Parse(gameJson, gameSettings.TicksPerSecond);
 new SfmlGameRunner().Run(simulation, smokeTest ? 3 : null, display);
 
 static string ResolveConfigDirectory()
