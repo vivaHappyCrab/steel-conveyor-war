@@ -84,7 +84,7 @@ public class BuildMenuCatalogTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
-        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, EntityKind.BasicTank, 3));
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, new PlayerId(1), EntityKind.BasicTank, 3));
         var slots = BastionCompositionPanelModel.BuildSlots(simulation, bastion);
         var tank = Assert.Single(slots, slot => slot.UnitKind == EntityKind.BasicTank);
         Assert.Equal(0, tank.LiveCount);

@@ -291,10 +291,14 @@ public sealed partial class GameSimulation
         return true;
     }
 
-    public bool TryIssueMoveCommand(int entityId, TilePosition target)
+    public bool TryIssueMoveCommand(int entityId, PlayerId actorPlayerId, TilePosition target)
     {
         var entity = World.GetEntity(entityId);
-        if (entity is null || entity.Kind != EntityKind.Commander || !entity.IsAlive || !World.IsInside(target))
+        if (entity is null
+            || entity.OwnerId != actorPlayerId
+            || entity.Kind != EntityKind.Commander
+            || !entity.IsAlive
+            || !World.IsInside(target))
         {
             return false;
         }
@@ -307,10 +311,13 @@ public sealed partial class GameSimulation
         return true;
     }
 
-    public bool TryStopCommander(int commanderId)
+    public bool TryStopCommander(int commanderId, PlayerId actorPlayerId)
     {
         var commander = World.GetEntity(commanderId);
-        if (commander is null || commander.Kind != EntityKind.Commander || !commander.IsAlive)
+        if (commander is null
+            || commander.OwnerId != actorPlayerId
+            || commander.Kind != EntityKind.Commander
+            || !commander.IsAlive)
         {
             return false;
         }
@@ -602,12 +609,14 @@ public sealed partial class GameSimulation
         return ModifierResolver.Resolve(baseValue, GetPlayer(playerId).Research.AppliedModifiers, statId, selector, minValue);
     }
 
-    public bool TrySetFactoryProduction(int factoryId, EntityKind? outputKind, int? bastionId = null)
+    public bool TrySetFactoryProduction(int factoryId, PlayerId actorPlayerId, EntityKind? outputKind, int? bastionId = null)
     {
         // bastionId is ignored: factories no longer store bastion assignment.
         _ = bastionId;
         var factory = World.GetEntity(factoryId);
-        if (factory is null || !MvpDefinitions.FactoryKinds.Contains(factory.Kind))
+        if (factory is null
+            || factory.OwnerId != actorPlayerId
+            || !MvpDefinitions.FactoryKinds.Contains(factory.Kind))
         {
             return false;
         }
@@ -796,15 +805,14 @@ public sealed partial class GameSimulation
         return ComputeDamageAgainst(attacker, MvpDefinitions.GetStats(attacker.Kind), target);
     }
 
-    public bool TrySetBastionTemplate(int bastionId, EntityKind unitKind, int count)
+    public bool TrySetBastionTemplate(int bastionId, PlayerId actorPlayerId, EntityKind unitKind, int count)
     {
         var bastion = World.GetEntity(bastionId);
-        if (bastion is null || bastion.Kind != EntityKind.Bastion || count < 0 || !MvpDefinitions.UnitKinds.Contains(unitKind))
-        {
-            return false;
-        }
-
-        if (bastion.OwnerId is null)
+        if (bastion is null
+            || bastion.OwnerId != actorPlayerId
+            || bastion.Kind != EntityKind.Bastion
+            || count < 0
+            || !MvpDefinitions.UnitKinds.Contains(unitKind))
         {
             return false;
         }
@@ -892,10 +900,13 @@ public sealed partial class GameSimulation
                 || (entity.Kind == EntityKind.GhostBuild && entity.BuildTargetKind == EntityKind.Bastion)));
     }
 
-    public bool TrySetAssemblerRecipe(int assemblerId, ItemRecipeId recipeId)
+    public bool TrySetAssemblerRecipe(int assemblerId, PlayerId actorPlayerId, ItemRecipeId recipeId)
     {
         var assembler = World.GetEntity(assemblerId);
-        if (assembler is null || assembler.Kind != EntityKind.Assembler || !MvpDefinitions.ItemRecipes.ContainsKey(recipeId))
+        if (assembler is null
+            || assembler.OwnerId != actorPlayerId
+            || assembler.Kind != EntityKind.Assembler
+            || !MvpDefinitions.ItemRecipes.ContainsKey(recipeId))
         {
             return false;
         }
@@ -908,10 +919,10 @@ public sealed partial class GameSimulation
         return true;
     }
 
-    public bool TryIssueBastionOrder(int bastionId, BastionOrder order)
+    public bool TryIssueBastionOrder(int bastionId, PlayerId actorPlayerId, BastionOrder order)
     {
         var bastion = World.GetEntity(bastionId);
-        if (bastion is null || bastion.Kind != EntityKind.Bastion)
+        if (bastion is null || bastion.OwnerId != actorPlayerId || bastion.Kind != EntityKind.Bastion)
         {
             return false;
         }

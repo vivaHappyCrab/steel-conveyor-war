@@ -98,7 +98,7 @@ public sealed class AllianceMinimapTests
             var simulation = GameSimulation.CreateNewGame(randomSeed: 71);
             var commander = simulation.World.Entities.First(entity =>
                 entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Commander);
-            Assert.True(simulation.TryIssueMoveCommand(commander.Id, new TilePosition(20, 18)));
+            Assert.True(simulation.TryIssueMoveCommand(commander.Id, new PlayerId(1), new TilePosition(20, 18)));
             for (var i = 0; i < 90; i++)
             {
                 simulation.AdvanceTick();

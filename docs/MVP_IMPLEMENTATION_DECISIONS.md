@@ -14,6 +14,15 @@ This document records architecture and game-design decisions made while implemen
 - `GameSimulation.CreateNewGame(seed)` creates a deterministic local 1v1 match with mirrored starts and the default research profile (`mvp-b`).
 - `GameSimulation.CreateNewGame(GameCreationOptions)` accepts an explicit research catalog/profile plus optional tile/entity/build-cost catalogs for tests and composition roots.
 
+## Command Trust Boundary
+
+- Core is the authority for entity ownership on gameplay mutators. SFML/UI ownership filters are UX only and must not be the sole gate.
+- Entity-targeted commands require an explicit `PlayerId actorPlayerId` and reject intents when `entity.OwnerId != actor` (null owner fails closed): `TryIssueMoveCommand`, `TryStopCommander`, `TryIssueBastionOrder`, `TrySetBastionTemplate`, `TrySetFactoryProduction`, `TrySetAssemblerRecipe`, and `TryRotateEntity`.
+- There is **no intentional shared control** in MVP: allies do not share command authority over each other's entities.
+- Commander-keyed interact/build/demolish APIs (`TryPlaceGhostBuildFromCommander`, `TryQueueCommanderBuild`, withdraw/deposit, demolish) authorize via the supplied commander entity (caller must hold an owned commander id). Explicit `actorPlayerId` on those paths remains a follow-up with the tick-stamped command queue (#63 / C2).
+- Test-only helpers (`TryTeleportEntityForTests`, `TryForceCompleteResearch`, `DamageEntity`, etc.) remain god-mode and are not part of the player trust boundary.
+- SFML still binds a local `PlayerId` for selection/input and passes that actor into Core APIs; Core must reject forged foreign entity ids even if the adapter is compromised or a bot holds the simulation.
+
 ## Config Loading
 
 - **Ownership:** Core owns parse/validate of simulation JSON content (`ResearchContentLoader`, `GameSettingsLoader`, `TileContentLoader`, `EntityContentLoader`, `BuildCostContentLoader`). Client and Headless own path resolution and file I/O, then pass parsed catalogs into `GameCreationOptions`. SFML never parses gameplay JSON; it only receives display options from Client.
