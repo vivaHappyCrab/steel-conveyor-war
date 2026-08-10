@@ -5,6 +5,7 @@ This document records architecture and game-design decisions made while implemen
 ## Architecture
 
 - Gameplay rules live in `SteelConveyorWar.Core`; SFML remains a rendering and input adapter.
+- Composition roots: `SteelConveyorWar.Client` opens an SFML window; `SteelConveyorWar.Headless` is a Core-only host that loads `config/`, calls `CreateNewGame`, applies a stub command/AI step, then `AdvanceTick` (usable from CI without a display). Full bot AI and network transport remain follow-ups.
 - The core simulation advances only through fixed ticks and explicit public APIs.
 - Authoritative Core state is encapsulated for adapters/tests: mutable entity/player fields use `{ get; internal set; }`, inventories expose public `Try*` with `internal` `Add`/`Clear`, and research collections are public `IReadOnly*` with assembly-internal mutable storage. External code mutates via `GameSimulation` APIs (including test helpers such as `TryForceCompleteResearch`).
 - Construction build costs / ticks / tech gates load from `config/build-costs.json` (Core parse, Client I/O) into `BuildCostCatalog` on `GameCreationOptions` / `GameSimulation`. Recipes, combat stats, footprints, stack sizes, and most timing constants remain code-owned in `MvpDefinitions.cs` — do not treat the game as fully data-driven yet.
@@ -13,12 +14,12 @@ This document records architecture and game-design decisions made while implemen
 
 ## Config Loading
 
-- **Ownership:** Core owns parse/validate of simulation JSON content (`ResearchContentLoader`, `GameSettingsLoader`, `TileContentLoader`, `EntityContentLoader`, `BuildCostContentLoader`). Client owns path resolution and file I/O, then passes parsed catalogs into `GameCreationOptions`. SFML never parses gameplay JSON; it only receives display options from Client.
-- **Authoritative at runtime (Client fail-fast):** `config/game.json`, `config/research.json`, `config/tiles.json`, `config/entities.json`, `config/build-costs.json` (path via `game.json` → `buildCosts.content`). Missing or invalid files abort startup.
+- **Ownership:** Core owns parse/validate of simulation JSON content (`ResearchContentLoader`, `GameSettingsLoader`, `TileContentLoader`, `EntityContentLoader`, `BuildCostContentLoader`). Client and Headless own path resolution and file I/O, then pass parsed catalogs into `GameCreationOptions`. SFML never parses gameplay JSON; it only receives display options from Client.
+- **Authoritative at runtime (Client/Headless fail-fast):** `config/game.json`, `config/research.json`, `config/tiles.json`, `config/entities.json`, `config/build-costs.json` (path via `game.json` → `buildCosts.content`). Missing or invalid files abort startup.
 - **Still code-owned:** recipes (`ItemRecipes` / `ProductionRecipes`), combat stats (`GetStats` / resistances), footprints, stack sizes, power tables, and most timing constants in `MvpDefinitions.cs`. Tile/entity JSON catalogs are ID registries for content ids — they do not yet replace enum-driven simulation behavior.
-- Embedded `MvpResearchCatalog` and `MvpBuildCostCatalog` remain parity fallbacks for unit tests and `GameCreationOptions.Default` only (not for Client disk startup).
+- Embedded `MvpResearchCatalog` and `MvpBuildCostCatalog` remain parity fallbacks for unit tests and `GameCreationOptions.Default` only (not for Client/Headless disk startup).
 - **Host-only window block:** `game.json` may include a presentation `window` `{ width, height, title }` section. Client `HostDisplayOptionsLoader` parses it into `SfmlDisplayOptions`; Core `GameSettings` / `GameSettingsLoader` intentionally ignore it so sim content stays SFML-free. Side-panel layout scales from window width.
-- `simulation.ticksPerSecond` is loaded into `GameSettings.TicksPerSecond` and passed to the Client/SFML host loop via `SfmlDisplayOptions.TicksPerSecond` (fixed-delta pacing, through `HostDisplayOptionsLoader.Parse`). Missing/zero falls back to `GameSettings.Default.TicksPerSecond` (30); explicitly negative values fail validation. `GameSimulation.TicksPerSecond` remains the Core const for duration-in-ticks conversions and should stay aligned with the configured host rate unless intentionally retiming.
+- `simulation.ticksPerSecond` is loaded into `GameSettings.TicksPerSecond` and passed to the Client/SFML host loop via `SfmlDisplayOptions.TicksPerSecond` (fixed-delta pacing, through `HostDisplayOptionsLoader.Parse`). Missing/zero falls back to `GameSettings.Default.TicksPerSecond` (30); explicitly negative values fail validation. `GameSimulation.TicksPerSecond` remains the Core const for duration-in-ticks conversions and should stay aligned with the configured host rate unless intentionally retiming. Headless currently advances by `--ticks` count (not wall-clock TPS).
 
 ## Scope Strategy
 

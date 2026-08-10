@@ -13,7 +13,8 @@
 
 - `src/SteelConveyorWar.Core` — headless deterministic simulation only (no SFML)
 - `src/SteelConveyorWar.Sfml` — window, render, input → core commands
-- `src/SteelConveyorWar.Client` — composition root / executable
+- `src/SteelConveyorWar.Client` — SFML composition root / executable
+- `src/SteelConveyorWar.Headless` — Core-only bot/CI host (no window)
 - `tests/SteelConveyorWar.Core.Tests` — headless core tests (no SFML reference)
 - `tests/SteelConveyorWar.Sfml.Tests` — SFML adapter tests
 - `config/` — runtime content (`game`/`research`/`tiles`/`entities`/`build-costs` JSON); remaining recipes/combat/footprints/stacks/power in `MvpDefinitions.cs`
@@ -26,6 +27,7 @@ pwsh eng/verify.ps1
 # or scoped:
 dotnet build SteelConveyorWar.sln -c Release
 dotnet test tests/SteelConveyorWar.Core.Tests -c Release
+dotnet run --project src/SteelConveyorWar.Headless -c Release -- --ticks 90
 dotnet run --project src/SteelConveyorWar.Client -c Release -- --smoke-test
 ```
 
