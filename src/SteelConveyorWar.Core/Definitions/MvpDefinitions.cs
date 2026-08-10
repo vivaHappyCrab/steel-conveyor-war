@@ -36,44 +36,18 @@ public static class MvpDefinitions
         EntityKind.DroneCenter
     ];
 
-    public static readonly IReadOnlyDictionary<EntityKind, IReadOnlyDictionary<ItemId, int>> BuildCosts =
-        new Dictionary<EntityKind, IReadOnlyDictionary<ItemId, int>>
-        {
-            [EntityKind.Mine] = Cost((ItemId.IronPlate, 20)),
-            [EntityKind.CoalMine] = Cost((ItemId.IronPlate, 25)),
-            [EntityKind.OilWell] = Cost((ItemId.IronPlate, 30), (ItemId.CopperPlate, 10)),
-            [EntityKind.Smelter] = Cost((ItemId.IronPlate, 15)),
-            [EntityKind.Refinery] = Cost((ItemId.IronPlate, 40), (ItemId.CopperPlate, 20)),
-            [EntityKind.SolarPanel] = Cost((ItemId.IronPlate, 10), (ItemId.CopperPlate, 10)),
-            [EntityKind.CoalPlant] = Cost((ItemId.IronPlate, 25), (ItemId.CopperPlate, 10)),
-            [EntityKind.Assembler] = Cost((ItemId.IronPlate, 30), (ItemId.CopperPlate, 15)),
-            [EntityKind.Hub] = Cost((ItemId.IronPlate, 20)),
-            [EntityKind.Conveyor] = Cost((ItemId.IronPlate, 1)),
-            [EntityKind.UndergroundConveyor] = Cost((ItemId.IronPlate, 4), (ItemId.CopperPlate, 2)),
-            [EntityKind.Inserter] = Cost((ItemId.IronPlate, 2), (ItemId.CopperPlate, 1)),
-            [EntityKind.TankFactory] = Cost((ItemId.IronPlate, 40), (ItemId.CopperPlate, 20)),
-            [EntityKind.DroneCenter] = Cost((ItemId.IronPlate, 35), (ItemId.CopperPlate, 25)),
-            [EntityKind.Laboratory] = Cost((ItemId.IronPlate, 25), (ItemId.CopperPlate, 20)),
-            [EntityKind.Wall] = Cost((ItemId.IronPlate, 2)),
-            [EntityKind.SteelWall] = Cost((ItemId.Steel, 2)),
-            [EntityKind.MachineGunTurret] = Cost((ItemId.IronPlate, 20), (ItemId.CopperPlate, 10)),
-            [EntityKind.CannonTurret] = Cost((ItemId.Steel, 15), (ItemId.CopperPlate, 10)),
-            [EntityKind.AntiAirTurret] = Cost((ItemId.Steel, 12), (ItemId.CopperPlate, 15)),
-            [EntityKind.Bastion] = Cost((ItemId.IronPlate, 60), (ItemId.CopperPlate, 30), (ItemId.Steel, 10))
-        };
+    /// <summary>
+    /// Embedded construction costs (parity with <c>config/build-costs.json</c>). Prefer
+    /// <see cref="GameSimulation.BuildCostCatalog"/> when a match catalog is available.
+    /// </summary>
+    public static IReadOnlyDictionary<EntityKind, IReadOnlyDictionary<ItemId, int>> BuildCosts =>
+        MvpBuildCostCatalog.Embedded.Costs;
 
-    public static readonly IReadOnlyDictionary<EntityKind, int> BuildTicks =
-        BuildCosts.Keys.ToDictionary(kind => kind, _ => 30);
+    public static IReadOnlyDictionary<EntityKind, int> BuildTicks =>
+        MvpBuildCostCatalog.Embedded.BuildTicks;
 
-    public static readonly IReadOnlyDictionary<EntityKind, TechnologyId> BuildRequirements =
-        new Dictionary<EntityKind, TechnologyId>
-        {
-            [EntityKind.MachineGunTurret] = TechnologyId.MachineGunTurret,
-            [EntityKind.Wall] = TechnologyId.ConcreteWalls,
-            [EntityKind.UndergroundConveyor] = TechnologyId.UndergroundConveyors,
-            [EntityKind.SteelWall] = TechnologyId.SteelWalls,
-            [EntityKind.AntiAirTurret] = TechnologyId.AntiAirTurret
-        };
+    public static IReadOnlyDictionary<EntityKind, TechnologyId> BuildRequirements =>
+        MvpBuildCostCatalog.Embedded.Requirements;
 
     public static readonly IReadOnlyDictionary<EntityKind, int> PowerDemand =
         new Dictionary<EntityKind, int>

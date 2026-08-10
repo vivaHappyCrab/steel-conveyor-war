@@ -54,6 +54,13 @@ jobs:
           --collect:"XPlat Code Coverage"
           -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
 
+      - name: Headless host smoke (no display)
+        run: >
+          dotnet run --project src/SteelConveyorWar.Headless
+          -c Release
+          --no-build
+          -- --ticks 90
+
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
