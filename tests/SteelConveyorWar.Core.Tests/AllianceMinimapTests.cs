@@ -70,6 +70,47 @@ public sealed class AllianceMinimapTests
     }
 
     [Fact]
+    public void UpdateFogOfWar_LeavesExplored_WhenVisionSourceLeaves()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerOne = new PlayerId(1);
+        var blueCommander = simulation.World.Entities.Single(entity =>
+            entity.Kind == EntityKind.Commander && entity.OwnerId == playerOne);
+
+        // Move into empty space so only this commander paints the visited tile.
+        Assert.True(simulation.TryTeleportEntityForTests(blueCommander.Id, new TilePosition(90, 50)));
+        simulation.AdvanceTick();
+        var visited = blueCommander.Position;
+        Assert.Equal(VisibilityState.Visible, simulation.GetVisibility(playerOne, visited));
+
+        Assert.True(simulation.TryTeleportEntityForTests(blueCommander.Id, new TilePosition(10, 10)));
+        simulation.AdvanceTick();
+
+        Assert.Equal(VisibilityState.Explored, simulation.GetVisibility(playerOne, visited));
+        Assert.Equal(VisibilityState.Visible, simulation.GetVisibility(playerOne, blueCommander.Position));
+    }
+
+    [Fact]
+    public void UpdateFogOfWar_DualRuns_ProduceIdenticalHashes()
+    {
+        static string Run()
+        {
+            var simulation = GameSimulation.CreateNewGame(randomSeed: 71);
+            var commander = simulation.World.Entities.First(entity =>
+                entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Commander);
+            Assert.True(simulation.TryIssueMoveCommand(commander.Id, new TilePosition(20, 18)));
+            for (var i = 0; i < 90; i++)
+            {
+                simulation.AdvanceTick();
+            }
+
+            return simulation.ComputeStateHash();
+        }
+
+        Assert.Equal(Run(), Run());
+    }
+
+    [Fact]
     public void ProcessCombat_WallOwnedByAlly_BlocksGroundToGround()
     {
         var map = new MapSettings(

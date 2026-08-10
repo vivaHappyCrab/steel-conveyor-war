@@ -3,6 +3,7 @@ namespace SteelConveyorWar.Core;
 public sealed class PlayerState
 {
     private readonly VisibilityState[,] _visibility;
+    private readonly List<TilePosition> _visibleTiles = new();
     private readonly List<TechSignatureHotspot> _techSignatures = new();
 
     public PlayerState(PlayerId id, string name, WorldSize worldSize, int teamId)
@@ -44,21 +45,24 @@ public sealed class PlayerState
 
     internal void SetVisible(TilePosition position)
     {
+        if (_visibility[position.X, position.Y] == VisibilityState.Visible)
+        {
+            return;
+        }
+
         _visibility[position.X, position.Y] = VisibilityState.Visible;
+        _visibleTiles.Add(position);
     }
 
     internal void DecayVisibility()
     {
-        for (var y = 0; y < _visibility.GetLength(1); y++)
+        for (var i = 0; i < _visibleTiles.Count; i++)
         {
-            for (var x = 0; x < _visibility.GetLength(0); x++)
-            {
-                if (_visibility[x, y] == VisibilityState.Visible)
-                {
-                    _visibility[x, y] = VisibilityState.Explored;
-                }
-            }
+            var position = _visibleTiles[i];
+            _visibility[position.X, position.Y] = VisibilityState.Explored;
         }
+
+        _visibleTiles.Clear();
     }
 
     internal void SetTechSignatures(IEnumerable<TechSignatureHotspot> hotspots)
