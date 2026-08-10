@@ -1,8 +1,7 @@
-using SteelConveyorWar.Client;
 using SteelConveyorWar.Core;
-using SteelConveyorWar.Sfml;
+using SteelConveyorWar.Headless;
 
-var smokeTest = args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
+var options = HeadlessHostOptions.Parse(args);
 
 var configDirectory = ResolveConfigDirectory();
 if (!Directory.Exists(configDirectory))
@@ -16,15 +15,14 @@ if (!File.Exists(gameConfigPath))
     throw new FileNotFoundException("Required game settings file is missing.", gameConfigPath);
 }
 
-var gameJson = File.ReadAllText(gameConfigPath);
-var gameSettings = GameSettingsLoader.Parse(gameJson);
+var gameSettings = GameSettingsLoader.Parse(File.ReadAllText(gameConfigPath));
 var catalog = LoadRequiredJson(configDirectory, gameSettings.ResearchContentFile, ResearchContentLoader.Parse, "research catalog");
 var tiles = LoadRequiredJson(configDirectory, "tiles.json", TileContentLoader.Parse, "tile catalog");
 var entities = LoadRequiredJson(configDirectory, "entities.json", EntityContentLoader.Parse, "entity catalog");
 var map = LoadRequiredJson(configDirectory, gameSettings.MapContentFile, MapSettingsLoader.Parse, "map settings");
 var buildCosts = LoadRequiredJson(configDirectory, gameSettings.BuildCostsContentFile, BuildCostContentLoader.Parse, "build-cost catalog");
 
-var options = new GameCreationOptions(
+var creation = new GameCreationOptions(
     gameSettings.DefaultRandomSeed,
     gameSettings.ResearchProfileId,
     catalog,
@@ -33,9 +31,13 @@ var options = new GameCreationOptions(
     map,
     buildCosts);
 
-var simulation = GameSimulation.CreateNewGame(options);
-var display = HostDisplayOptionsLoader.Parse(gameJson, gameSettings.TicksPerSecond);
-new SfmlGameRunner().Run(simulation, smokeTest ? 3 : null, display);
+var simulation = GameSimulation.CreateNewGame(creation);
+var result = HeadlessHostRunner.Run(simulation, options);
+
+Console.WriteLine(
+    $"headless ok ticks={result.Tick} commands={result.CommandsIssued} status={result.Status} winner={(result.WinnerId is null ? "none" : result.WinnerId.Value.Value.ToString())} hash={result.StateHash}");
+
+return 0;
 
 static string ResolveConfigDirectory()
 {

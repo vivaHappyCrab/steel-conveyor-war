@@ -48,11 +48,21 @@ public readonly record struct WorldPosition(double X, double Y)
         return new TilePosition((int)Math.Floor(X), (int)Math.Floor(Y));
     }
 
+    /// <summary>
+    /// Euclidean length. Prefer <see cref="DistanceSquaredTo"/> for ordering / radius checks
+    /// (ADR 0001). Remaining uses are movement step normalization under the MVP single-runtime
+    /// floating-point guarantee.
+    /// </summary>
     public double DistanceTo(WorldPosition other)
+    {
+        return Math.Sqrt(DistanceSquaredTo(other));
+    }
+
+    public double DistanceSquaredTo(WorldPosition other)
     {
         var dx = X - other.X;
         var dy = Y - other.Y;
-        return Math.Sqrt(dx * dx + dy * dy);
+        return dx * dx + dy * dy;
     }
 }
 
