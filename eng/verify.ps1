@@ -35,21 +35,14 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not $SkipFormat) {
     Write-Host '==> Format check'
-    dotnet format $solution --verify-no-changes --severity diagnostic
+    # Use warn: some local SDK/format builds reject severity "diagnostic".
+    dotnet format $solution --verify-no-changes --severity warn
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 Write-Host "==> Build ($Configuration)"
 dotnet build $solution -c $Configuration --no-restore /p:ContinuousIntegrationBuild=true
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-$coverageArgs = @()
-if (-not $SkipCoverage) {
-    $coverageArgs = @(
-        '--collect:XPlat Code Coverage',
-        '--results-directory', $coverageDir
-    )
-}
 
 Write-Host '==> Test'
 $testArgs = @(
@@ -58,12 +51,20 @@ $testArgs = @(
     '--no-build',
     '--logger', 'trx',
     '--results-directory', $testResults
-) + $coverageArgs
+)
+if (-not $SkipCoverage) {
+    # Keep a single --results-directory (trx + cobertura under test-results).
+    $testArgs += @('--collect', 'XPlat Code Coverage')
+}
 
-dotnet @testArgs
+& dotnet @testArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if (-not $SkipSmoke) {
+    Write-Host '==> Headless host smoke (no display)'
+    dotnet run --project (Join-Path $repoRoot 'src/SteelConveyorWar.Headless') -c $Configuration --no-build -- --ticks 90
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
     Write-Host '==> Client smoke test'
     dotnet run --project (Join-Path $repoRoot 'src/SteelConveyorWar.Client') -c $Configuration --no-build -- --smoke-test
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

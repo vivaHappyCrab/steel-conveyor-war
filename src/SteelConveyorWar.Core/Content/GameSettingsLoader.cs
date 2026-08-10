@@ -26,23 +26,34 @@ public static class GameSettingsLoader
             throw new InvalidOperationException("game.json is missing gameId.");
         }
 
-        var window = dto.Window;
-        var width = window?.Width is > 0 ? (uint)window.Width : WindowSettings.Default.Width;
-        var height = window?.Height is > 0 ? (uint)window.Height : WindowSettings.Default.Height;
-        var title = string.IsNullOrWhiteSpace(window?.Title)
-            ? (string.IsNullOrWhiteSpace(dto.DisplayName) ? WindowSettings.Default.Title : dto.DisplayName)
-            : window!.Title;
+        var ticksPerSecond = ResolveTicksPerSecond(dto.Simulation?.TicksPerSecond);
 
         return new GameSettings(
             dto.SchemaVersion,
             dto.GameId,
             string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.GameId : dto.DisplayName,
-            dto.Simulation?.TicksPerSecond is > 0 ? dto.Simulation.TicksPerSecond : GameSettings.Default.TicksPerSecond,
+            ticksPerSecond,
             dto.Simulation?.DefaultRandomSeed ?? GameSettings.Default.DefaultRandomSeed,
             string.IsNullOrWhiteSpace(dto.Research?.Content) ? GameSettings.Default.ResearchContentFile : dto.Research.Content,
             string.IsNullOrWhiteSpace(dto.Research?.Profile) ? GameSettings.Default.ResearchProfileId : dto.Research.Profile,
             string.IsNullOrWhiteSpace(dto.Map?.Content) ? GameSettings.Default.MapContentFile : dto.Map.Content,
-            new WindowSettings(width, height, title));
+            string.IsNullOrWhiteSpace(dto.BuildCosts?.Content) ? GameSettings.Default.BuildCostsContentFile : dto.BuildCosts.Content);
+    }
+
+    private static int ResolveTicksPerSecond(int? configured)
+    {
+        if (configured is null or 0)
+        {
+            return GameSettings.Default.TicksPerSecond;
+        }
+
+        if (configured < 0)
+        {
+            throw new InvalidOperationException(
+                $"simulation.ticksPerSecond must be a positive integer (got '{configured}').");
+        }
+
+        return configured.Value;
     }
 
     private sealed class GameConfigDto
@@ -53,7 +64,7 @@ public static class GameSettingsLoader
         public SimulationConfigDto? Simulation { get; set; }
         public ResearchConfigDto? Research { get; set; }
         public MapConfigRefDto? Map { get; set; }
-        public WindowConfigDto? Window { get; set; }
+        public BuildCostsConfigRefDto? BuildCosts { get; set; }
     }
 
     private sealed class SimulationConfigDto
@@ -73,10 +84,8 @@ public static class GameSettingsLoader
         public string Content { get; set; } = "maps/default.json";
     }
 
-    private sealed class WindowConfigDto
+    private sealed class BuildCostsConfigRefDto
     {
-        public int Width { get; set; }
-        public int Height { get; set; }
-        public string Title { get; set; } = "";
+        public string Content { get; set; } = "build-costs.json";
     }
 }
