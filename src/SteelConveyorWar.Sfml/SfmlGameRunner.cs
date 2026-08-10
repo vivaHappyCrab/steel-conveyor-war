@@ -275,7 +275,12 @@ public sealed class SfmlGameRunner
                     var hoverEntity = simulation.World.GetTopEntityAt(tile.Value);
                     if (hoverEntity is not null
                         && IsVisibleToLocalPlayer(simulation, localPlayer, hoverEntity)
-                        && BuildBarModel.TryCopyFromWorldEntity(hoverEntity, out var copyKind, out var copyDirection, out var copyRecipe))
+                        && BuildBarModel.TryCopyFromWorldEntity(
+                            hoverEntity,
+                            out var copyKind,
+                            out var copyDirection,
+                            out var copyRecipe,
+                            simulation.BuildCostCatalog))
                     {
                         EnsureLocalCommanderSelected(simulation, localPlayer, ref selectedEntityId);
                         isBuildMenuOpen = true;
@@ -903,7 +908,7 @@ public sealed class SfmlGameRunner
 
         var clock = new Clock();
         var accumulator = 0f;
-        var fixedDelta = 1f / GameSimulation.TicksPerSecond;
+        var fixedDelta = 1f / display.TicksPerSecond;
         var lingeringShots = new List<(CombatShotEvent Shot, float Remaining)>();
 
         var renderedFrames = 0;
@@ -3517,7 +3522,7 @@ public sealed class SfmlGameRunner
         {
             var kind = BuildMenuCatalog.BuildableKinds[i];
             var slotX = startX + i * BuildBarSlotSize;
-            var affordable = BuildBarModel.AffordableBuilds(kind, inventory);
+            var affordable = BuildBarModel.AffordableBuilds(kind, inventory, simulation.BuildCostCatalog);
             var selected = pendingBuildKind == kind;
             var fill = affordable <= 0
                 ? new Color(35, 40, 48, 220)

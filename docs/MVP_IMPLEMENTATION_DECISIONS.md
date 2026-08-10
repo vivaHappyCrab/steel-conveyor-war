@@ -5,20 +5,21 @@ This document records architecture and game-design decisions made while implemen
 ## Architecture
 
 - Gameplay rules live in `SteelConveyorWar.Core`; SFML remains a rendering and input adapter.
+- Composition roots: `SteelConveyorWar.Client` opens an SFML window; `SteelConveyorWar.Headless` is a Core-only host that loads `config/`, calls `CreateNewGame`, applies a stub command/AI step, then `AdvanceTick` (usable from CI without a display). Full bot AI and network transport remain follow-ups.
 - The core simulation advances only through fixed ticks and explicit public APIs.
 - Authoritative Core state is encapsulated for adapters/tests: mutable entity/player fields use `{ get; internal set; }`, inventories expose public `Try*` with `internal` `Add`/`Clear`, and research collections are public `IReadOnly*` with assembly-internal mutable storage. External code mutates via `GameSimulation` APIs (including test helpers such as `TryForceCompleteResearch`).
-- MVP recipes/combat/build costs remain compact enums + `MvpDefinitions.cs` in Core. Research technologies and match bootstrap settings load from `config/*.json`. Broader migration of remaining balance to `config/` remains a follow-up.
+- Construction build costs / ticks / tech gates load from `config/build-costs.json` (Core parse, Client I/O) into `BuildCostCatalog` on `GameCreationOptions` / `GameSimulation`. Recipes, combat stats, footprints, stack sizes, and most timing constants remain code-owned in `MvpDefinitions.cs` — do not treat the game as fully data-driven yet.
 - `GameSimulation.CreateNewGame(seed)` creates a deterministic local 1v1 match with mirrored starts and the default research profile (`mvp-b`).
-- `GameSimulation.CreateNewGame(GameCreationOptions)` accepts an explicit research catalog/profile plus optional tile/entity catalogs for tests and composition roots.
+- `GameSimulation.CreateNewGame(GameCreationOptions)` accepts an explicit research catalog/profile plus optional tile/entity/build-cost catalogs for tests and composition roots.
 
 ## Config Loading
 
-- **Ownership:** Core owns parse/validate of JSON content (`ResearchContentLoader`, `GameSettingsLoader`, `TileContentLoader`, `EntityContentLoader`). Client owns path resolution and file I/O, then passes parsed catalogs into `GameCreationOptions`. SFML never parses gameplay JSON; it only receives display options from Client.
-- **Authoritative at runtime (Client fail-fast):** `config/game.json`, `config/research.json`, `config/tiles.json`, `config/entities.json`. Missing or invalid files abort startup.
-- **Still code-owned:** build costs, recipes, combat stats, footprints, stack sizes, and most timing constants in `MvpDefinitions.cs`. Tile/entity JSON catalogs are ID registries for content ids — they do not yet replace enum-driven simulation behavior.
-- Embedded `MvpResearchCatalog` remains the parity fallback for unit tests and `GameCreationOptions.Default` only (not for Client disk startup).
-- Window width/height/title come from `game.json` into `SfmlDisplayOptions`; side-panel layout scales from window width.
-- `simulation.ticksPerSecond` is parsed for future hosts but the Client/SFML loop still uses `GameSimulation.TicksPerSecond` (const 30) until wired.
+- **Ownership:** Core owns parse/validate of simulation JSON content (`ResearchContentLoader`, `GameSettingsLoader`, `TileContentLoader`, `EntityContentLoader`, `BuildCostContentLoader`). Client and Headless own path resolution and file I/O, then pass parsed catalogs into `GameCreationOptions`. SFML never parses gameplay JSON; it only receives display options from Client.
+- **Authoritative at runtime (Client/Headless fail-fast):** `config/game.json`, `config/research.json`, `config/tiles.json`, `config/entities.json`, `config/build-costs.json` (path via `game.json` → `buildCosts.content`). Missing or invalid files abort startup.
+- **Still code-owned:** recipes (`ItemRecipes` / `ProductionRecipes`), combat stats (`GetStats` / resistances), footprints, stack sizes, power tables, and most timing constants in `MvpDefinitions.cs`. Tile/entity JSON catalogs are ID registries for content ids — they do not yet replace enum-driven simulation behavior.
+- Embedded `MvpResearchCatalog` and `MvpBuildCostCatalog` remain parity fallbacks for unit tests and `GameCreationOptions.Default` only (not for Client/Headless disk startup).
+- **Host-only window block:** `game.json` may include a presentation `window` `{ width, height, title }` section. Client `HostDisplayOptionsLoader` parses it into `SfmlDisplayOptions`; Core `GameSettings` / `GameSettingsLoader` intentionally ignore it so sim content stays SFML-free. Side-panel layout scales from window width.
+- `simulation.ticksPerSecond` is loaded into `GameSettings.TicksPerSecond` and passed to the Client/SFML host loop via `SfmlDisplayOptions.TicksPerSecond` (fixed-delta pacing, through `HostDisplayOptionsLoader.Parse`). Missing/zero falls back to `GameSettings.Default.TicksPerSecond` (30); explicitly negative values fail validation. `GameSimulation.TicksPerSecond` remains the Core const for duration-in-ticks conversions and should stay aligned with the configured host rate unless intentionally retiming. Headless currently advances by `--ticks` count (not wall-clock TPS).
 
 ## Scope Strategy
 
@@ -48,7 +49,7 @@ This document records architecture and game-design decisions made while implemen
 - Conveyor and inserter direction is core state and can be rotated through a simulation API. SFML only renders the arrows and translates hotkeys.
 - Conveyor item rendering interpolates draw position from `ProgressTicks / moveTicks` along belt `Direction`; two slots are placed along the belt axis (~25%/75%). Core movement remains discrete hops.
 - Oil is represented as `CrudeOil` items refined into `Fuel`. Full fluid pressure, pipe networks and reservoirs are deliberately deferred.
-- Energy is tracked as produced versus demanded per player. Each powered consumer has an `EnergyBuffer` with capacity `PowerDemand × 100`. The grid fills buffers emptiest-first each tick: sort by `EnergyBuffer/Capacity` ascending then entity id, and distribute `PowerProduced` one energy unit at a time. Buildings drain `PowerDemand` from their buffer only while actively producing; empty buffer pauses work progress (soft craft-time inflate removed). Per-player presentation-only `EnergyStatsHistory` ring (10 min @ 30 TPS tick storage keyed by absolute `Tick`, not hashed) feeds the SFML energy overlay (**P**): windows 10s/30s/1m/5m/10m; consumption series are **actual** buffer drains; `Query` emits averages over **fixed absolute** buckets (1s / 5s / 10s) so completed graph points never rewrite as the live window slides. Both graphs share one Y max and draw axis labels (Y energy/tick, X window time) with equal plot height.
+- Energy is tracked as produced versus demanded per player. Each powered consumer has an `EnergyBuffer` with capacity `PowerDemand × 100`. The grid fills buffers emptiest-first each tick: sort by fill ratio ascending via integer cross-multiply (`buf_a * cap_b` vs `buf_b * cap_a`) then entity id, and distribute `PowerProduced` one energy unit at a time. Buildings drain `PowerDemand` from their buffer only while actively producing; empty buffer pauses work progress (soft craft-time inflate removed). Per-player presentation-only `EnergyStatsHistory` ring (10 min @ 30 TPS tick storage keyed by absolute `Tick`, not hashed) feeds the SFML energy overlay (**P**): windows 10s/30s/1m/5m/10m; consumption series are **actual** buffer drains; `Query` emits averages over **fixed absolute** buckets (1s / 5s / 10s) so completed graph points never rewrite as the live window slides. Both graphs share one Y max and draw axis labels (Y energy/tick, X window time) with equal plot height.
 - Assemblers and factories default to no recipe until selected (or bastion autofill). Smelters use a sticky auto-recipe from input; unused empty smelters refuse Ctrl+deposit. Base smelt ticks: iron/copper plate 40, steel 60. Iron gear / composite craft ticks: 40 / 60.
 - Player-facing inventory UI applies only to Commander and Hub (`MvpDefinitions.HasPlayerInventory`).
 
@@ -81,7 +82,7 @@ This document records architecture and game-design decisions made while implemen
 - Produced units inherit the Bastion's current order (Scout filter applies). Manual factory recipes stay selected after spawn but **do not start** a new craft while player-wide kind supply ≥ summed templates for that kind or total army supply ≥ template capacity (idle wait); autofill clears and re-picks deficits. `TrySetBastionTemplate` enforces the capacity against the **player-wide** sum of all owned bastion templates. Unit spawn searches rings 1–6 for a passable, non-overlapping tile; if none is free the craft stays in-flight (`WorkTicksRemaining = 1`) until a tile opens (no stack on the factory tile).
 - Active defense garrisons units inside the Bastion; threats in Bastion vision trigger a sortie. Bastion death kills assigned units.
 - Combat uses deterministic Euclidean range, cooldown, and **formula C** damage: `max(1, AttackDamage - Armor) * Resistance(projectile, targetCategory)` with basis-point integer math (`CombatDamage` / `MvpDefinitions.GetResistanceBasisPoints`). HP is clamped to ≥ 0. Each landed shot appends a presentation-only `CombatShotEvent` (not hashed) for SFML tracers.
-- Mobile units collide with buildings (circle vs footprint) always. Unit↔unit circle–circle applies only while **stopped**; moving units ignore other units' collision radii (buildings unchanged). Draw silhouettes scale from `GetCollisionSize`.
+- Mobile units collide with buildings (circle vs footprint) always. Unit↔unit circle–circle applies only while **stopped**; moving units ignore other units' collision radii (buildings unchanged). Distance checks use distance-squared (ADR 0001). Draw silhouettes scale from `GetCollisionSize`.
 - Intermediate craft uses `IronGear` and `Composite` (1 iron + 1 copper plate → 1; work ticks 40 / 60). `CopperWire` / circuit-via-wire are removed. Scout production costs 4×Composite; SciencePackT2 consumes Composite.
 - `EntityStats` includes Armor, `ProjectileKind` (`GroundToGround` | `Ballistic` | `AirToGround`), and `SplashRadius` (0 = single target). MG turrets/bots/БМК are G2G; cannon/rocket/medium tank are Ballistic; AA turret/bot are AirToGround. Splash applies in the same `ProcessCombat` pass to enemies near the primary target (ordered by entity id).
 - Walls/SteelWalls block **GroundToGround** damage to allied **ground** units (БМК + `UnitKinds` except Scout) when a Bresenham LoS tile between attacker and target holds a Wall/SteelWall owned by a player with the same `TeamId` as the target. Ballistic and AirToGround ignore walls. Buildings and walls as targets still take full formula-C damage.
@@ -120,11 +121,37 @@ This document records architecture and game-design decisions made while implemen
 - Expand SFML research controls from prototype paging/hotkeys to a dedicated full tree panel.
 - Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.
 - Add tick-stamped command queue / state hash for multiplayer research lockstep.
+- Migrate remaining authoritative `WorldPosition` movement-step `Sqrt` / collision radii to fixed-point (or equivalent) so lockstep can leave the single-runtime guarantee — see ADR 0001.
+
+## Authoritative Numeric Policy
+
+- **Source of truth:** [`docs/adr/0001-authoritative-numeric-policy.md`](adr/0001-authoritative-numeric-policy.md).
+- **MVP lockstep claim:** same .NET runtime family + OS/CPU ABI for all peers. Cross-OS / mixed-JIT lockstep is out of MVP while authoritative doubles remain.
+- **Mitigations already in Core:** energy emptiest-first uses integer cross-multiply ratios; ground A* uses integer octile costs (`10`/`14`); collision / interact / build radius gates use distance-squared (no `Sqrt` on compare paths).
+- **Still authoritative FP (single-runtime):** `WorldPosition` storage, movement step normalization (`DistanceTo` / unit-vector step), `CollisionSize.Radius` constants. Hasher fingerprints doubles via `DoubleToInt64Bits`.
+- **Presentation-only floats (not hashed / not gameplay):** SFML camera and world→pixel conversion, belt item draw lerp, HUD energy/craft bars, combat tracer `CombatShotEvent` endpoints, `EnergyStatsHistory` overlay series, unit silhouette scaling from collision radius for draw.
 
 ## Simulation State Hash
 
 - `SimulationStateHasher.AlgorithmVersion` (currently `5`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (teamId/inventory/visibility/research/power), ordered entities (buffers, energy buffer, sticky smelt recipe, work totals, paths, combat/build fields, bastion order waypoints).
 - Doubles use IEEE bit patterns (`DoubleToInt64Bits`). Unordered collections are sorted before hashing.
 - Primary quality gate: dual independent runs with the same seed/commands must match (`DeterminismHashTests`). A checked-in golden hex is optional; when adding/updating one, bump `AlgorithmVersion` if the surface changed, re-run the fixture, and commit the new constant intentionally.
-- Out of surface: SFML/UI, wall-clock, tick-stamped command logs.
+- **Issue #80 decision:** do **not** check in a golden hex yet. MVP Core still churns fields the hasher fingerprints (combat, energy buffers, recipes, research profile/catalog, factory spawn caps, balance timing). Dual-run already covers accidental non-determinism; a golden would mostly regress on intentional edits and inflate noise. Add a CI-asserted golden later once the hash surface stabilizes or multiplayer lockstep needs a fixed oracle.
+- Out of surface: SFML/UI, wall-clock, tick-stamped command logs, presentation-only floats listed under Authoritative Numeric Policy, and **presentation side-channels in Core** (below).
 - Teach map generation to consume `RandomSeed` before any claim of seed-driven layouts (no MVP map-disk format).
+
+## Presentation state in Core
+
+MVP keeps a few presentation-only side-channels inside Core so SFML can draw tracers / overlays without owning sim-derived FX. They are intentional, not a license to grow an SFML dependency in Core.
+
+| Field / API | Location | Consumer | Hashed? |
+|-------------|----------|----------|---------|
+| `SimulationPresentationSink` / `CombatShotsThisTick` | `GameSimulation.Presentation` (alias `CombatShotsThisTick`) | SFML combat tracers | **No** |
+| `EnergyStats` (`EnergyStatsHistory`) | `PlayerState` | SFML energy overlay (**P**) | **No** |
+| `TechSignatures` | `PlayerState` (via `GetTechSignatureHotspots`) | SFML fog tech-signature overlay | **No** |
+
+**Hash exclusion policy**
+
+- Authoritative lockstep / dual-run identity uses only `SimulationStateHasher` surfaces. Presentation fields must never be written into the hasher.
+- Adding a new Core field that only serves UI/FX: document it in this table, mark it presentation-only in XML docs, omit it from the hasher, and extend `DeterminismHashTests.PresentationSideChannels_DoNotAffectStateHash` (or an equivalent comment gate on `SimulationStateHasher`).
+- Do **not** remove combat tracers or the energy overlay as part of clarifying this boundary; isolation/docs first. Moving FX fully out of Core is a later refactor if multipath/replay needs a cleaner event bus.

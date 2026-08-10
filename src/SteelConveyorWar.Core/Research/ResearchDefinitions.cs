@@ -78,14 +78,17 @@ public sealed record GameCreationOptions(
     ResearchCatalog Catalog,
     TileCatalog Tiles,
     EntityCatalog Entities,
-    MapSettings? Map = null)
+    MapSettings? Map = null,
+    BuildCostCatalog? BuildCosts = null)
 {
     public GameCreationOptions(int randomSeed, string profileId, ResearchCatalog catalog)
-        : this(randomSeed, profileId, catalog, TileCatalog.Empty, EntityCatalog.Empty, null)
+        : this(randomSeed, profileId, catalog, TileCatalog.Empty, EntityCatalog.Empty, null, null)
     {
     }
 
     public MapSettings ResolvedMap => Map ?? MapSettings.Default1v1;
+
+    public BuildCostCatalog ResolvedBuildCosts => BuildCosts ?? MvpBuildCostCatalog.Embedded;
 
     public static GameCreationOptions Default => new(
         RandomSeed: 1,
@@ -93,5 +96,6 @@ public sealed record GameCreationOptions(
         Catalog: MvpResearchCatalog.CreateEmbedded(),
         Tiles: TileCatalog.Empty,
         Entities: EntityCatalog.Empty,
-        Map: MapSettings.Default1v1);
+        Map: MapSettings.Default1v1,
+        BuildCosts: MvpBuildCostCatalog.Embedded);
 }
