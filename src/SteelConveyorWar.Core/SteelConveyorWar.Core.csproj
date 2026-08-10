@@ -3,4 +3,8 @@
   <PropertyGroup>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="SteelConveyorWar.Core.Tests" />
+  </ItemGroup>
+
 </Project>
