@@ -401,7 +401,7 @@ public sealed class GameSimulation
         return Math.Max(1, moveTicks);
     }
 
-    private static bool TryResolveDemolishCostKind(WorldEntity? commander, WorldEntity? target, out EntityKind costKind)
+    private bool TryResolveDemolishCostKind(WorldEntity? commander, WorldEntity? target, out EntityKind costKind)
     {
         costKind = default;
         if (commander is null
