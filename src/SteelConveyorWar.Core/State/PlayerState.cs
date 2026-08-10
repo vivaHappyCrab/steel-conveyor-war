@@ -32,9 +32,16 @@ public sealed class PlayerState
 
     public int PowerDemand { get; internal set; }
 
-    /// <summary>Presentation-only energy time series; not part of determinism hash.</summary>
+    /// <summary>
+    /// Presentation-only energy time series for the SFML overlay.
+    /// Not part of determinism hash; see § Presentation state in Core.
+    /// </summary>
     public EnergyStatsHistory EnergyStats { get; } = new();
 
+    /// <summary>
+    /// Presentation-only tech-signature hotspots for SFML fog overlay.
+    /// Derived each tick from entities; not part of determinism hash.
+    /// </summary>
     public IReadOnlyList<TechSignatureHotspot> TechSignatures => _techSignatures.AsReadOnly();
 
     public VisibilityState GetVisibility(TilePosition position)

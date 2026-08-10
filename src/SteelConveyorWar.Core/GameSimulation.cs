@@ -6,7 +6,7 @@ public sealed class GameSimulation
 
     private readonly List<PlayerState> _players;
     private readonly ResearchSystem _researchSystem;
-    private readonly List<CombatShotEvent> _combatShotsThisTick = new();
+    private readonly SimulationPresentationSink _presentation = new();
     private readonly Dictionary<PlayerId, int> _tickPowerProduced = new();
     private readonly Dictionary<PlayerId, int> _tickPowerConsumed = new();
     private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickProducedByKind = new();
@@ -53,10 +53,16 @@ public sealed class GameSimulation
     public IReadOnlyList<PlayerState> Players => _players;
 
     /// <summary>
-    /// Presentation-only shots fired during the last <see cref="AdvanceTick"/> combat pass.
-    /// Not included in determinism hashing.
+    /// Presentation side-channels (combat tracers, etc.). Not hashed; see
+    /// <c>docs/MVP_IMPLEMENTATION_DECISIONS.md</c> § Presentation state in Core.
     /// </summary>
-    public IReadOnlyList<CombatShotEvent> CombatShotsThisTick => _combatShotsThisTick;
+    public SimulationPresentationSink Presentation => _presentation;
+
+    /// <summary>
+    /// Convenience alias for <see cref="SimulationPresentationSink.CombatShotsThisTick"/>.
+    /// Presentation-only; not included in determinism hashing.
+    /// </summary>
+    public IReadOnlyList<CombatShotEvent> CombatShotsThisTick => _presentation.CombatShotsThisTick;
 
     public GameStatus Status { get; private set; } = GameStatus.InProgress;
 
@@ -473,8 +479,8 @@ public sealed class GameSimulation
                 && entity.Kind == EntityKind.Hub
                 && entity.OwnerId == commander.OwnerId
                 && (excludeEntityId is null || entity.Id != excludeEntityId.Value)
-                && DistanceToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
-                    <= MvpDefinitions.CommanderInteractRadius)
+                && DistanceSquaredToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
+                    <= Square(MvpDefinitions.CommanderInteractRadius))
             .OrderBy(entity => entity.Id)
             .ToList();
 
@@ -1275,8 +1281,8 @@ public sealed class GameSimulation
             return false;
         }
 
-        return DistanceToFootprint(commander.WorldPosition, target.Kind, target.Position)
-            <= MvpDefinitions.CommanderInteractRadius;
+        return DistanceSquaredToFootprint(commander.WorldPosition, target.Kind, target.Position)
+            <= Square(MvpDefinitions.CommanderInteractRadius);
     }
 
     public void DamageEntity(int entityId, int damage)
@@ -1859,7 +1865,8 @@ public sealed class GameSimulation
 
     private static bool IsWithinBuildRadius(WorldEntity commander, EntityKind targetKind, TilePosition anchor)
     {
-        return DistanceToFootprint(commander.WorldPosition, targetKind, anchor) <= MvpDefinitions.CommanderBuildRadius;
+        return DistanceSquaredToFootprint(commander.WorldPosition, targetKind, anchor)
+            <= Square(MvpDefinitions.CommanderBuildRadius);
     }
 
     /// <summary>
@@ -1891,8 +1898,8 @@ public sealed class GameSimulation
                 entity.IsAlive
                 && entity.Kind == EntityKind.Hub
                 && entity.OwnerId == commander.OwnerId
-                && DistanceToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
-                    <= MvpDefinitions.CommanderInteractRadius)
+                && DistanceSquaredToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
+                    <= Square(MvpDefinitions.CommanderInteractRadius))
             .OrderBy(entity => entity.Id)
             .ToList();
 
@@ -1971,15 +1978,17 @@ public sealed class GameSimulation
             .Min(tile => from.ManhattanDistance(tile));
     }
 
-    private static double DistanceToFootprint(WorldPosition from, EntityKind targetKind, TilePosition anchor)
+    private static double DistanceSquaredToFootprint(WorldPosition from, EntityKind targetKind, TilePosition anchor)
     {
         var footprint = MvpDefinitions.GetFootprint(targetKind);
         var closestX = Math.Clamp(from.X, anchor.X, anchor.X + footprint.Width);
         var closestY = Math.Clamp(from.Y, anchor.Y, anchor.Y + footprint.Height);
         var dx = from.X - closestX;
         var dy = from.Y - closestY;
-        return Math.Sqrt(dx * dx + dy * dy);
+        return dx * dx + dy * dy;
     }
+
+    private static double Square(double value) => value * value;
 
     private static Direction Rotate(Direction direction, bool clockwise)
     {
@@ -2154,8 +2163,7 @@ public sealed class GameSimulation
         {
             var target = consumers
                 .Where(entity => entity.EnergyBuffer < entity.EnergyBufferCapacity)
-                .OrderBy(entity => (double)entity.EnergyBuffer / entity.EnergyBufferCapacity)
-                .ThenBy(entity => entity.Id)
+                .OrderBy(entity => entity, EnergyFillRatioComparer.Instance)
                 .FirstOrDefault();
             if (target is null)
             {
@@ -3305,9 +3313,9 @@ public sealed class GameSimulation
             return [];
         }
 
-        var open = new PriorityQueue<TilePosition, (double F, double H, int Y, int X)>();
+        var open = new PriorityQueue<TilePosition, (int F, int H, int Y, int X)>();
         var previous = new Dictionary<TilePosition, TilePosition?>();
-        var costSoFar = new Dictionary<TilePosition, double>();
+        var costSoFar = new Dictionary<TilePosition, int>();
         previous[start] = null;
         costSoFar[start] = 0;
         open.Enqueue(start, (OctileDistance(start, target), OctileDistance(start, target), start.Y, start.X));
@@ -3431,18 +3439,22 @@ public sealed class GameSimulation
         return from.X != to.X && from.Y != to.Y;
     }
 
-    private static double GetStepCost(TilePosition from, TilePosition to)
+    /// <summary>Integer A* step cost (straight=10, diagonal=14 ≈ 10√2). See ADR 0001.</summary>
+    private const int PathCostStraight = 10;
+    private const int PathCostDiagonal = 14;
+
+    private static int GetStepCost(TilePosition from, TilePosition to)
     {
-        return IsDiagonalStep(from, to) ? Math.Sqrt(2) : 1;
+        return IsDiagonalStep(from, to) ? PathCostDiagonal : PathCostStraight;
     }
 
-    private static double OctileDistance(TilePosition from, TilePosition to)
+    private static int OctileDistance(TilePosition from, TilePosition to)
     {
         var dx = Math.Abs(from.X - to.X);
         var dy = Math.Abs(from.Y - to.Y);
         var diagonal = Math.Min(dx, dy);
         var straight = Math.Max(dx, dy) - diagonal;
-        return diagonal * Math.Sqrt(2) + straight;
+        return diagonal * PathCostDiagonal + straight * PathCostStraight;
     }
 
     private bool IsGroundPassable(WorldEntity mover, TilePosition tile)
@@ -3495,14 +3507,15 @@ public sealed class GameSimulation
             }
 
             var minDistance = radius + otherRadius;
-            var nextDistance = position.DistanceTo(entity.WorldPosition);
-            if (nextDistance >= minDistance)
+            var minDistanceSq = minDistance * minDistance;
+            var nextDistanceSq = position.DistanceSquaredTo(entity.WorldPosition);
+            if (nextDistanceSq >= minDistanceSq)
             {
                 continue;
             }
 
-            var currentDistance = mover.WorldPosition.DistanceTo(entity.WorldPosition);
-            if (currentDistance < minDistance && nextDistance > currentDistance)
+            var currentDistanceSq = mover.WorldPosition.DistanceSquaredTo(entity.WorldPosition);
+            if (currentDistanceSq < minDistanceSq && nextDistanceSq > currentDistanceSq)
             {
                 // Allow sliding out of an existing overlap.
                 continue;
@@ -3534,21 +3547,22 @@ public sealed class GameSimulation
 
     private static bool CircleIntersectsEntityFootprint(WorldPosition position, double radius, WorldEntity obstacle)
     {
-        return DistanceToEntityFootprint(position, obstacle) < radius;
+        return DistanceSquaredToEntityFootprint(position, obstacle) < radius * radius;
     }
 
     private static bool MovesOutOfExistingOverlap(WorldEntity mover, WorldPosition nextPosition, double radius, WorldEntity obstacle)
     {
-        var currentDistance = DistanceToEntityFootprint(mover.WorldPosition, obstacle);
-        if (currentDistance >= radius)
+        var currentDistanceSq = DistanceSquaredToEntityFootprint(mover.WorldPosition, obstacle);
+        var radiusSq = radius * radius;
+        if (currentDistanceSq >= radiusSq)
         {
             return false;
         }
 
-        return DistanceToEntityFootprint(nextPosition, obstacle) > currentDistance;
+        return DistanceSquaredToEntityFootprint(nextPosition, obstacle) > currentDistanceSq;
     }
 
-    private static double DistanceToEntityFootprint(WorldPosition position, WorldEntity obstacle)
+    private static double DistanceSquaredToEntityFootprint(WorldPosition position, WorldEntity obstacle)
     {
         var footprintKind = obstacle.Kind == EntityKind.GhostBuild && obstacle.BuildTargetKind is not null
             ? obstacle.BuildTargetKind.Value
@@ -3558,7 +3572,7 @@ public sealed class GameSimulation
         var closestY = Math.Clamp(position.Y, obstacle.Position.Y, obstacle.Position.Y + footprint.Height);
         var dx = position.X - closestX;
         var dy = position.Y - closestY;
-        return Math.Sqrt(dx * dx + dy * dy);
+        return dx * dx + dy * dy;
     }
 
     private static void ResetMovementPath(WorldEntity entity)
@@ -3569,7 +3583,7 @@ public sealed class GameSimulation
 
     private void ProcessCombat()
     {
-        _combatShotsThisTick.Clear();
+        _presentation.ClearCombatShots();
         foreach (var attacker in World.Entities.Where(entity =>
                      entity.IsAlive
                      && !entity.IsGarrisoned
@@ -3617,7 +3631,7 @@ public sealed class GameSimulation
                 continue;
             }
 
-            _combatShotsThisTick.Add(new CombatShotEvent(
+            _presentation.AddCombatShot(new CombatShotEvent(
                 attacker.Id,
                 target.Id,
                 attacker.WorldPosition,
