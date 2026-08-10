@@ -695,7 +695,7 @@ public sealed class GameSimulation
     }
 
     /// <summary>Test helper: clears an entity's primary inventory (not input/output buffers).</summary>
-    public bool ClearEntityInventoryForTests(int entityId)
+    internal bool ClearEntityInventoryForTests(int entityId)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null)
@@ -708,7 +708,7 @@ public sealed class GameSimulation
     }
 
     /// <summary>Test helper: clears an entity's input buffer.</summary>
-    public bool ClearEntityInputBufferForTests(int entityId)
+    internal bool ClearEntityInputBufferForTests(int entityId)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null)
