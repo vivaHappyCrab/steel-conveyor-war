@@ -16,7 +16,7 @@ public static class HostDisplayOptionsLoader
         AllowTrailingCommas = true
     };
 
-    public static SfmlDisplayOptions Parse(string gameJson)
+    public static SfmlDisplayOptions Parse(string gameJson, int ticksPerSecond)
     {
         var dto = JsonSerializer.Deserialize<GameConfigWindowDto>(gameJson, JsonOptions)
             ?? throw new InvalidOperationException("Game settings JSON deserialized to null.");
@@ -28,7 +28,7 @@ public static class HostDisplayOptionsLoader
             ? (string.IsNullOrWhiteSpace(dto.DisplayName) ? SfmlDisplayOptions.Default.Title : dto.DisplayName)
             : window!.Title;
 
-        return new SfmlDisplayOptions(width, height, title);
+        return new SfmlDisplayOptions(width, height, title, ticksPerSecond);
     }
 
     private sealed class GameConfigWindowDto

@@ -10,6 +10,8 @@ public sealed class ConfigContentLoaderTests
         var settings = GameSettingsLoader.Parse(File.ReadAllText(FindConfigPath("game.json")));
         Assert.Equal("steel-conveyor-war", settings.GameId);
         Assert.Equal(42, settings.DefaultRandomSeed);
+        Assert.Equal(30, settings.TicksPerSecond);
+        Assert.Equal(GameSimulation.TicksPerSecond, settings.TicksPerSecond);
         Assert.Equal("research.json", settings.ResearchContentFile);
         Assert.Equal(ResearchProfileIds.MvpB, settings.ResearchProfileId);
         Assert.Equal("maps/default.json", settings.MapContentFile);
@@ -20,6 +22,27 @@ public sealed class ConfigContentLoaderTests
     public void GameSettings_RejectsMissingGameId()
     {
         Assert.Throws<InvalidOperationException>(() => GameSettingsLoader.Parse("""{"schemaVersion":1,"gameId":""}"""));
+    }
+
+    [Fact]
+    public void GameSettings_RejectsNegativeTicksPerSecond()
+    {
+        const string json = """
+            {
+              "schemaVersion": 1,
+              "gameId": "steel-conveyor-war",
+              "simulation": { "ticksPerSecond": -1, "defaultRandomSeed": 42 }
+            }
+            """;
+        var ex = Assert.Throws<InvalidOperationException>(() => GameSettingsLoader.Parse(json));
+        Assert.Contains("ticksPerSecond", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GameSettings_MissingTicksPerSecond_FallsBackToDefault()
+    {
+        var settings = GameSettingsLoader.Parse("""{"schemaVersion":1,"gameId":"steel-conveyor-war"}""");
+        Assert.Equal(GameSettings.Default.TicksPerSecond, settings.TicksPerSecond);
     }
 
     [Fact]

@@ -18,7 +18,7 @@ This document records architecture and game-design decisions made while implemen
 - **Still code-owned:** build costs, recipes, combat stats, footprints, stack sizes, and most timing constants in `MvpDefinitions.cs`. Tile/entity JSON catalogs are ID registries for content ids — they do not yet replace enum-driven simulation behavior.
 - Embedded `MvpResearchCatalog` remains the parity fallback for unit tests and `GameCreationOptions.Default` only (not for Client disk startup).
 - **Host-only window block:** `game.json` may include a presentation `window` `{ width, height, title }` section. Client `HostDisplayOptionsLoader` parses it into `SfmlDisplayOptions`; Core `GameSettings` / `GameSettingsLoader` intentionally ignore it so sim content stays SFML-free. Side-panel layout scales from window width.
-- `simulation.ticksPerSecond` is parsed for future hosts but the Client/SFML loop still uses `GameSimulation.TicksPerSecond` (const 30) until wired.
+- `simulation.ticksPerSecond` is loaded into `GameSettings.TicksPerSecond` and passed to the Client/SFML host loop via `SfmlDisplayOptions.TicksPerSecond` (fixed-delta pacing, through `HostDisplayOptionsLoader.Parse`). Missing/zero falls back to `GameSettings.Default.TicksPerSecond` (30); explicitly negative values fail validation. `GameSimulation.TicksPerSecond` remains the Core const for duration-in-ticks conversions and should stay aligned with the configured host rate unless intentionally retiming.
 
 ## Scope Strategy
 

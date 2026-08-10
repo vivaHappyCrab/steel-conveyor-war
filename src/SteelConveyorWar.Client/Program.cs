@@ -32,7 +32,7 @@ var options = new GameCreationOptions(
     map);
 
 var simulation = GameSimulation.CreateNewGame(options);
-var display = HostDisplayOptionsLoader.Parse(gameJson);
+var display = HostDisplayOptionsLoader.Parse(gameJson, gameSettings.TicksPerSecond);
 new SfmlGameRunner().Run(simulation, smokeTest ? 3 : null, display);
 
 static string ResolveConfigDirectory()
