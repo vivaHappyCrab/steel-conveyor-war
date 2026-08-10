@@ -66,7 +66,7 @@ public sealed class Inventory
         return affordable == int.MaxValue ? 0 : affordable;
     }
 
-    public bool TryRemove(ItemId item, int amount)
+    internal bool TryRemove(ItemId item, int amount)
     {
         if (!Has(item, amount))
         {
@@ -86,7 +86,7 @@ public sealed class Inventory
         return true;
     }
 
-    public bool TryRemoveAll(IReadOnlyDictionary<ItemId, int> costs)
+    internal bool TryRemoveAll(IReadOnlyDictionary<ItemId, int> costs)
     {
         if (!HasAll(costs))
         {
@@ -101,7 +101,7 @@ public sealed class Inventory
         return true;
     }
 
-    public bool TryTakeFirst(Func<ItemId, bool>? predicate, out ItemId item)
+    internal bool TryTakeFirst(Func<ItemId, bool>? predicate, out ItemId item)
     {
         foreach (var pair in _items.OrderBy(pair => pair.Key))
         {
@@ -117,7 +117,7 @@ public sealed class Inventory
         return false;
     }
 
-    public bool TryAddWithinStackLimit(ItemId item, int amount)
+    internal bool TryAddWithinStackLimit(ItemId item, int amount)
     {
         var maxStack = MvpDefinitions.GetMaxStackSize(item);
         if (amount < 0 || Count(item) + amount > maxStack)
@@ -129,7 +129,7 @@ public sealed class Inventory
         return true;
     }
 
-    public bool TryAddWithinTotalStackLimit(ItemId item, int amount, int maxStacks)
+    internal bool TryAddWithinTotalStackLimit(ItemId item, int amount, int maxStacks)
     {
         if (amount < 0 || maxStacks <= 0)
         {
