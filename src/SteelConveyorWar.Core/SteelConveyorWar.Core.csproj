@@ -3,4 +3,9 @@
   <PropertyGroup>
   </PropertyGroup>
 
+  <!-- Test-only friend: god-mode / setup helpers stay internal to Core. Do not add Sfml/Client without review. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="SteelConveyorWar.Core.Tests" />
+  </ItemGroup>
+
 </Project>
