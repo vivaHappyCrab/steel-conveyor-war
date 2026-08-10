@@ -12,4 +12,28 @@ public sealed record EntityCatalog(
     IReadOnlyDictionary<string, EntityDefinition> Entities)
 {
     public static EntityCatalog Empty { get; } = new(1, new Dictionary<string, EntityDefinition>());
+
+    /// <summary>
+    /// Entity kinds whose <see cref="EntityDefinition.LossCondition"/> is <c>Defeat</c>.
+    /// Empty when the catalog declares no defeat loss conditions (or is <see cref="Empty"/>).
+    /// Callers that need MVP fallback when the catalog is empty should supply it themselves.
+    /// </summary>
+    public IReadOnlySet<EntityKind> GetDefeatLossKinds()
+    {
+        var kinds = new HashSet<EntityKind>();
+        foreach (var definition in Entities.Values)
+        {
+            if (!string.Equals(definition.LossCondition, "Defeat", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (Enum.TryParse<EntityKind>(definition.Kind, ignoreCase: false, out var kind))
+            {
+                kinds.Add(kind);
+            }
+        }
+
+        return kinds;
+    }
 }
