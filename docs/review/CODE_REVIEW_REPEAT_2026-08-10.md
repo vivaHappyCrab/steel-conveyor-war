@@ -30,20 +30,27 @@
 6. movement/collision/defend AI всё ещё содержит O(units × entities) проходы;
 7. state hash не фиксирует queued commander orders и identity всех gameplay-каталогов;
 8. malformed command может исключением оборвать tick;
-9. command payload collections можно изменить после enqueue.
+9. command payload collections можно изменить после enqueue;
+10. SFML позволяет управлять research выбранной enemy laboratory;
+11. selection и combat tracers раскрывают live state через FoW;
+12. research content validation пропускает отрицательные science costs и неизвестный target tier;
+13. research pack consumption теряет project identity;
+14. integer rounding может фактически игнорировать research allocations/weights.
 
-В проверенных production-host сценариях текущего локального MVP критических runtime-дефектов не обнаружено. High findings в command/hash/observation path являются блокерами lockstep/network и честного бота; maintainability/performance findings требуют benchmark перед окончательной оценкой severity.
+В smoke-путях критического падения не обнаружено, но статический аудит нашёл High gameplay correctness defects, достижимые в текущем Client, и блокеры lockstep/network/честного бота. Maintainability/performance findings требуют benchmark перед окончательной оценкой severity.
 
 ### Оценка
 
 | Критерий | Первая оценка | Повторная оценка | Комментарий |
 |---|---:|---:|---|
-| Архитектурные паттерны | 7.0 | **7.0** | Добавлены Command/Host/Observation patterns, но Core systems пока не отделены от `GameSimulation` |
-| Производительность | 4.5 | **6.5** | Combat/FoW/energy улучшены; movement/pathfinding и factory accounting — кандидаты на следующий bottleneck |
-| Расширяемость для сети | 5.0 | **5.5** | Появился prerequisite command layer, но production pipeline ещё не command-only |
-| Расширяемость для ботов | 6.5 | **7.0** | Есть headless host и view, но fair view негерметичен и неполон |
-| Разделение ответственности | 7.5 | **7.5** | Межпроектные границы хорошие; внутри Core/SFML крупные orchestration-объекты |
-| **Итого** | **6.0** | **6.7** | Сильный прототип; до production MP требуется ещё один архитектурный этап |
+| Архитектурные паттерны | 7.0 | **6.0** | Границы проектов хорошие; systems/command/observation contracts не образуют герметичный pipeline |
+| Производительность | 4.5 | **6.0** | Combat/FoW/energy улучшены; movement/factory/FoW allocations не защищены benchmark gate |
+| Расширяемость для сети | 5.0 | **4.0** | Queue — только infrastructure; authorization/hash/order/host path неполны |
+| Расширяемость для ботов | 6.5 | **6.0** | Headless/view есть, но production bot обходит fair view, а live references нарушают fairness |
+| Разделение ответственности | 7.5 | **6.0** | Межпроектные границы хорошие; Core/SFML orchestration и authority surfaces слишком широки |
+| **Итого** | **6.0** | **5.6** | Глубокая повторная проверка выявила correctness gaps, не покрытые закрытыми issue |
+
+Отдельный subscore data-driven/content extensibility: **4.0/10**.
 
 ---
 
@@ -91,24 +98,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File eng/verify.ps1
 | C1 Energy fill | **Частично исправлено** | Min-heap вместо re-sort: [`PowerSystem.cs:125–162`](../../src/SteelConveyorWar.Core/Systems/PowerSystem.cs#L125-L162). На распределённую единицу выполняется dequeue и обычно enqueue |
 | C2 Command queue | **Частично исправлено** | DTO/queue/serializer существуют, но SFML и Headless работают через immediate `Try*` |
 | H1 `GameSimulation` god-class | **Косметически/частично** | Код разнесён по partial files, но systems остаются nested wrappers над методами того же класса |
-| H2 SFML god-runner | **В основном исправлено** | Runner стал тонким, но `SfmlPlaySession` = 1108 строк, `HudOverlay` = 901 строк |
+| H2 SFML god-runner | **Частично исправлено** | Runner стал тонким, но `SfmlPlaySession` = 1108 строк; authority/FoW/input defects остались в session/HUD |
 | H3 Spatial index | **Частично исправлено** | id/tile index добавлен; continuous collision и defend threat всё ещё full scan |
 | H4 Combat scans | **В основном исправлено** | `CombatSpatialIndex` ограничивает target/splash/LoS neighborhood |
 | H5 Authoritative doubles | **Риск принят, не устранён** | ADR 0001 ограничивает lockstep одним runtime/ABI; movement `Sqrt` остаётся |
-| H6 Ownership checks | **Частично исправлено** | Проверки есть на основных immediate APIs, но не на всех queued command handlers |
-| H7 Hardcoded P1 | **Исправлено** | `SfmlDisplayOptions.LocalPlayerId` + Client CLI binding |
+| H6 Ownership checks | **Не исправлено end-to-end** | Immediate APIs проверяют часть actors; queued commander paths и laboratory shortcut обходят boundary |
+| H7 Hardcoded P1 | **В основном исправлено** | Binding инъецируется, но renderer всё ещё сравнивает owners с `PlayerId(1)` |
 | M1 FoW repaint | **В основном исправлено** | Dirty-list decay; vision discs всё ещё рисуются каждый tick |
 | M2 LINQ allocations | **Частично исправлено** | Scratch buffers добавлены; path/factory/research/world queries всё ещё аллоцируют |
-| M3 Balance to config | **Частично по scope** | Build costs мигрированы; recipes/combat/stacks/power остаются в code |
-| M4 Config TPS | **Исправлено** | Client передаёт TPS в `SfmlDisplayOptions` |
-| M5 Cheat APIs | **Частично исправлено** | Основные helpers internal; `TryAddOutputItemToEntity` остался публичным |
+| M3 Balance to config | **Частично по scope** | Core build costs мигрированы; SFML affordability/menu и остальные balance domains остаются code-owned |
+| M4 Config TPS | **Host wiring исправлен** | TPS передаётся в SFML, но Core duration/history constants остаются 30 TPS |
+| M5 Cheat APIs | **Частично исправлено** | `TryAddOutputItemToEntity`, public energy drain и public `ResearchSystem` остаются mutation hooks |
 | M6 Inventory mutators | **Исправлено** | Mutators стали assembly-internal |
 | M7 Headless host | **Частично исправлено** | Host есть и проверяется в CI, но stub AI читает `World` и вызывает immediate API |
 | M8 Fair observation | **Частично исправлено** | FoW gate есть, но возвращаются live entity references |
 | L1 Presentation state | **Исправлено/задокументировано** | Sink и hash-exclusion tests |
 | L2 Golden hash | **Осознанно отложено** | Решение документировано; dual-run остаётся gate |
 | L3 Dead commanders | **Исправлено** | Удаляются после victory evaluation |
-| L4 JSON behavior | **Частичный vertical slice** | `lossCondition` влияет на victory; остальное registry/metadata |
+| L4 JSON behavior | **Частичный vertical slice** | `lossCondition` влияет на victory; cross-catalog/research validation и content fingerprints неполны |
 | L5 WindowSettings in Core | **Исправлено** | Host-only parsing в Client |
 
 ---
@@ -240,7 +247,7 @@ Deserializer принимает произвольный положительн�
 
 #### R10. Нет content/session manifest hash
 
-Hasher включает `ResearchCatalog.ContentHash`, но не identity `BuildCostCatalog` и `EntityCatalog`: [`SimulationStateHasher.cs:33–41`](../../src/SteelConveyorWar.Core/Determinism/SimulationStateHasher.cs#L33-L41).
+Hasher включает `ResearchCatalog.ContentHash`, но не identity `BuildCostCatalog` и `EntityCatalog`: [`SimulationStateHasher.cs:33–41`](../../src/SteelConveyorWar.Core/Determinism/SimulationStateHasher.cs#L33-L41). Для production JSON research hash канонизирует полный DTO: [`ResearchContentLoader.cs:108–125`](../../src/SteelConveyorWar.Core/Research/ResearchContentLoader.cs#L108-L125). Более слабый ID/count-only hash используется embedded test/default fallback: [`MvpResearchCatalog.cs:5–17`](../../src/SteelConveyorWar.Core/Research/MvpResearchCatalog.cs#L5-L17), [`MvpResearchCatalog.cs:612–620`](../../src/SteelConveyorWar.Core/Research/MvpResearchCatalog.cs#L612-L620).
 
 При этом:
 
@@ -261,6 +268,7 @@ Hasher включает `ResearchCatalog.ContentHash`, но не identity `Build
 - нет schema/protocol version;
 - нет command id/sequence;
 - для части пропущенных полей используются defaults (`Clockwise ?? true`, `Direction ?? East`);
+- command model не выражает `TryConfirmExclusive`, `TrySetProjectWeight`, `preferredTrackId` и `confirmExclusive`;
 - serializer round-trip tests покрывают только move и bastion order: [`CommandQueueTests.cs:48–71`](../../tests/SteelConveyorWar.Core.Tests/CommandQueueTests.cs#L48-L71);
 - result/rejection command не логируется (`ApplyQueuedCommandsForCurrentTick` игнорирует `bool`).
 
@@ -280,7 +288,7 @@ Hasher не пишет `_commandBuffer`. Два simulation snapshot с один�
 
 #### R14. Остался публичный item-injection API
 
-`TryAddOutputItemToEntity` публично добавляет item без игрового источника или actor: [`GameSimulation.cs:1028–1039`](../../src/SteelConveyorWar.Core/GameSimulation.cs#L1028-L1039).
+`TryAddOutputItemToEntity` публично добавляет item без игрового источника или actor: [`GameSimulation.cs:1028–1039`](../../src/SteelConveyorWar.Core/GameSimulation.cs#L1028-L1039). `TryConsumeBuildingEnergy` публично меняет energy/stat accounting через переданный live entity: [`PowerSystem.cs:26–53`](../../src/SteelConveyorWar.Core/Systems/PowerSystem.cs#L26-L53). Публичный `ResearchSystem` принимает live authoritative research/simulation и может выполнять mutation вне `AdvanceTick`: [`ResearchSystem.cs:3–21`](../../src/SteelConveyorWar.Core/Research/ResearchSystem.cs#L3-L21), [`ResearchSystem.cs:222–228`](../../src/SteelConveyorWar.Core/Research/ResearchSystem.cs#L222-L228).
 
 Это противоречит задокументированной цели gating cheat helpers и опасно для plugin/bot host.
 
@@ -357,6 +365,82 @@ CI собирает coverage и запускает multi-OS build/tests/smoke, �
 - large-world/large-army scenario;
 - coverage threshold;
 - command serializer/property-based tests для всех kinds.
+
+### High — gameplay/content correctness
+
+#### R26. SFML позволяет управлять research противника
+
+Laboratory number shortcut не проверяет `selectedEntity.OwnerId == localPlayer`. Вместо этого он берёт owner выбранной лаборатории и вызывает mutation от его имени: [`SfmlPlaySession.cs:384–395`](../../src/SteelConveyorWar.Sfml/SfmlPlaySession.cs#L384-L395).
+
+Игрок может выбрать видимую enemy laboratory и переключить research противника. Это текущий gameplay authority bug, а не только будущий network risk.
+
+**Рекомендация:** единый local command controller с обязательным actor; запретить enemy entity actions на Core boundary и покрыть P1/P2 adapter tests.
+
+#### R27. Selection и combat tracers нарушают FoW
+
+Visibility проверяется только в момент click/selection: [`SfmlPlaySession.cs:744–767`](../../src/SteelConveyorWar.Sfml/SfmlPlaySession.cs#L744-L767). После ухода enemy из vision `selectedEntityId` сохраняется, а HUD продолжает читать live HP, energy, production, world position и queued orders: [`HudOverlay.cs:237–286`](../../src/SteelConveyorWar.Sfml/Ui/HudOverlay.cs#L237-L286).
+
+Все global `CombatShotsThisTick` сохраняются без local-player filtering: [`SfmlPlaySession.cs:915–922`](../../src/SteelConveyorWar.Sfml/SfmlPlaySession.cs#L915-L922), а renderer рисует их без visibility gate: [`WorldRenderer.cs:44–58`](../../src/SteelConveyorWar.Sfml/Rendering/WorldRenderer.cs#L44-L58), [`WorldRenderer.cs:83–101`](../../src/SteelConveyorWar.Sfml/Rendering/WorldRenderer.cs#L83-L101).
+
+Следствие — hidden movement/combat можно отслеживать через выбранный object и tracer endpoints.
+
+**Рекомендация:** каждый frame инвалидировать selection через observation snapshot; фильтровать presentation events по observer visibility.
+
+#### R28. Research content validation пропускает опасные значения
+
+Validator требует наличие science packs, но не проверяет `Amount > 0` и duplicate item entries: [`ResearchContentValidator.cs:29–38`](../../src/SteelConveyorWar.Core/Research/ResearchContentValidator.cs#L29-L38). При отрицательной стоимости `Inventory.TryRemove(item, negative)` увеличивает количество item: [`Inventory.cs:69–84`](../../src/SteelConveyorWar.Core/Logistics/Inventory.cs#L69-L84). Duplicate packs проходят `CanAfford` по отдельности, но могут частично списаться и затем завершиться `false`: [`ResearchSystem.cs:429–447`](../../src/SteelConveyorWar.Core/Research/ResearchSystem.cs#L429-L447).
+
+Profile budget validation проверяет только сумму и известность keys, но допускает отрицательные default allocations: [`ResearchContentValidator.cs:53–65`](../../src/SteelConveyorWar.Core/Research/ResearchContentValidator.cs#L53-L65).
+
+Ветка unknown `gate.TargetTierId` также не бросает исключение: [`ResearchContentValidator.cs:68–79`](../../src/SteelConveyorWar.Core/Research/ResearchContentValidator.cs#L68-L79). После completion неизвестный tier записывается в authoritative state: [`ResearchSystem.cs:647–660`](../../src/SteelConveyorWar.Core/Research/ResearchSystem.cs#L647-L660).
+
+**Рекомендация:** fail-fast для non-positive pack amounts, duplicate pack item entries, negative allocations и unknown target tiers; negative configuration tests.
+
+#### R29. Research work теряет источник pack и искажает allocations/weights
+
+`TryConsumePackForAnyActiveProject` возвращает только `bool`, после чего Core увеличивает общий `packConsumptions`; identity проекта, под который был списан pack, теряется: [`ResearchSystem.cs:413–455`](../../src/SteelConveyorWar.Core/Research/ResearchSystem.cs#L413-L455). Затем generic work распределяется между всеми active projects. При одновременных previous-tier optionals и current-tier projects pack одного типа может продвинуть другой project.
+
+Дополнительно при `packConsumptions = 1` доли всех tracks, кроме последнего, округляются вниз до нуля, а весь remainder получает последний track: [`ResearchSystem.cs:452–480`](../../src/SteelConveyorWar.Core/Research/ResearchSystem.cs#L452-L480). Тот же last-entry bias повторяется для weighted projects: [`ResearchSystem.cs:482–523`](../../src/SteelConveyorWar.Core/Research/ResearchSystem.cs#L482-L523).
+
+Например, allocation 70/30 при одном work unit превращается в 0/100 на каждом cycle. UI хранит настройку, но фактический progress может её игнорировать.
+
+**Рекомендация:** сохранять consumed-project identity; deterministic remainder accumulator / largest-remainder rotation между cycles; tests на mixed pack types, долгосрочное 70/30 и weighted distribution.
+
+#### R30. SFML build UI расходится с runtime build catalog
+
+Build bar вызывает affordability без `simulation.BuildCostCatalog`, поэтому model использует embedded fallback: [`BuildBarOverlay.cs:50–73`](../../src/SteelConveyorWar.Sfml/Ui/BuildBarOverlay.cs#L50-L73), [`BuildBarModel.cs:50–58`](../../src/SteelConveyorWar.Sfml/Ui/BuildBarModel.cs#L50-L58). UI также учитывает только commander inventory, тогда как Core может оплатить build из nearby hubs.
+
+Список buildable entities hardcoded: [`BuildMenuCatalog.cs:5–26`](../../src/SteelConveyorWar.Sfml/Ui/BuildMenuCatalog.cs#L5-L26) и уже не включает настроенные `UndergroundConveyor`, `SteelWall`, `CannonTurret`, `AntiAirTurret`: [`build-costs.json:53–57`](../../config/build-costs.json#L53-L57), [`build-costs.json:85–105`](../../config/build-costs.json#L85-L105).
+
+**Рекомендация:** build menu/view model строится из authoritative `BuildCostCatalog` + capability snapshot; один affordability query в Core.
+
+### Medium — additional integration/scaling gaps
+
+#### R31. Multiplayer roster и victory остаются 1v1-specific
+
+Players загружаются из map config, но starting entities создаются для фиксированных `PlayerId(1)`/`PlayerId(2)`: [`GameSimulation.cs:1393–1416`](../../src/SteelConveyorWar.Core/GameSimulation.cs#L1393-L1416). Victory объявляется только когда остаётся один active **player**, а не одна active team: [`VictorySystem.cs:16–35`](../../src/SteelConveyorWar.Core/Systems/VictorySystem.cs#L16-L35).
+
+Renderer также использует `PlayerId(1)` для outline/color, несмотря на injected local seat: [`WorldRenderer.cs:217–250`](../../src/SteelConveyorWar.Sfml/Rendering/WorldRenderer.cs#L217-L250), [`WorldRenderer.cs:417–422`](../../src/SteelConveyorWar.Sfml/Rendering/WorldRenderer.cs#L417-L422).
+
+#### R32. Configurable TPS меняет real-time semantics не полностью
+
+SFML pacing принимает любой положительный configured TPS, но Core durations и `EnergyStatsHistory` используют константу 30 TPS: [`GameSimulation.cs:5–12`](../../src/SteelConveyorWar.Core/GameSimulation.cs#L5-L12), [`EnergyStatsHistory.cs:11–12`](../../src/SteelConveyorWar.Core/Energy/EnergyStatsHistory.cs#L11-L12), [`EnergyStatsHistory.cs:97–100`](../../src/SteelConveyorWar.Core/Energy/EnergyStatsHistory.cs#L97-L100).
+
+Документация требует держать configured TPS согласованным с Core default, но это не enforced: [`MVP_IMPLEMENTATION_DECISIONS.md:35`](../MVP_IMPLEMENTATION_DECISIONS.md#L35). Значение, отличное от 30, меняет реальную длительность gameplay и графиков.
+
+#### R33. SFML rendering имеет отдельные scaling hotspots
+
+Minimap каждый frame сканирует все 192×112 tiles; `Unknown` пропускаются, поэтому **до** 21 504 explored/visible tile draw calls выполняются в худшем случае: [`HudOverlay.cs:85–103`](../../src/SteelConveyorWar.Sfml/Ui/HudOverlay.cs#L85-L103). World renderer каждый frame создаёт visible-entity list и перечисляет его дважды: [`WorldRenderer.cs:44–55`](../../src/SteelConveyorWar.Sfml/Rendering/WorldRenderer.cs#L44-L55).
+
+Нужны cached minimap texture/dirty regions и frame-allocation benchmark.
+
+#### R34. Cross-catalog validation и schema evolution неполны
+
+Research unlock effects принимают произвольные `contentKind/contentId`: [`ResearchContentLoader.cs:130–149`](../../src/SteelConveyorWar.Core/Research/ResearchContentLoader.cs#L130-L149), а неизвестные kinds затем молча игнорируются при применении: [`ResearchSystem.cs:700–720`](../../src/SteelConveyorWar.Core/Research/ResearchSystem.cs#L700-L720). Build requirement принимает любой technology string без проверки against `ResearchCatalog`: [`BuildCostContentLoader.cs:50–63`](../../src/SteelConveyorWar.Core/Content/BuildCostContentLoader.cs#L50-L63).
+
+Content schemas также не имеют строгой evolution policy: build/entity/tile/game/map loaders принимают любую `schemaVersion >= 1` ([`BuildCostContentLoader.cs:14–22`](../../src/SteelConveyorWar.Core/Content/BuildCostContentLoader.cs#L14-L22), [`GameSettingsLoader.cs:14–22`](../../src/SteelConveyorWar.Core/Content/GameSettingsLoader.cs#L14-L22), [`MapSettingsLoader.cs:14–22`](../../src/SteelConveyorWar.Core/Content/MapSettingsLoader.cs#L14-L22)), а research DTO вообще не имеет schema version: [`ResearchContentLoader.cs:285–291`](../../src/SteelConveyorWar.Core/Research/ResearchContentLoader.cs#L285-L291).
+
+Следствие — typo может молча оставить content навсегда locked, а future schema быть принятой старым loader без понимания новых semantics.
 
 ### Low
 
@@ -440,7 +524,9 @@ GameSimulation / SimulationKernel
 3. repeated A* allocations/repath;
 4. Factory/Bastion aggregate recounts;
 5. FoW repaint for all vision sources;
-6. per-unit energy heap loop при росте production.
+6. per-unit energy heap loop при росте production;
+7. per-tick combat/power dictionaries и read-only wrappers;
+8. uncached minimap draw calls.
 
 ### Нужный benchmark matrix
 
@@ -483,7 +569,9 @@ GameSimulation / SimulationKernel
 9. нет save/replay ledger;
 10. pending queue не входит в hash и не сравнивается отдельно;
 11. authoritative FP ограничивает mixed-platform lockstep;
-12. public/castable state surfaces слишком широкие для untrusted adapters.
+12. public/castable state surfaces слишком широкие для untrusted adapters;
+13. command DTO не выражают все research intents;
+14. roster/start/victory/render assumptions остаются 1v1/P1-specific.
 
 **Вывод:** Core готов к следующему этапу исследования lockstep, но не к заявлению «network-ready».
 
@@ -499,6 +587,8 @@ GameSimulation / SimulationKernel
 - отправлять существующие gameplay intents;
 - проверять deterministic hash.
 
+Эти возможности являются opt-in: текущий Headless stub читает `simulation.World.Entities` и вызывает immediate mutation, не используя fair view/queue.
+
 ### Чего не хватает
 
 1. immutable per-tick observation snapshot;
@@ -507,7 +597,8 @@ GameSimulation / SimulationKernel
 4. deterministic bot cadence/seed contract;
 5. scenario tests «бот достигает цели за tick budget»;
 6. защита от retained live references;
-7. отдельный AI module (сейчас Headless содержит только stub).
+7. filtered presentation/event stream;
+8. отдельный AI module (сейчас Headless содержит только stub).
 
 **Вывод:** инфраструктура бота появилась, но честный продуктовый bot API ещё не сформирован.
 
@@ -530,8 +621,10 @@ GameSimulation / SimulationKernel
 - `WorldEntity` остаётся fat state bag для logistics/combat/movement/build/bastion.
 - SFML читает live `GameWorld`/`PlayerState`, а не UI snapshot.
 - `IPlayerView` выдаёт domain objects вместо observation DTO.
+- SFML дублирует FoW policy, читает live selected entity и содержит command-producing code в session/overlays.
+- Public `ResearchSystem` и energy mutation helper позволяют обходить tick orchestration.
 - два hosts дублируют config bootstrap.
-- content behavior одновременно живёт в catalogs, enums и `MvpDefinitions`.
+- content behavior одновременно живёт в catalogs, enums, SFML catalogs и `MvpDefinitions`.
 
 ---
 
@@ -539,23 +632,29 @@ GameSimulation / SimulationKernel
 
 ### P0 — correctness / trust
 
-1. Actor authorization для **всех** command kinds.
-2. Перевести SFML и Headless на queue-only command sink.
-3. Canonical `(tick, actor, actorSequence)` order + duplicate policy.
-4. Сделать command payloads глубоко immutable.
-5. Валидировать untrusted envelopes без исключений из tick loop.
-6. Добавить queued commander orders в state hash.
-7. Убрать cast-mutable root collections.
-8. Закрыть `TryAddOutputItemToEntity`.
-9. Добавить content/session manifest hash.
+1. Закрыть enemy-laboratory research control.
+2. Инвалидировать hidden selection и фильтровать combat tracers по observer FoW.
+3. Запретить non-positive/duplicate science pack entries, negative default allocations и unknown target tiers.
+4. Сохранить consumed-project identity и исправить deterministic research allocation/weight remainder.
+5. Actor authorization для **всех** command kinds.
+6. Перевести SFML и Headless на queue-only command sink.
+7. Canonical `(tick, actor, actorSequence)` order + duplicate policy.
+8. Сделать command payloads глубоко immutable.
+9. Валидировать untrusted envelopes без исключений из tick loop.
+10. Добавить queued commander orders в state hash.
+11. Убрать cast-mutable root collections/tables.
+12. Закрыть public item/energy/research mutation hooks.
+13. Добавить полный content/session manifest hash.
 
 ### P1 — bots / scale
 
 1. Immutable `PlayerObservationSnapshot`.
 2. Own player economy/research view.
-3. Shared spatial query service для movement/threat/collision.
-4. Reusable A* workspace/path cache.
-5. Benchmark project и regression scenarios.
+3. Строить build menu/affordability из runtime catalog.
+4. Shared spatial query service для movement/threat/collision.
+5. Reusable A* workspace/path cache.
+6. Cached/dirty minimap rendering.
+7. Benchmark project и regression scenarios.
 
 ### P2 — maintainability / extensibility
 
@@ -563,16 +662,19 @@ GameSimulation / SimulationKernel
 2. Разделить `SfmlPlaySession` input/session state.
 3. Общий host bootstrap для Client/Headless.
 4. Мигрировать recipes/combat/stacks/power/footprints в versioned content catalogs.
-5. Fixed-point world coordinates перед heterogeneous lockstep.
+5. Добавить cross-catalog validation и strict schema-version policy.
+6. Enforce или удалить configurable TPS, согласовав все tick-duration/history semantics.
+7. Сделать starts/victory/rendering roster/team-driven.
+8. Fixed-point world coordinates перед heterogeneous lockstep.
 
 ---
 
 ## 11. Финальный вывод
 
-Повторный аудит подтверждает, что remediation wave после #61 была полезной: наиболее очевидные perf bottlenecks и layer violations исправлены или существенно смягчены. Репозиторий теперь имеет реальную основу для headless simulation, command logging и AI experiments.
+Повторный аудит подтверждает, что remediation wave после #61 была полезной: наиболее очевидные perf bottlenecks и layer violations исправлены или существенно смягчены. Репозиторий теперь имеет реальную основу для headless simulation, command logging и AI experiments. Однако более глубокая cross-domain проверка нашла текущие gameplay correctness defects в research/FoW/config paths, поэтому итоговая оценка снижена до **5.6/10**.
 
 При этом несколько закрытых issue реализовали **минимальный vertical slice**, а не конечную архитектуру. Самая важная корректировка ожиданий:
 
-> Наличие command queue, state hash и headless host ещё не делает игру готовой к сети; production hosts, authorization, ordering, content identity и immutable observations должны образовать один непрерывный authoritative pipeline.
+> Наличие command queue, state hash и headless host ещё не делает игру готовой к сети; production hosts, authorization, ordering, content identity и immutable observations должны образовать один непрерывный authoritative pipeline. До этого необходимо закрыть текущие enemy-research, FoW и research-validation defects.
 
-Текущий статус: **хороший deterministic MVP prototype, готовый к следующему архитектурному этапу; не production-ready для сетевого multiplayer**.
+Текущий статус: **перспективный deterministic MVP prototype с сильными project boundaries, но с High correctness gaps; не production-ready для сетевого multiplayer или честного competitive client**.
