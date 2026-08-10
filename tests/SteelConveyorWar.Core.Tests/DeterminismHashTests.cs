@@ -45,7 +45,7 @@ public sealed class DeterminismHashTests
         var simulation = GameSimulation.CreateNewGame(seed);
         var commander = simulation.World.Entities.First(entity =>
             entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Commander);
-        Assert.True(simulation.TryIssueMoveCommand(commander.Id, new TilePosition(12, 10)));
+        Assert.True(simulation.TryIssueMoveCommand(commander.Id, new PlayerId(1), new TilePosition(12, 10)));
         for (var i = 0; i < ticks; i++)
         {
             simulation.AdvanceTick();
