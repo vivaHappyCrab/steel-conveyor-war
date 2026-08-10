@@ -3,6 +3,7 @@ using SteelConveyorWar.Core;
 using SteelConveyorWar.Sfml;
 
 var smokeTest = args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
+var localPlayerId = LocalPlayerBinding.Resolve(args);
 
 var configDirectory = ResolveConfigDirectory();
 if (!Directory.Exists(configDirectory))
@@ -34,7 +35,7 @@ var options = new GameCreationOptions(
     buildCosts);
 
 var simulation = GameSimulation.CreateNewGame(options);
-var display = HostDisplayOptionsLoader.Parse(gameJson, gameSettings.TicksPerSecond);
+var display = HostDisplayOptionsLoader.Parse(gameJson, gameSettings.TicksPerSecond, localPlayerId);
 new SfmlGameRunner().Run(simulation, smokeTest ? 3 : null, display);
 
 static string ResolveConfigDirectory()

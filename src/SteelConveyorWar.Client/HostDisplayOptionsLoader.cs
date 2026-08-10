@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SteelConveyorWar.Core;
 using SteelConveyorWar.Sfml;
 
 namespace SteelConveyorWar.Client;
@@ -16,7 +17,10 @@ public static class HostDisplayOptionsLoader
         AllowTrailingCommas = true
     };
 
-    public static SfmlDisplayOptions Parse(string gameJson, int ticksPerSecond)
+    public static SfmlDisplayOptions Parse(
+        string gameJson,
+        int ticksPerSecond,
+        PlayerId? localPlayerId = null)
     {
         var dto = JsonSerializer.Deserialize<GameConfigWindowDto>(gameJson, JsonOptions)
             ?? throw new InvalidOperationException("Game settings JSON deserialized to null.");
@@ -28,7 +32,7 @@ public static class HostDisplayOptionsLoader
             ? (string.IsNullOrWhiteSpace(dto.DisplayName) ? SfmlDisplayOptions.Default.Title : dto.DisplayName)
             : window!.Title;
 
-        return new SfmlDisplayOptions(width, height, title, ticksPerSecond);
+        return new SfmlDisplayOptions(width, height, title, ticksPerSecond, localPlayerId);
     }
 
     private sealed class GameConfigWindowDto
