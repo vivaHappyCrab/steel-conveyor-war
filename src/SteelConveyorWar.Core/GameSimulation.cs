@@ -19,6 +19,13 @@ public sealed class GameSimulation
     private readonly Dictionary<PlayerId, int> _tickPowerConsumed = new();
     private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickProducedByKind = new();
     private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickConsumedByKind = new();
+    // Reused across ticks to avoid LINQ/ToList allocations on hot simulation paths.
+    private readonly List<WorldEntity> _scratchEntities = new();
+    private readonly List<WorldEntity> _scratchEntitiesSecondary = new();
+    private readonly List<WorldEntity> _scratchDeadBastions = new();
+    private readonly List<WorldEntity> _scratchCascadeUnits = new();
+    private readonly List<ConveyorItem> _scratchConveyorItems = new();
+    private readonly List<(int SourceId, WorldEntity Inserter, WorldEntity Source)> _scratchInserterExtracts = new();
     private int _nextEntityId = 1;
 
     /// <summary>
@@ -2514,32 +2521,51 @@ public sealed class GameSimulation
 
     private void ProcessInserters()
     {
-        var inserters = World.Entities
-            .Where(entity => entity.IsAlive && entity.Kind == EntityKind.Inserter)
-            .OrderBy(entity => entity.Id)
-            .ToList();
+        CollectSortedAliveEntities(_scratchEntities, static entity => entity.Kind == EntityKind.Inserter);
 
         // Empty-handed extract: at most one pull per source entity per tick (fair share by tick + source id).
-        var extractGroups = inserters
-            .Where(inserter => inserter.HeldItem is null)
-            .Select(inserter =>
-            {
-                var source = World.GetTopEntityAt(inserter.Position.Offset(Opposite(inserter.Direction)));
-                return (Inserter: inserter, Source: source);
-            })
-            .Where(pair => pair.Source is not null)
-            .GroupBy(pair => pair.Source!.Id)
-            .OrderBy(group => group.Key);
-
-        foreach (var group in extractGroups)
+        _scratchInserterExtracts.Clear();
+        for (var i = 0; i < _scratchEntities.Count; i++)
         {
-            var candidates = group.OrderBy(pair => pair.Inserter.Id).ToList();
-            var start = (int)((Tick + group.Key) % candidates.Count);
-            for (var offset = 0; offset < candidates.Count; offset++)
+            var inserter = _scratchEntities[i];
+            if (inserter.HeldItem is not null)
             {
-                var index = (start + offset) % candidates.Count;
-                var (inserter, source) = candidates[index];
-                if (TryExtractItem(source!, inserter.FilterItem, out var item))
+                continue;
+            }
+
+            var source = World.GetTopEntityAt(inserter.Position.Offset(Opposite(inserter.Direction)));
+            if (source is null)
+            {
+                continue;
+            }
+
+            _scratchInserterExtracts.Add((source.Id, inserter, source));
+        }
+
+        _scratchInserterExtracts.Sort(static (left, right) =>
+        {
+            var bySource = left.SourceId.CompareTo(right.SourceId);
+            return bySource != 0 ? bySource : left.Inserter.Id.CompareTo(right.Inserter.Id);
+        });
+
+        var extractIndex = 0;
+        while (extractIndex < _scratchInserterExtracts.Count)
+        {
+            var sourceId = _scratchInserterExtracts[extractIndex].SourceId;
+            var groupStart = extractIndex;
+            while (extractIndex < _scratchInserterExtracts.Count
+                   && _scratchInserterExtracts[extractIndex].SourceId == sourceId)
+            {
+                extractIndex++;
+            }
+
+            var groupCount = extractIndex - groupStart;
+            var start = (int)((Tick + sourceId) % groupCount);
+            for (var offset = 0; offset < groupCount; offset++)
+            {
+                var index = groupStart + ((start + offset) % groupCount);
+                var (_, inserter, source) = _scratchInserterExtracts[index];
+                if (TryExtractItem(source, inserter.FilterItem, out var item))
                 {
                     inserter.HeldItem = item;
                     inserter.HeldTransferTicksRemaining = MvpDefinitions.InserterTransferTicks;
@@ -2548,8 +2574,14 @@ public sealed class GameSimulation
             }
         }
 
-        foreach (var inserter in inserters.Where(entity => entity.HeldItem is not null))
+        for (var i = 0; i < _scratchEntities.Count; i++)
         {
+            var inserter = _scratchEntities[i];
+            if (inserter.HeldItem is null)
+            {
+                continue;
+            }
+
             if (inserter.HeldTransferTicksRemaining > 0)
             {
                 inserter.HeldTransferTicksRemaining--;
@@ -2566,10 +2598,23 @@ public sealed class GameSimulation
 
     private void ProcessConveyors()
     {
-        foreach (var conveyor in World.Entities.Where(entity => entity.IsAlive && (entity.Kind == EntityKind.Conveyor || entity.Kind == EntityKind.UndergroundConveyor)).OrderBy(entity => entity.Id).ToList())
+        CollectSortedAliveEntities(
+            _scratchEntities,
+            static entity => entity.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor);
+
+        for (var conveyorIndex = 0; conveyorIndex < _scratchEntities.Count; conveyorIndex++)
         {
-            foreach (var conveyorItem in conveyor.ConveyorItems.ToList())
+            var conveyor = _scratchEntities[conveyorIndex];
+            _scratchConveyorItems.Clear();
+            var liveItems = conveyor.ConveyorItemsMutable;
+            for (var itemIndex = 0; itemIndex < liveItems.Count; itemIndex++)
             {
+                _scratchConveyorItems.Add(liveItems[itemIndex]);
+            }
+
+            for (var itemIndex = 0; itemIndex < _scratchConveyorItems.Count; itemIndex++)
+            {
+                var conveyorItem = _scratchConveyorItems[itemIndex];
                 conveyorItem.ProgressTicks++;
                 var moveTicks = MvpDefinitions.ConveyorMoveTicks;
                 if (conveyor.OwnerId is not null)
@@ -2607,13 +2652,26 @@ public sealed class GameSimulation
     {
         if (source.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor)
         {
-            var conveyorItem = source.ConveyorItems
-                .OrderBy(slot => slot.Item)
-                .FirstOrDefault(slot => filter is null || slot.Item == filter.Value);
-            if (conveyorItem is not null)
+            ConveyorItem? selected = null;
+            var slots = source.ConveyorItemsMutable;
+            for (var i = 0; i < slots.Count; i++)
             {
-                item = conveyorItem.Item;
-                source.ConveyorItemsMutable.Remove(conveyorItem);
+                var slot = slots[i];
+                if (filter is not null && slot.Item != filter.Value)
+                {
+                    continue;
+                }
+
+                if (selected is null || slot.Item.CompareTo(selected.Item) < 0)
+                {
+                    selected = slot;
+                }
+            }
+
+            if (selected is not null)
+            {
+                item = selected.Item;
+                source.ConveyorItemsMutable.Remove(selected);
                 return true;
             }
         }
@@ -3209,38 +3267,75 @@ public sealed class GameSimulation
             return null;
         }
 
-        return World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && !entity.IsGarrisoned
-                && entity.OwnerId is not null
-                && !AreAllied(origin.OwnerId, entity.OwnerId)
-                && origin.Position.IsWithinEuclideanRange(entity.Position, radius))
-            .OrderBy(entity => origin.Position.EuclideanDistanceSquared(entity.Position))
-            .ThenBy(entity => entity.Id)
-            .FirstOrDefault();
+        WorldEntity? best = null;
+        var bestDistanceSquared = 0;
+        var entities = World.Entities;
+        for (var i = 0; i < entities.Count; i++)
+        {
+            var entity = entities[i];
+            if (!entity.IsAlive
+                || entity.IsGarrisoned
+                || entity.OwnerId is null
+                || AreAllied(origin.OwnerId, entity.OwnerId)
+                || !origin.Position.IsWithinEuclideanRange(entity.Position, radius))
+            {
+                continue;
+            }
+
+            var distanceSquared = origin.Position.EuclideanDistanceSquared(entity.Position);
+            if (best is null
+                || distanceSquared < bestDistanceSquared
+                || (distanceSquared == bestDistanceSquared && entity.Id < best.Id))
+            {
+                best = entity;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return best;
     }
 
     private void CascadeBastionDeaths()
     {
-        foreach (var bastion in World.Entities.Where(entity => entity.Kind == EntityKind.Bastion && !entity.IsAlive).ToList())
+        _scratchDeadBastions.Clear();
+        var entities = World.Entities;
+        for (var i = 0; i < entities.Count; i++)
         {
-            foreach (var unit in World.Entities
-                         .Where(entity =>
-                             entity.AssignedBastionId == bastion.Id
-                             && entity.IsAlive
-                             && MvpDefinitions.UnitKinds.Contains(entity.Kind))
-                         .ToList())
+            var entity = entities[i];
+            if (entity.Kind == EntityKind.Bastion && !entity.IsAlive)
             {
-                unit.Health = 0;
+                _scratchDeadBastions.Add(entity);
+            }
+        }
+
+        for (var bastionIndex = 0; bastionIndex < _scratchDeadBastions.Count; bastionIndex++)
+        {
+            var bastion = _scratchDeadBastions[bastionIndex];
+            _scratchCascadeUnits.Clear();
+            for (var i = 0; i < entities.Count; i++)
+            {
+                var entity = entities[i];
+                if (entity.AssignedBastionId == bastion.Id
+                    && entity.IsAlive
+                    && MvpDefinitions.UnitKinds.Contains(entity.Kind))
+                {
+                    _scratchCascadeUnits.Add(entity);
+                }
+            }
+
+            for (var unitIndex = 0; unitIndex < _scratchCascadeUnits.Count; unitIndex++)
+            {
+                _scratchCascadeUnits[unitIndex].Health = 0;
             }
         }
     }
 
     private void ProcessMovement()
     {
-        foreach (var unit in World.Entities.Where(entity => entity.IsAlive && MvpDefinitions.UnitKinds.Contains(entity.Kind)).OrderBy(entity => entity.Id))
+        CollectSortedAliveEntities(_scratchEntities, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
+        for (var i = 0; i < _scratchEntities.Count; i++)
         {
+            var unit = _scratchEntities[i];
             var target = GetMovementTarget(unit);
             if (target is null || unit.Position == target.Value)
             {
@@ -3667,12 +3762,15 @@ public sealed class GameSimulation
         // Per-pass combat index keeps range/splash queries neighborhood-limited; GameWorld tile
         // occupancy (#66) does not replace position-radius combat scans yet.
         var spatial = CombatSpatialIndex.Build(World.Entities);
-        foreach (var attacker in World.Entities.Where(entity =>
-                     entity.IsAlive
-                     && !entity.IsGarrisoned
-                     && entity.OwnerId is not null
-                     && MvpDefinitions.GetStats(entity.Kind).AttackDamage > 0).OrderBy(entity => entity.Id).ToList())
+        CollectSortedAliveEntities(
+            _scratchEntities,
+            static entity => !entity.IsGarrisoned
+                             && entity.OwnerId is not null
+                             && MvpDefinitions.GetStats(entity.Kind).AttackDamage > 0);
+
+        for (var attackerIndex = 0; attackerIndex < _scratchEntities.Count; attackerIndex++)
         {
+            var attacker = _scratchEntities[attackerIndex];
             // Cascade may have killed this attacker earlier in the same pass.
             if (!attacker.IsAlive || attacker.IsGarrisoned)
             {
@@ -3687,15 +3785,7 @@ public sealed class GameSimulation
 
             var stats = MvpDefinitions.GetStats(attacker.Kind);
             var attackRange = stats.AttackRange;
-            var target = spatial.QueryByPositionInEuclideanRange(attacker.Position, attackRange)
-                .Where(entity =>
-                    entity.IsAlive
-                    && !entity.IsGarrisoned
-                    && entity.OwnerId is not null
-                    && !AreAllied(attacker.OwnerId, entity.OwnerId))
-                .OrderBy(entity => attacker.Position.EuclideanDistanceSquared(entity.Position))
-                .ThenBy(entity => entity.Id)
-                .FirstOrDefault();
+            var target = FindNearestCombatTarget(attacker, attackRange, spatial);
             if (target is null)
             {
                 continue;
@@ -3726,16 +3816,26 @@ public sealed class GameSimulation
 
             if (stats.SplashRadius > 0)
             {
-                foreach (var splashTarget in spatial.QueryByPositionInEuclideanRange(target.Position, stats.SplashRadius)
-                             .Where(entity =>
-                                 entity.IsAlive
-                                 && !entity.IsGarrisoned
-                                 && entity.Id != target.Id
-                                 && entity.OwnerId is not null
-                                 && !AreAllied(attacker.OwnerId, entity.OwnerId))
-                             .OrderBy(entity => entity.Id)
-                             .ToList())
+                _scratchEntitiesSecondary.Clear();
+                foreach (var entity in spatial.QueryByPositionInEuclideanRange(target.Position, stats.SplashRadius))
                 {
+                    if (!entity.IsAlive
+                        || entity.IsGarrisoned
+                        || entity.Id == target.Id
+                        || entity.OwnerId is null
+                        || AreAllied(attacker.OwnerId, entity.OwnerId))
+                    {
+                        continue;
+                    }
+
+                    _scratchEntitiesSecondary.Add(entity);
+                }
+
+                _scratchEntitiesSecondary.Sort(static (left, right) => left.Id.CompareTo(right.Id));
+
+                for (var splashIndex = 0; splashIndex < _scratchEntitiesSecondary.Count; splashIndex++)
+                {
+                    var splashTarget = _scratchEntitiesSecondary[splashIndex];
                     var splashDamage = ComputeDamageAgainst(attacker, stats, splashTarget);
                     ApplyCombatDamage(splashTarget, splashDamage);
                     if (!splashTarget.IsAlive)
@@ -3750,6 +3850,52 @@ public sealed class GameSimulation
                 CascadeBastionDeaths();
             }
         }
+    }
+
+    private WorldEntity? FindNearestCombatTarget(
+        WorldEntity attacker,
+        int attackRange,
+        CombatSpatialIndex spatial)
+    {
+        WorldEntity? best = null;
+        var bestDistanceSquared = 0;
+        foreach (var entity in spatial.QueryByPositionInEuclideanRange(attacker.Position, attackRange))
+        {
+            if (!entity.IsAlive
+                || entity.IsGarrisoned
+                || entity.OwnerId is null
+                || AreAllied(attacker.OwnerId, entity.OwnerId))
+            {
+                continue;
+            }
+
+            var distanceSquared = attacker.Position.EuclideanDistanceSquared(entity.Position);
+            if (best is null
+                || distanceSquared < bestDistanceSquared
+                || (distanceSquared == bestDistanceSquared && entity.Id < best.Id))
+            {
+                best = entity;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return best;
+    }
+
+    private void CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate)
+    {
+        into.Clear();
+        var entities = World.Entities;
+        for (var i = 0; i < entities.Count; i++)
+        {
+            var entity = entities[i];
+            if (entity.IsAlive && predicate(entity))
+            {
+                into.Add(entity);
+            }
+        }
+
+        into.Sort(static (left, right) => left.Id.CompareTo(right.Id));
     }
 
     private void CheckVictory()
