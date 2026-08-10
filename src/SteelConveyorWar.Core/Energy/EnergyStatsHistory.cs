@@ -119,22 +119,22 @@ public sealed class EnergyStatsHistory
             return EnergyStatsWindow.Empty;
         }
 
-        var producedSeries = new int[bucketCount];
-        var demandSeries = new int[bucketCount];
-        var producedByKindSeries = new Dictionary<EntityKind, int[]>();
-        var demandByKindSeries = new Dictionary<EntityKind, int[]>();
+        var producedSeries = new float[bucketCount];
+        var demandSeries = new float[bucketCount];
+        var producedByKindSeries = new Dictionary<EntityKind, float[]>();
+        var demandByKindSeries = new Dictionary<EntityKind, float[]>();
         var producedSums = new Dictionary<EntityKind, long>();
         var demandSums = new Dictionary<EntityKind, long>();
 
         for (var i = 0; i < ProducerKinds.Length; i++)
         {
-            producedByKindSeries[ProducerKinds[i]] = new int[bucketCount];
+            producedByKindSeries[ProducerKinds[i]] = new float[bucketCount];
             producedSums[ProducerKinds[i]] = 0;
         }
 
         for (var i = 0; i < ConsumerKinds.Length; i++)
         {
-            demandByKindSeries[ConsumerKinds[i]] = new int[bucketCount];
+            demandByKindSeries[ConsumerKinds[i]] = new float[bucketCount];
             demandSums[ConsumerKinds[i]] = 0;
         }
 
@@ -172,21 +172,21 @@ public sealed class EnergyStatsHistory
                 }
             }
 
-            producedSeries[b] = (int)Math.Round(bucketProduced / (double)bucketTicks);
-            demandSeries[b] = (int)Math.Round(bucketDemand / (double)bucketTicks);
+            producedSeries[b] = (float)(bucketProduced / (double)bucketTicks);
+            demandSeries[b] = (float)(bucketDemand / (double)bucketTicks);
             producedTotal += bucketProduced;
             demandTotal += bucketDemand;
 
             for (var k = 0; k < ProducerKinds.Length; k++)
             {
-                var avg = (int)Math.Round(kindProduced[k] / (double)bucketTicks);
+                var avg = (float)(kindProduced[k] / (double)bucketTicks);
                 producedByKindSeries[ProducerKinds[k]][b] = avg;
                 producedSums[ProducerKinds[k]] += kindProduced[k];
             }
 
             for (var k = 0; k < ConsumerKinds.Length; k++)
             {
-                var avg = (int)Math.Round(kindDemand[k] / (double)bucketTicks);
+                var avg = (float)(kindDemand[k] / (double)bucketTicks);
                 demandByKindSeries[ConsumerKinds[k]][b] = avg;
                 demandSums[ConsumerKinds[k]] += kindDemand[k];
             }
@@ -244,14 +244,14 @@ public sealed class EnergyStatsHistory
     }
 }
 
-public sealed record EnergyStatsKindRow(EntityKind Kind, double AveragePerTick, IReadOnlyList<int> Series);
+public sealed record EnergyStatsKindRow(EntityKind Kind, double AveragePerTick, IReadOnlyList<float> Series);
 
 public sealed record EnergyStatsWindow(
     int SampleCount,
     double AverageProducedPerTick,
     double AverageDemandPerTick,
-    IReadOnlyList<int> ProducedSeries,
-    IReadOnlyList<int> DemandSeries,
+    IReadOnlyList<float> ProducedSeries,
+    IReadOnlyList<float> DemandSeries,
     IReadOnlyList<EnergyStatsKindRow> ProducerRows,
     IReadOnlyList<EnergyStatsKindRow> ConsumerRows)
 {
@@ -259,8 +259,8 @@ public sealed record EnergyStatsWindow(
         0,
         0,
         0,
-        Array.Empty<int>(),
-        Array.Empty<int>(),
+        Array.Empty<float>(),
+        Array.Empty<float>(),
         Array.Empty<EnergyStatsKindRow>(),
         Array.Empty<EnergyStatsKindRow>());
 }

@@ -388,7 +388,7 @@ public sealed partial class GameSimulation
 
                 if (threat is not null)
                 {
-                    unit.IsGarrisoned = false;
+                    TryEjectFromGarrison(unit);
                     continue;
                 }
 
@@ -403,6 +403,36 @@ public sealed partial class GameSimulation
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Clears garrison and relocates the unit to a free perimeter tile outside the bastion
+    /// footprint so continuous collision can move again (Attack/Scout/Defend sortie).
+    /// </summary>
+    private void TryEjectFromGarrison(WorldEntity unit)
+    {
+        if (!unit.IsGarrisoned)
+        {
+            return;
+        }
+
+        WorldEntity? bastion = null;
+        if (unit.AssignedBastionId is { } bastionId)
+        {
+            bastion = World.GetEntity(bastionId);
+        }
+
+        if (bastion is not null
+            && bastion.IsAlive
+            && bastion.Kind == EntityKind.Bastion
+            && TryFindSpawnTileNear(bastion, unit.Kind, out var ejectTile))
+        {
+            World.RelocateEntity(unit, ejectTile);
+            unit.WorldPosition = WorldPosition.FromTileCenter(ejectTile);
+            ResetMovementPath(unit);
+        }
+
+        unit.IsGarrisoned = false;
     }
 
     /// <summary>

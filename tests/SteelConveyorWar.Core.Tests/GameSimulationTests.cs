@@ -1245,14 +1245,14 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEntityHealthForTests(solar.Id, 0));
 
         Assert.True(simulation.TrySetAssemblerRecipe(assemblerId, new PlayerId(1), ItemRecipeId.IronGear));
-        simulation.AddItemToEntity(assemblerId, ItemId.IronPlate, 40);
+        Assert.True(simulation.AddItemToEntity(assemblerId, ItemId.IronPlate, 100));
         var demand = MvpDefinitions.GetPowerDemand(EntityKind.Assembler);
         Assert.True(demand > 0);
 
         Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
         simulation.AdvanceTick(); // start craft
         Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
-        // Fill a full 1s display bucket with working drains.
+        // Fill a full 1s display bucket with working drains (absolute bucket may include a couple edge ticks).
         for (var i = 0; i < GameSimulation.TicksPerSecond; i++)
         {
             Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
@@ -1261,20 +1261,20 @@ public class GameSimulationTests
 
         var working = simulation.GetPlayer(new PlayerId(1)).EnergyStats.Query(10);
         Assert.Equal(1, EnergyStatsHistory.DisplayBucketSeconds(10));
-        Assert.Equal(demand, working.DemandSeries[^1]);
+        Assert.InRange(working.DemandSeries[^1], demand * 0.85f, demand + 0.01f);
         var assemblerWorking = working.ConsumerRows.Single(row => row.Kind == EntityKind.Assembler);
-        Assert.Equal(demand, assemblerWorking.Series[^1]);
+        Assert.InRange(assemblerWorking.Series[^1], demand * 0.85f, demand + 0.01f);
 
         Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
-        for (var i = 0; i < GameSimulation.TicksPerSecond; i++)
+        for (var i = 0; i < GameSimulation.TicksPerSecond * 2; i++)
         {
             Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
             simulation.AdvanceTick();
         }
 
         var starved = simulation.GetPlayer(new PlayerId(1)).EnergyStats.Query(10);
-        Assert.Equal(0, starved.DemandSeries[^1]);
-        Assert.DoesNotContain(starved.ConsumerRows, row => row.Kind == EntityKind.Assembler && row.Series[^1] > 0);
+        Assert.True(starved.DemandSeries[^1] < demand * 0.15f);
+        Assert.DoesNotContain(starved.ConsumerRows, row => row.Kind == EntityKind.Assembler && row.Series[^1] > demand * 0.15f);
         Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
     }
 
@@ -1297,7 +1297,7 @@ public class GameSimulationTests
 
         var afterFirst = history.Query(10);
         Assert.Equal(1, afterFirst.SampleCount);
-        Assert.Equal(1, afterFirst.DemandSeries[0]);
+        Assert.Equal(1f, afterFirst.DemandSeries[0], 3);
 
         for (long tick = tps; tick < tps + tps / 2; tick++)
         {
@@ -1306,7 +1306,7 @@ public class GameSimulationTests
 
         var midSecond = history.Query(10);
         Assert.Equal(1, midSecond.SampleCount);
-        Assert.Equal(1, midSecond.DemandSeries[0]); // completed bucket unchanged
+        Assert.Equal(1f, midSecond.DemandSeries[0], 3); // completed bucket unchanged
 
         for (long tick = tps + tps / 2; tick < 2 * tps; tick++)
         {
@@ -1315,9 +1315,29 @@ public class GameSimulationTests
 
         var afterSecond = history.Query(10);
         Assert.Equal(2, afterSecond.SampleCount);
-        Assert.Equal(1, afterSecond.DemandSeries[0]);
-        // Second bucket = 15 ticks of 100 + 15 ticks of 9 → avg 54.5 → 54 or 55
-        Assert.InRange(afterSecond.DemandSeries[1], 54, 55);
+        Assert.Equal(1f, afterSecond.DemandSeries[0], 3);
+        // Second bucket = 15 ticks of 100 + 15 ticks of 9 → avg 54.5
+        Assert.Equal(54.5f, afterSecond.DemandSeries[1], 3);
+    }
+
+    [Fact]
+    public void EnergyStats_Query_PreservesFractionalAverages()
+    {
+        var history = new EnergyStatsHistory();
+        var empty = new Dictionary<EntityKind, int>();
+        var tps = GameSimulation.TicksPerSecond;
+
+        // 12 energy every 30 ticks → 0.4/t average (must not round to 0 on the polyline series).
+        for (long tick = 0; tick < tps; tick++)
+        {
+            var consumed = tick % 30 == 29 ? 12 : 0;
+            history.Record(tick, 0, consumed, empty, empty);
+        }
+
+        var window = history.Query(10);
+        Assert.Equal(1, window.SampleCount);
+        Assert.Equal(0.4f, window.DemandSeries[0], 3);
+        Assert.True(window.DemandSeries[0] > 0f);
     }
 
     [Fact]
@@ -1332,7 +1352,7 @@ public class GameSimulationTests
 
         var shortWindow = history.Query(10);
         Assert.Equal(10, shortWindow.SampleCount);
-        Assert.All(shortWindow.DemandSeries, value => Assert.Equal(4, value));
+        Assert.All(shortWindow.DemandSeries, value => Assert.Equal(4f, value, 3));
 
         for (long tick = 10 * GameSimulation.TicksPerSecond; tick < 5 * 60 * GameSimulation.TicksPerSecond; tick++)
         {
@@ -1341,11 +1361,11 @@ public class GameSimulationTests
 
         var fiveMin = history.Query(300);
         Assert.Equal(60, fiveMin.SampleCount);
-        Assert.All(fiveMin.DemandSeries, value => Assert.Equal(4, value));
+        Assert.All(fiveMin.DemandSeries, value => Assert.Equal(4f, value, 3));
     }
 
     [Fact]
-    public void Mine_DrivesWorkTicksAndConsumesEnergyOnCycleComplete()
+    public void Mine_DrivesWorkTicksAndConsumesEnergyEachWorkTick()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
@@ -1353,18 +1373,50 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, ironTile, out var mineId));
         AdvanceTicks(simulation, 30);
 
+        var solar = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.SolarPanel);
+        Assert.True(simulation.TrySetEntityHealthForTests(solar.Id, 0));
+
         var mine = simulation.World.GetEntity(mineId)!;
-        Assert.True(simulation.TrySetEnergyBufferForTests(mineId, int.MaxValue));
+        var demand = MvpDefinitions.GetPowerDemand(EntityKind.Mine);
+        var seedEnergy = demand * (MvpDefinitions.OreMineWorkTicks + 5);
+        Assert.True(simulation.TrySetEnergyBufferForTests(mineId, seedEnergy));
         var beforeOre = mine.OutputBuffer.Count(ItemId.IronOre);
+
         simulation.AdvanceTick();
         Assert.Equal(MvpDefinitions.OreMineWorkTicks, mine.WorkTicksTotal);
         Assert.True(mine.WorkTicksRemaining > 0);
         Assert.True(mine.WorkTicksRemaining < MvpDefinitions.OreMineWorkTicks);
+        Assert.Equal(seedEnergy - demand, mine.EnergyBuffer);
 
         var energyBefore = mine.EnergyBuffer;
-        AdvanceTicks(simulation, mine.WorkTicksRemaining);
+        var remaining = mine.WorkTicksRemaining;
+        AdvanceTicks(simulation, remaining);
         Assert.Equal(beforeOre + 1, mine.OutputBuffer.Count(ItemId.IronOre));
-        Assert.True(mine.EnergyBuffer < energyBefore);
+        Assert.Equal(energyBefore - demand * remaining, mine.EnergyBuffer);
+    }
+
+    [Fact]
+    public void Mine_EmptyEnergyBuffer_PausesWorkProgress()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        var ironTile = FindReachableTerrain(simulation, commander, TerrainType.IronOre);
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Mine, ironTile, out var mineId));
+        AdvanceTicks(simulation, 30);
+
+        var solar = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.SolarPanel);
+        Assert.True(simulation.TrySetEntityHealthForTests(solar.Id, 0));
+
+        var mine = simulation.World.GetEntity(mineId)!;
+        Assert.True(simulation.TrySetEnergyBufferForTests(mineId, int.MaxValue));
+        simulation.AdvanceTick();
+        Assert.True(mine.WorkTicksRemaining > 0);
+        var remaining = mine.WorkTicksRemaining;
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(mineId, 0));
+        simulation.AdvanceTick();
+        Assert.Equal(0, mine.EnergyBuffer);
+        Assert.Equal(remaining, mine.WorkTicksRemaining);
     }
 
     [Fact]

@@ -333,15 +333,15 @@ public sealed class ResearchSystem
                 lab.WorkTicksRemaining = LabCycleTicks;
             }
 
-            lab.WorkTicksRemaining--;
-            if (lab.WorkTicksRemaining > 0)
+            // Drain each active work tick; empty buffer pauses the lab cycle.
+            if (!simulation.TryConsumeBuildingEnergy(lab))
             {
                 continue;
             }
 
-            if (!simulation.TryConsumeBuildingEnergy(lab))
+            lab.WorkTicksRemaining--;
+            if (lab.WorkTicksRemaining > 0)
             {
-                lab.WorkTicksTotal = 0;
                 continue;
             }
 
