@@ -35,7 +35,7 @@ internal sealed class SfmlPlaySession
             State.Windowed);
         window.Closed += (_, _) => window.Close();
         window.SetFramerateLimit(60);
-        var localPlayer = new PlayerId(1);
+        var localPlayer = display.LocalPlayerId;
         int? selectedEntityId = simulation.World.Entities.First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander).Id;
         var isBuildMenuOpen = false;
         EntityKind? pendingBuildKind = null;
@@ -207,6 +207,7 @@ internal sealed class SfmlPlaySession
             {
                 simulation.TryIssueBastionOrder(
                     selectedEntity.Id,
+                    localPlayer,
                     new BastionOrder(BastionOrderKind.Patrol, Waypoints: patrolWaypoints.ToArray()));
                 ClearBastionPending();
                 return;
@@ -270,7 +271,7 @@ internal sealed class SfmlPlaySession
                 && selectedEntity?.Kind == EntityKind.Commander
                 && selectedEntity.OwnerId == localPlayer)
             {
-                simulation.TryStopCommander(selectedEntity.Id);
+                simulation.TryStopCommander(selectedEntity.Id, localPlayer);
                 ClearDemolishHold();
                 return;
             }
@@ -375,7 +376,7 @@ internal sealed class SfmlPlaySession
 
             if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Assembler && SfmlInputHelpers.TryGetRecipeShortcut(key, out var recipeId))
             {
-                simulation.TrySetAssemblerRecipe(selectedEntity.Id, recipeId);
+                simulation.TrySetAssemblerRecipe(selectedEntity.Id, localPlayer, recipeId);
                 recipePage = 0;
                 return;
             }
@@ -407,7 +408,7 @@ internal sealed class SfmlPlaySession
                     var recipes = HudOverlay.GetFactoryRecipes(selectedEntity.Kind).ToList();
                     if (factoryRecipeIndex < recipes.Count)
                     {
-                        simulation.TrySetFactoryProduction(selectedEntity.Id, recipes[factoryRecipeIndex].OutputKind);
+                        simulation.TrySetFactoryProduction(selectedEntity.Id, localPlayer, recipes[factoryRecipeIndex].OutputKind);
                     }
 
                     return;
@@ -420,7 +421,7 @@ internal sealed class SfmlPlaySession
             {
                 if (BastionOrderBarModel.TryGetCommandFromKey(key, out var orderCommand))
                 {
-                    BastionUiOverlay.ApplyBastionOrderCommand(simulation, selectedEntity.Id, orderCommand, ref bastionPendingMode, patrolWaypoints);
+                    BastionUiOverlay.ApplyBastionOrderCommand(simulation, selectedEntity.Id, localPlayer, orderCommand, ref bastionPendingMode, patrolWaypoints);
                     return;
                 }
 
@@ -433,7 +434,7 @@ internal sealed class SfmlPlaySession
                     return;
                 }
 
-                if (BastionUiOverlay.TryAdjustBastionTemplate(key, simulation, selectedEntity, templateUnitIndex))
+                if (BastionUiOverlay.TryAdjustBastionTemplate(key, simulation, selectedEntity, localPlayer, templateUnitIndex))
                 {
                     return;
                 }
@@ -625,7 +626,7 @@ internal sealed class SfmlPlaySession
                             return;
                         }
 
-                        simulation.TryIssueMoveCommand(selectedEntity.Id, minimapTile.Value);
+                        simulation.TryIssueMoveCommand(selectedEntity.Id, localPlayer, minimapTile.Value);
                         return;
                     }
 
@@ -688,6 +689,7 @@ internal sealed class SfmlPlaySession
                         templateUnitIndex = slotIndex;
                         simulation.TrySetBastionTemplate(
                             selectedForBar.Id,
+                            localPlayer,
                             slot.UnitKind,
                             Math.Max(0, slot.TemplateMax + (int)adjust));
                         return;
@@ -706,7 +708,7 @@ internal sealed class SfmlPlaySession
 
                 if (BastionUiOverlay.TryPickBastionOrderCommand(mousePosition, windowWidth, windowHeight, panelX, out var barCommand))
                 {
-                    BastionUiOverlay.ApplyBastionOrderCommand(simulation, selectedForBar.Id, barCommand, ref bastionPendingMode, patrolWaypoints);
+                    BastionUiOverlay.ApplyBastionOrderCommand(simulation, selectedForBar.Id, localPlayer, barCommand, ref bastionPendingMode, patrolWaypoints);
                     return;
                 }
             }
@@ -811,7 +813,7 @@ internal sealed class SfmlPlaySession
                         return;
                     }
 
-                    simulation.TryIssueMoveCommand(selectedEntity.Id, tile.Value);
+                    simulation.TryIssueMoveCommand(selectedEntity.Id, localPlayer, tile.Value);
                     return;
                 }
 
@@ -869,7 +871,7 @@ internal sealed class SfmlPlaySession
 
         var clock = new Clock();
         var accumulator = 0f;
-        var fixedDelta = 1f / GameSimulation.TicksPerSecond;
+        var fixedDelta = 1f / display.TicksPerSecond;
         var lingeringShots = new List<(CombatShotEvent Shot, float Remaining)>();
 
         var renderedFrames = 0;

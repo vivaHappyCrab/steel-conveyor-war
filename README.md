@@ -19,7 +19,8 @@ The current milestone provides the engineering foundation: .NET 10 solution, hea
 
 - `src/SteelConveyorWar.Core` — headless deterministic simulation
 - `src/SteelConveyorWar.Sfml` — SFML window, rendering, input, and asset adapter
-- `src/SteelConveyorWar.Client` — executable game client composition
+- `src/SteelConveyorWar.Client` — executable game client composition (opens SFML window)
+- `src/SteelConveyorWar.Headless` — Core-only host loop for bots/CI (no SFML/window)
 - `tests/SteelConveyorWar.Core.Tests` — core unit tests without graphics
 - `tests/SteelConveyorWar.Sfml.Tests` — SFML adapter tests
 - `config/` — runtime-loaded content (`game.json`, `research.json`, `tiles.json`, `entities.json`); remaining balance in `MvpDefinitions.cs`
@@ -37,6 +38,11 @@ dotnet test SteelConveyorWar.sln -c Release
 pwsh eng/verify.ps1
 dotnet run --project src/SteelConveyorWar.Client
 dotnet run --project src/SteelConveyorWar.Client -- --smoke-test
+# Bind local seat to P2 (hotseat / FoW experiments); default is P1
+dotnet run --project src/SteelConveyorWar.Client -- --local-player 2
+# Headless host (no window / no SFML): CreateNewGame → stub command → AdvanceTick
+dotnet run --project src/SteelConveyorWar.Headless -- --ticks 90
+dotnet run --project src/SteelConveyorWar.Headless -- --ticks 90 --player 1
 ```
 
 ## AI workflow
@@ -56,7 +62,7 @@ Short version: issues with Definition of Ready get `ai-ready` → Cloud Agent op
 
 ## Prototype controls
 
-Developer prototype for player 1:
+Developer prototype for the **local** player seat (default P1; override with `--local-player 2`):
 
 - Left click selects a visible object
 - Select your БМК and press `B` to open/close the build menu
@@ -66,6 +72,17 @@ Developer prototype for player 1:
 - Right click issues Bastion attack orders (or БМК move when selected)
 - `Ctrl+Left click` collects output buffer items into the БМК when in range
 
+### Local player seat
+
+The SFML host binds input, fog of war, selection, and HUD to one sim `PlayerId` via `SfmlDisplayOptions.LocalPlayerId` (default `1`). For P2 local experiments / hotseat:
+
+```powershell
+dotnet run --project src/SteelConveyorWar.Client -- --local-player 2
+dotnet run --project src/SteelConveyorWar.Client -c Release -- --smoke-test --local-player 2
+```
+
+P2 already exists in the 1v1 sim; this only changes which seat the window drives. Not networked multiplayer or split-screen.
+
 ## Verification status
 
 Baseline after workflow bootstrap:
@@ -73,9 +90,10 @@ Baseline after workflow bootstrap:
 ```powershell
 dotnet build SteelConveyorWar.sln -c Release
 dotnet test SteelConveyorWar.sln -c Release
+dotnet run --project src/SteelConveyorWar.Headless -c Release -- --ticks 90
 dotnet run --project src/SteelConveyorWar.Client -c Release -- --smoke-test
 ```
 
-Expected local baseline: build 0 warnings / 0 errors; **53** tests (49 Core + 4 Sfml); client smoke exits successfully.
+Expected local baseline: build 0 warnings / 0 errors; Core + Sfml tests pass; headless host exits successfully without a window; client smoke exits successfully.
 
 See `docs/MVP_IMPLEMENTATION_DECISIONS.md` and `docs/engineering/VERIFICATION_GAPS.md`.

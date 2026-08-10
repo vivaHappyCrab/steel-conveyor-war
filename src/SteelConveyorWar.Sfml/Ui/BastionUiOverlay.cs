@@ -9,6 +9,7 @@ internal static class BastionUiOverlay
     internal static void ApplyBastionOrderCommand(
         GameSimulation simulation,
         int bastionId,
+        PlayerId actorPlayerId,
         BastionOrderCommand command,
         ref BastionPendingInputMode pendingMode,
         List<TilePosition> patrolWaypoints)
@@ -18,7 +19,7 @@ internal static class BastionUiOverlay
         {
             case BastionOrderCommand.ActiveDefense:
                 pendingMode = BastionPendingInputMode.None;
-                simulation.TryIssueBastionOrder(bastionId, new BastionOrder(BastionOrderKind.Defend));
+                simulation.TryIssueBastionOrder(bastionId, actorPlayerId, new BastionOrder(BastionOrderKind.Defend));
                 break;
             case BastionOrderCommand.Patrol:
                 pendingMode = BastionPendingInputMode.PatrolWaypoints;
@@ -32,7 +33,12 @@ internal static class BastionUiOverlay
         }
     }
 
-    internal static bool TryAdjustBastionTemplate(string key, GameSimulation simulation, WorldEntity bastion, int templateUnitIndex)
+    internal static bool TryAdjustBastionTemplate(
+        string key,
+        GameSimulation simulation,
+        WorldEntity bastion,
+        PlayerId actorPlayerId,
+        int templateUnitIndex)
     {
         if (bastion.OwnerId is null)
         {
@@ -58,7 +64,7 @@ internal static class BastionUiOverlay
             return false;
         }
 
-        simulation.TrySetBastionTemplate(bastion.Id, unitKind, Math.Max(0, current + delta));
+        simulation.TrySetBastionTemplate(bastion.Id, actorPlayerId, unitKind, Math.Max(0, current + delta));
         return true;
     }
 
@@ -230,6 +236,7 @@ internal static class BastionUiOverlay
         {
             consumed = simulation.TryIssueBastionOrder(
                 selectedEntity.Id,
+                localPlayer,
                 new BastionOrder(BastionOrderKind.AttackArea, tile));
             return true;
         }
@@ -238,6 +245,7 @@ internal static class BastionUiOverlay
         {
             consumed = simulation.TryIssueBastionOrder(
                 selectedEntity.Id,
+                localPlayer,
                 new BastionOrder(BastionOrderKind.Scout, tile));
             return true;
         }
@@ -250,6 +258,7 @@ internal static class BastionUiOverlay
                 {
                     consumed = simulation.TryIssueBastionOrder(
                         selectedEntity.Id,
+                        localPlayer,
                         new BastionOrder(BastionOrderKind.Patrol, Waypoints: patrolWaypoints.ToArray()));
                 }
 

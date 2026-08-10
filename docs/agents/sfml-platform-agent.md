@@ -32,6 +32,7 @@ Window/lifecycle, game loop timing, input mapping, HUD/build menu UX, cameras, f
 - `dotnet build SteelConveyorWar.sln -c Release`
 - `dotnet test tests/SteelConveyorWar.Sfml.Tests -c Release`
 - `dotnet run --project src/SteelConveyorWar.Client -- --smoke-test`
+- Local seat: `--local-player 2` binds FoW/input to P2 (default P1)
 
 ## Escalation / git
 

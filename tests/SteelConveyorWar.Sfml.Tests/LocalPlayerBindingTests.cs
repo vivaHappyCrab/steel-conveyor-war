@@ -1,0 +1,38 @@
+using SteelConveyorWar.Core;
+using SteelConveyorWar.Sfml;
+
+namespace SteelConveyorWar.Sfml.Tests;
+
+public class LocalPlayerBindingTests
+{
+    [Fact]
+    public void Resolve_DefaultsToPlayerOne()
+    {
+        Assert.Equal(new PlayerId(1), LocalPlayerBinding.Resolve([]));
+        Assert.Equal(new PlayerId(1), LocalPlayerBinding.Resolve(["--smoke-test"]));
+        Assert.Equal(SfmlDisplayOptions.DefaultLocalPlayerId, SfmlDisplayOptions.Default.LocalPlayerId);
+    }
+
+    [Fact]
+    public void Resolve_ReadsLocalPlayerFlag()
+    {
+        Assert.Equal(new PlayerId(2), LocalPlayerBinding.Resolve(["--local-player", "2"]));
+        Assert.Equal(new PlayerId(2), LocalPlayerBinding.Resolve(["--smoke-test", "--Local-Player", "2"]));
+    }
+
+    [Fact]
+    public void Resolve_RejectsInvalidValues()
+    {
+        Assert.Throws<ArgumentException>(() => LocalPlayerBinding.Resolve(["--local-player", "0"]));
+        Assert.Throws<ArgumentException>(() => LocalPlayerBinding.Resolve(["--local-player", "x"]));
+    }
+
+    [Fact]
+    public void DisplayOptions_DefaultsLocalPlayerAndRequiresPositiveTicks()
+    {
+        var display = new SfmlDisplayOptions(800, 600, "Test", GameSimulation.TicksPerSecond);
+        Assert.Equal(new PlayerId(1), display.LocalPlayerId);
+        Assert.Equal(GameSimulation.TicksPerSecond, display.TicksPerSecond);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SfmlDisplayOptions(800, 600, "Test", 0));
+    }
+}
