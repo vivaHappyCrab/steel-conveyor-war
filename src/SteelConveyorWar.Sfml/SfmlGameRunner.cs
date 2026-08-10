@@ -240,7 +240,7 @@ public sealed class SfmlGameRunner
                 && patrolWaypoints.Count is >= 2 and <= 4)
             {
                 simulation.TryIssueBastionOrder(
-                    selectedEntity.Id,
+                    selectedEntity.Id, localPlayer,
                     new BastionOrder(BastionOrderKind.Patrol, Waypoints: patrolWaypoints.ToArray()));
                 ClearBastionPending();
                 return;
@@ -275,7 +275,12 @@ public sealed class SfmlGameRunner
                     var hoverEntity = simulation.World.GetTopEntityAt(tile.Value);
                     if (hoverEntity is not null
                         && IsVisibleToLocalPlayer(simulation, localPlayer, hoverEntity)
-                        && BuildBarModel.TryCopyFromWorldEntity(hoverEntity, out var copyKind, out var copyDirection, out var copyRecipe))
+                        && BuildBarModel.TryCopyFromWorldEntity(
+                            hoverEntity,
+                            out var copyKind,
+                            out var copyDirection,
+                            out var copyRecipe,
+                            simulation.BuildCostCatalog))
                     {
                         EnsureLocalCommanderSelected(simulation, localPlayer, ref selectedEntityId);
                         isBuildMenuOpen = true;
@@ -304,7 +309,7 @@ public sealed class SfmlGameRunner
                 && selectedEntity?.Kind == EntityKind.Commander
                 && selectedEntity.OwnerId == localPlayer)
             {
-                simulation.TryStopCommander(selectedEntity.Id);
+                simulation.TryStopCommander(selectedEntity.Id, localPlayer);
                 ClearDemolishHold();
                 return;
             }
@@ -407,9 +412,9 @@ public sealed class SfmlGameRunner
                 return;
             }
 
-            if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Assembler && TryGetRecipeShortcut(key, out var recipeId))
+            if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Assembler && selectedEntity.OwnerId == localPlayer && TryGetRecipeShortcut(key, out var recipeId))
             {
-                simulation.TrySetAssemblerRecipe(selectedEntity.Id, recipeId);
+                simulation.TrySetAssemblerRecipe(selectedEntity.Id, localPlayer, recipeId);
                 recipePage = 0;
                 return;
             }
@@ -441,7 +446,7 @@ public sealed class SfmlGameRunner
                     var recipes = GetFactoryRecipes(selectedEntity.Kind).ToList();
                     if (factoryRecipeIndex < recipes.Count)
                     {
-                        simulation.TrySetFactoryProduction(selectedEntity.Id, recipes[factoryRecipeIndex].OutputKind);
+                        simulation.TrySetFactoryProduction(selectedEntity.Id, localPlayer, recipes[factoryRecipeIndex].OutputKind);
                     }
 
                     return;
@@ -454,7 +459,7 @@ public sealed class SfmlGameRunner
             {
                 if (BastionOrderBarModel.TryGetCommandFromKey(key, out var orderCommand))
                 {
-                    ApplyBastionOrderCommand(simulation, selectedEntity.Id, orderCommand, ref bastionPendingMode, patrolWaypoints);
+                    ApplyBastionOrderCommand(simulation, selectedEntity.Id, localPlayer, orderCommand, ref bastionPendingMode, patrolWaypoints);
                     return;
                 }
 
@@ -467,7 +472,7 @@ public sealed class SfmlGameRunner
                     return;
                 }
 
-                if (TryAdjustBastionTemplate(key, simulation, selectedEntity, templateUnitIndex))
+                if (TryAdjustBastionTemplate(key, simulation, selectedEntity, localPlayer, templateUnitIndex))
                 {
                     return;
                 }
@@ -659,7 +664,7 @@ public sealed class SfmlGameRunner
                             return;
                         }
 
-                        simulation.TryIssueMoveCommand(selectedEntity.Id, minimapTile.Value);
+                        simulation.TryIssueMoveCommand(selectedEntity.Id, localPlayer, minimapTile.Value);
                         return;
                     }
 
@@ -721,7 +726,7 @@ public sealed class SfmlGameRunner
                         var slot = compositionSlots[slotIndex];
                         templateUnitIndex = slotIndex;
                         simulation.TrySetBastionTemplate(
-                            selectedForBar.Id,
+                            selectedForBar.Id, localPlayer,
                             slot.UnitKind,
                             Math.Max(0, slot.TemplateMax + (int)adjust));
                         return;
@@ -740,7 +745,7 @@ public sealed class SfmlGameRunner
 
                 if (TryPickBastionOrderCommand(mousePosition, windowWidth, windowHeight, panelX, out var barCommand))
                 {
-                    ApplyBastionOrderCommand(simulation, selectedForBar.Id, barCommand, ref bastionPendingMode, patrolWaypoints);
+                    ApplyBastionOrderCommand(simulation, selectedForBar.Id, localPlayer, barCommand, ref bastionPendingMode, patrolWaypoints);
                     return;
                 }
             }
@@ -845,7 +850,7 @@ public sealed class SfmlGameRunner
                         return;
                     }
 
-                    simulation.TryIssueMoveCommand(selectedEntity.Id, tile.Value);
+                    simulation.TryIssueMoveCommand(selectedEntity.Id, localPlayer, tile.Value);
                     return;
                 }
 
@@ -903,7 +908,7 @@ public sealed class SfmlGameRunner
 
         var clock = new Clock();
         var accumulator = 0f;
-        var fixedDelta = 1f / GameSimulation.TicksPerSecond;
+        var fixedDelta = 1f / display.TicksPerSecond;
         var lingeringShots = new List<(CombatShotEvent Shot, float Remaining)>();
 
         var renderedFrames = 0;
@@ -3083,6 +3088,7 @@ public sealed class SfmlGameRunner
     private static void ApplyBastionOrderCommand(
         GameSimulation simulation,
         int bastionId,
+        PlayerId actorPlayerId,
         BastionOrderCommand command,
         ref BastionPendingInputMode pendingMode,
         List<TilePosition> patrolWaypoints)
@@ -3092,7 +3098,7 @@ public sealed class SfmlGameRunner
         {
             case BastionOrderCommand.ActiveDefense:
                 pendingMode = BastionPendingInputMode.None;
-                simulation.TryIssueBastionOrder(bastionId, new BastionOrder(BastionOrderKind.Defend));
+                simulation.TryIssueBastionOrder(bastionId, actorPlayerId, new BastionOrder(BastionOrderKind.Defend));
                 break;
             case BastionOrderCommand.Patrol:
                 pendingMode = BastionPendingInputMode.PatrolWaypoints;
@@ -3106,7 +3112,7 @@ public sealed class SfmlGameRunner
         }
     }
 
-    private static bool TryAdjustBastionTemplate(string key, GameSimulation simulation, WorldEntity bastion, int templateUnitIndex)
+    private static bool TryAdjustBastionTemplate(string key, GameSimulation simulation, WorldEntity bastion, PlayerId actorPlayerId, int templateUnitIndex)
     {
         if (bastion.OwnerId is null)
         {
@@ -3132,7 +3138,7 @@ public sealed class SfmlGameRunner
             return false;
         }
 
-        simulation.TrySetBastionTemplate(bastion.Id, unitKind, Math.Max(0, current + delta));
+        simulation.TrySetBastionTemplate(bastion.Id, actorPlayerId, unitKind, Math.Max(0, current + delta));
         return true;
     }
 
@@ -3303,7 +3309,7 @@ public sealed class SfmlGameRunner
         if (pendingMode == BastionPendingInputMode.AttackTarget)
         {
             consumed = simulation.TryIssueBastionOrder(
-                selectedEntity.Id,
+                selectedEntity.Id, localPlayer,
                 new BastionOrder(BastionOrderKind.AttackArea, tile));
             return true;
         }
@@ -3311,7 +3317,7 @@ public sealed class SfmlGameRunner
         if (pendingMode == BastionPendingInputMode.ScoutTarget)
         {
             consumed = simulation.TryIssueBastionOrder(
-                selectedEntity.Id,
+                selectedEntity.Id, localPlayer,
                 new BastionOrder(BastionOrderKind.Scout, tile));
             return true;
         }
@@ -3323,7 +3329,7 @@ public sealed class SfmlGameRunner
                 if (patrolWaypoints.Count is >= 2 and <= 4)
                 {
                     consumed = simulation.TryIssueBastionOrder(
-                        selectedEntity.Id,
+                        selectedEntity.Id, localPlayer,
                         new BastionOrder(BastionOrderKind.Patrol, Waypoints: patrolWaypoints.ToArray()));
                 }
 
@@ -3530,7 +3536,7 @@ public sealed class SfmlGameRunner
         {
             var kind = BuildMenuCatalog.BuildableKinds[i];
             var slotX = startX + i * BuildBarSlotSize;
-            var affordable = BuildBarModel.AffordableBuilds(kind, inventory);
+            var affordable = BuildBarModel.AffordableBuilds(kind, inventory, simulation.BuildCostCatalog);
             var selected = pendingBuildKind == kind;
             var fill = affordable <= 0
                 ? new Color(35, 40, 48, 220)

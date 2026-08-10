@@ -19,7 +19,8 @@ The current milestone provides the engineering foundation: .NET 10 solution, hea
 
 - `src/SteelConveyorWar.Core` — headless deterministic simulation
 - `src/SteelConveyorWar.Sfml` — SFML window, rendering, input, and asset adapter
-- `src/SteelConveyorWar.Client` — executable game client composition
+- `src/SteelConveyorWar.Client` — executable game client composition (opens SFML window)
+- `src/SteelConveyorWar.Headless` — Core-only host loop for bots/CI (no SFML/window)
 - `tests/SteelConveyorWar.Core.Tests` — core unit tests without graphics
 - `tests/SteelConveyorWar.Sfml.Tests` — SFML adapter tests
 - `config/` — runtime-loaded content (`game.json`, `research.json`, `tiles.json`, `entities.json`); remaining balance in `MvpDefinitions.cs`
@@ -39,6 +40,9 @@ dotnet run --project src/SteelConveyorWar.Client
 dotnet run --project src/SteelConveyorWar.Client -- --smoke-test
 # Bind local seat to P2 (hotseat / FoW experiments); default is P1
 dotnet run --project src/SteelConveyorWar.Client -- --local-player 2
+# Headless host (no window / no SFML): CreateNewGame → stub command → AdvanceTick
+dotnet run --project src/SteelConveyorWar.Headless -- --ticks 90
+dotnet run --project src/SteelConveyorWar.Headless -- --ticks 90 --player 1
 ```
 
 ## AI workflow
@@ -86,9 +90,10 @@ Baseline after workflow bootstrap:
 ```powershell
 dotnet build SteelConveyorWar.sln -c Release
 dotnet test SteelConveyorWar.sln -c Release
+dotnet run --project src/SteelConveyorWar.Headless -c Release -- --ticks 90
 dotnet run --project src/SteelConveyorWar.Client -c Release -- --smoke-test
 ```
 
-Expected local baseline: build 0 warnings / 0 errors; **53** tests (49 Core + 4 Sfml); client smoke exits successfully.
+Expected local baseline: build 0 warnings / 0 errors; Core + Sfml tests pass; headless host exits successfully without a window; client smoke exits successfully.
 
 See `docs/MVP_IMPLEMENTATION_DECISIONS.md` and `docs/engineering/VERIFICATION_GAPS.md`.

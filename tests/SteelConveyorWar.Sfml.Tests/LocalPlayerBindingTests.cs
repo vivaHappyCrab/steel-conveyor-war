@@ -28,9 +28,11 @@ public class LocalPlayerBindingTests
     }
 
     [Fact]
-    public void DisplayOptions_ThreeArgCtor_UsesDefaultLocalPlayer()
+    public void DisplayOptions_DefaultsLocalPlayerAndRequiresPositiveTicks()
     {
-        var display = new SfmlDisplayOptions(800, 600, "Test");
+        var display = new SfmlDisplayOptions(800, 600, "Test", GameSimulation.TicksPerSecond);
         Assert.Equal(new PlayerId(1), display.LocalPlayerId);
+        Assert.Equal(GameSimulation.TicksPerSecond, display.TicksPerSecond);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SfmlDisplayOptions(800, 600, "Test", 0));
     }
 }
