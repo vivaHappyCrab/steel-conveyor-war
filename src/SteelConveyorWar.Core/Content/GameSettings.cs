@@ -1,13 +1,5 @@
 namespace SteelConveyorWar.Core;
 
-public sealed record WindowSettings(
-    uint Width,
-    uint Height,
-    string Title)
-{
-    public static WindowSettings Default { get; } = new(1392, 720, "Steel Conveyor War");
-}
-
 public sealed record GameSettings(
     int SchemaVersion,
     string GameId,
@@ -17,8 +9,7 @@ public sealed record GameSettings(
     string ResearchContentFile,
     string ResearchProfileId,
     string MapContentFile,
-    string BuildCostsContentFile,
-    WindowSettings Window)
+    string BuildCostsContentFile)
 {
     public static GameSettings Default { get; } = new(
         SchemaVersion: 1,
@@ -29,6 +20,5 @@ public sealed record GameSettings(
         ResearchContentFile: "research.json",
         ResearchProfileId: ResearchProfileIds.MvpB,
         MapContentFile: "maps/default.json",
-        BuildCostsContentFile: "build-costs.json",
-        Window: WindowSettings.Default);
+        BuildCostsContentFile: "build-costs.json");
 }

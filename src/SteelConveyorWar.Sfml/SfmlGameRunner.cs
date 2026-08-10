@@ -908,7 +908,7 @@ public sealed class SfmlGameRunner
 
         var clock = new Clock();
         var accumulator = 0f;
-        var fixedDelta = 1f / GameSimulation.TicksPerSecond;
+        var fixedDelta = 1f / display.TicksPerSecond;
         var lingeringShots = new List<(CombatShotEvent Shot, float Remaining)>();
 
         var renderedFrames = 0;
