@@ -1358,6 +1358,15 @@ public sealed class GameSimulation
         return GetPlayer(playerId).TechSignatures;
     }
 
+    /// <summary>
+    /// Creates a per-player observation surface. Prefer <see cref="PlayerObservationMode.Fair"/> for bots/net clients;
+    /// <see cref="PlayerObservationMode.Cheat"/> keeps unfiltered <see cref="World"/> access for tests/tools.
+    /// </summary>
+    public IPlayerView CreatePlayerView(PlayerId playerId, PlayerObservationMode mode = PlayerObservationMode.Fair)
+    {
+        return new PlayerView(this, playerId, mode);
+    }
+
     public void AdvanceTick()
     {
         if (Status != GameStatus.InProgress)

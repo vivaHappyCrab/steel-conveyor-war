@@ -102,6 +102,9 @@ This document records architecture and game-design decisions made while implemen
 - Combat attack range uses the same Euclidean tile check for determinism.
 - Tech signatures are aggregated into map zones from **non-allied** entities and expose intensity without exact building identity.
 - SFML draws a FoW minimap flush top-right of the window: explored/visible terrain + resource patches; live entity markers (blue=own / red=enemy / magenta(255,0,255)=ally) use the same Visible gate as the main playfield so Explored does not leak current enemy/ally positions; unknown tiles stay hidden. A viewport rectangle shows the current camera; LMB recenters the camera; RMB issues the same world orders as playfield RMB on the mapped tile.
+- **Observation API (bots / future net clients):** `GameSimulation.CreatePlayerView(playerId, mode)` returns `IPlayerView`.
+  - **Fair** (default): FoW-limited read model — `TryGetTerrain` hides `Unknown` tiles; `GetVisibleEntities` / `GetVisibleEntity` expose owned entities always and other live non-garrisoned entities only on `Visible` tiles (same gate as SFML). Prefer this for product AI.
+  - **Cheat:** unfiltered live `World` entities/terrain for tests, tools, and explicit god-mode bots. Reading `simulation.World` directly remains possible and is also cheat vision — do not treat it as fair observation.
 
 ## Map And Session Lifetime
 
