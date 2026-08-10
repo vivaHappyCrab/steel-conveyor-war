@@ -21,32 +21,51 @@ public sealed partial class GameSimulation
 
     private void ProcessInserters()
     {
-        var inserters = World.Entities
-            .Where(entity => entity.IsAlive && entity.Kind == EntityKind.Inserter)
-            .OrderBy(entity => entity.Id)
-            .ToList();
+        CollectSortedAliveEntities(_scratchEntities, static entity => entity.Kind == EntityKind.Inserter);
 
         // Empty-handed extract: at most one pull per source entity per tick (fair share by tick + source id).
-        var extractGroups = inserters
-            .Where(inserter => inserter.HeldItem is null)
-            .Select(inserter =>
-            {
-                var source = World.GetTopEntityAt(inserter.Position.Offset(Opposite(inserter.Direction)));
-                return (Inserter: inserter, Source: source);
-            })
-            .Where(pair => pair.Source is not null)
-            .GroupBy(pair => pair.Source!.Id)
-            .OrderBy(group => group.Key);
-
-        foreach (var group in extractGroups)
+        _scratchInserterExtracts.Clear();
+        for (var i = 0; i < _scratchEntities.Count; i++)
         {
-            var candidates = group.OrderBy(pair => pair.Inserter.Id).ToList();
-            var start = (int)((Tick + group.Key) % candidates.Count);
-            for (var offset = 0; offset < candidates.Count; offset++)
+            var inserter = _scratchEntities[i];
+            if (inserter.HeldItem is not null)
             {
-                var index = (start + offset) % candidates.Count;
-                var (inserter, source) = candidates[index];
-                if (TryExtractItem(source!, inserter.FilterItem, out var item))
+                continue;
+            }
+
+            var source = World.GetTopEntityAt(inserter.Position.Offset(Opposite(inserter.Direction)));
+            if (source is null)
+            {
+                continue;
+            }
+
+            _scratchInserterExtracts.Add((source.Id, inserter, source));
+        }
+
+        _scratchInserterExtracts.Sort(static (left, right) =>
+        {
+            var bySource = left.SourceId.CompareTo(right.SourceId);
+            return bySource != 0 ? bySource : left.Inserter.Id.CompareTo(right.Inserter.Id);
+        });
+
+        var extractIndex = 0;
+        while (extractIndex < _scratchInserterExtracts.Count)
+        {
+            var sourceId = _scratchInserterExtracts[extractIndex].SourceId;
+            var groupStart = extractIndex;
+            while (extractIndex < _scratchInserterExtracts.Count
+                   && _scratchInserterExtracts[extractIndex].SourceId == sourceId)
+            {
+                extractIndex++;
+            }
+
+            var groupCount = extractIndex - groupStart;
+            var start = (int)((Tick + sourceId) % groupCount);
+            for (var offset = 0; offset < groupCount; offset++)
+            {
+                var index = groupStart + ((start + offset) % groupCount);
+                var (_, inserter, source) = _scratchInserterExtracts[index];
+                if (TryExtractItem(source, inserter.FilterItem, out var item))
                 {
                     inserter.HeldItem = item;
                     inserter.HeldTransferTicksRemaining = MvpDefinitions.InserterTransferTicks;
@@ -55,8 +74,14 @@ public sealed partial class GameSimulation
             }
         }
 
-        foreach (var inserter in inserters.Where(entity => entity.HeldItem is not null))
+        for (var i = 0; i < _scratchEntities.Count; i++)
         {
+            var inserter = _scratchEntities[i];
+            if (inserter.HeldItem is null)
+            {
+                continue;
+            }
+
             if (inserter.HeldTransferTicksRemaining > 0)
             {
                 inserter.HeldTransferTicksRemaining--;
@@ -73,10 +98,23 @@ public sealed partial class GameSimulation
 
     private void ProcessConveyors()
     {
-        foreach (var conveyor in World.Entities.Where(entity => entity.IsAlive && (entity.Kind == EntityKind.Conveyor || entity.Kind == EntityKind.UndergroundConveyor)).OrderBy(entity => entity.Id).ToList())
+        CollectSortedAliveEntities(
+            _scratchEntities,
+            static entity => entity.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor);
+
+        for (var conveyorIndex = 0; conveyorIndex < _scratchEntities.Count; conveyorIndex++)
         {
-            foreach (var conveyorItem in conveyor.ConveyorItems.ToList())
+            var conveyor = _scratchEntities[conveyorIndex];
+            _scratchConveyorItems.Clear();
+            var liveItems = conveyor.ConveyorItemsMutable;
+            for (var itemIndex = 0; itemIndex < liveItems.Count; itemIndex++)
             {
+                _scratchConveyorItems.Add(liveItems[itemIndex]);
+            }
+
+            for (var itemIndex = 0; itemIndex < _scratchConveyorItems.Count; itemIndex++)
+            {
+                var conveyorItem = _scratchConveyorItems[itemIndex];
                 conveyorItem.ProgressTicks++;
                 var moveTicks = MvpDefinitions.ConveyorMoveTicks;
                 if (conveyor.OwnerId is not null)

@@ -77,7 +77,11 @@ public sealed partial class GameSimulation
     /// Ballistic and AirToGround ignore walls. Buildings/walls as targets are never covered.
     /// Allied means same TeamId (static map-config alliances).
     /// </summary>
-    private bool IsGroundToGroundBlockedByAlliedWall(WorldEntity attacker, WorldEntity target, ProjectileKind projectileKind)
+    private bool IsGroundToGroundBlockedByAlliedWall(
+        WorldEntity attacker,
+        WorldEntity target,
+        ProjectileKind projectileKind,
+        CombatSpatialIndex spatial)
     {
         if (projectileKind != ProjectileKind.GroundToGround)
         {
@@ -96,10 +100,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            if (World.GetEntitiesAt(tile).Any(entity =>
-                    entity.IsAlive
-                    && MvpDefinitions.IsWallKind(entity.Kind)
-                    && AreAllied(entity.OwnerId, target.OwnerId)))
+            if (spatial.HasAlliedWallAt(tile, target.OwnerId.Value, AreAllied))
             {
                 return true;
             }
@@ -198,13 +199,19 @@ public sealed partial class GameSimulation
 
     private void ProcessCombat()
     {
-        _combatShotsThisTick.Clear();
-        foreach (var attacker in World.Entities.Where(entity =>
-                     entity.IsAlive
-                     && !entity.IsGarrisoned
-                     && entity.OwnerId is not null
-                     && MvpDefinitions.GetStats(entity.Kind).AttackDamage > 0).OrderBy(entity => entity.Id).ToList())
+        _presentation.ClearCombatShots();
+        // Per-pass combat index keeps range/splash queries neighborhood-limited; GameWorld tile
+        // occupancy (#66) does not replace position-radius combat scans yet.
+        var spatial = CombatSpatialIndex.Build(World.Entities);
+        CollectSortedAliveEntities(
+            _scratchEntities,
+            static entity => !entity.IsGarrisoned
+                             && entity.OwnerId is not null
+                             && MvpDefinitions.GetStats(entity.Kind).AttackDamage > 0);
+
+        for (var attackerIndex = 0; attackerIndex < _scratchEntities.Count; attackerIndex++)
         {
+            var attacker = _scratchEntities[attackerIndex];
             // Cascade may have killed this attacker earlier in the same pass.
             if (!attacker.IsAlive || attacker.IsGarrisoned)
             {
@@ -219,16 +226,7 @@ public sealed partial class GameSimulation
 
             var stats = MvpDefinitions.GetStats(attacker.Kind);
             var attackRange = stats.AttackRange;
-            var target = World.Entities
-                .Where(entity =>
-                    entity.IsAlive
-                    && !entity.IsGarrisoned
-                    && entity.OwnerId is not null
-                    && !AreAllied(attacker.OwnerId, entity.OwnerId))
-                .Where(entity => attacker.Position.IsWithinEuclideanRange(entity.Position, attackRange))
-                .OrderBy(entity => attacker.Position.EuclideanDistanceSquared(entity.Position))
-                .ThenBy(entity => entity.Id)
-                .FirstOrDefault();
+            var target = FindNearestCombatTarget(attacker, attackRange, spatial);
             if (target is null)
             {
                 continue;
@@ -241,12 +239,12 @@ public sealed partial class GameSimulation
 
             attacker.AttackCooldownRemaining = ResolveAttackCooldown(attacker, stats);
 
-            if (IsGroundToGroundBlockedByAlliedWall(attacker, target, stats.ProjectileKind))
+            if (IsGroundToGroundBlockedByAlliedWall(attacker, target, stats.ProjectileKind, spatial))
             {
                 continue;
             }
 
-            _combatShotsThisTick.Add(new CombatShotEvent(
+            _presentation.AddCombatShot(new CombatShotEvent(
                 attacker.Id,
                 target.Id,
                 attacker.WorldPosition,
@@ -259,17 +257,26 @@ public sealed partial class GameSimulation
 
             if (stats.SplashRadius > 0)
             {
-                foreach (var splashTarget in World.Entities
-                             .Where(entity =>
-                                 entity.IsAlive
-                                 && !entity.IsGarrisoned
-                                 && entity.Id != target.Id
-                                 && entity.OwnerId is not null
-                                 && !AreAllied(attacker.OwnerId, entity.OwnerId)
-                                 && target.Position.IsWithinEuclideanRange(entity.Position, stats.SplashRadius))
-                             .OrderBy(entity => entity.Id)
-                             .ToList())
+                _scratchEntitiesSecondary.Clear();
+                foreach (var entity in spatial.QueryByPositionInEuclideanRange(target.Position, stats.SplashRadius))
                 {
+                    if (!entity.IsAlive
+                        || entity.IsGarrisoned
+                        || entity.Id == target.Id
+                        || entity.OwnerId is null
+                        || AreAllied(attacker.OwnerId, entity.OwnerId))
+                    {
+                        continue;
+                    }
+
+                    _scratchEntitiesSecondary.Add(entity);
+                }
+
+                _scratchEntitiesSecondary.Sort(static (left, right) => left.Id.CompareTo(right.Id));
+
+                for (var splashIndex = 0; splashIndex < _scratchEntitiesSecondary.Count; splashIndex++)
+                {
+                    var splashTarget = _scratchEntitiesSecondary[splashIndex];
                     var splashDamage = ComputeDamageAgainst(attacker, stats, splashTarget);
                     ApplyCombatDamage(splashTarget, splashDamage);
                     if (!splashTarget.IsAlive)
@@ -284,5 +291,51 @@ public sealed partial class GameSimulation
                 CascadeBastionDeaths();
             }
         }
+    }
+
+    private WorldEntity? FindNearestCombatTarget(
+        WorldEntity attacker,
+        int attackRange,
+        CombatSpatialIndex spatial)
+    {
+        WorldEntity? best = null;
+        var bestDistanceSquared = 0;
+        foreach (var entity in spatial.QueryByPositionInEuclideanRange(attacker.Position, attackRange))
+        {
+            if (!entity.IsAlive
+                || entity.IsGarrisoned
+                || entity.OwnerId is null
+                || AreAllied(attacker.OwnerId, entity.OwnerId))
+            {
+                continue;
+            }
+
+            var distanceSquared = attacker.Position.EuclideanDistanceSquared(entity.Position);
+            if (best is null
+                || distanceSquared < bestDistanceSquared
+                || (distanceSquared == bestDistanceSquared && entity.Id < best.Id))
+            {
+                best = entity;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return best;
+    }
+
+    private void CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate)
+    {
+        into.Clear();
+        var entities = World.Entities;
+        for (var i = 0; i < entities.Count; i++)
+        {
+            var entity = entities[i];
+            if (entity.IsAlive && predicate(entity))
+            {
+                into.Add(entity);
+            }
+        }
+
+        into.Sort(static (left, right) => left.Id.CompareTo(right.Id));
     }
 }

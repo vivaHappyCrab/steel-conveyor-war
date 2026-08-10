@@ -16,29 +16,65 @@ public sealed partial class GameSimulation
 
     private void UpdateFogOfWar()
     {
+        // Decay only previously visible tiles (dirty list), then repaint once per vision source.
         foreach (var player in _players)
         {
             player.DecayVisibility();
-            foreach (var entity in World.Entities.Where(entity =>
-                         entity.IsAlive
-                         && !entity.IsGarrisoned
-                         && entity.OwnerId is not null
-                         && AreAllied(entity.OwnerId.Value, player.Id)))
+        }
+
+        var entities = World.Entities;
+        for (var entityIndex = 0; entityIndex < entities.Count; entityIndex++)
+        {
+            var entity = entities[entityIndex];
+            if (!entity.IsAlive || entity.IsGarrisoned || entity.OwnerId is null)
             {
-                var radius = MvpDefinitions.GetStats(entity.Kind).VisionRadius;
-                if (entity.OwnerId is not null)
+                continue;
+            }
+
+            var ownerId = entity.OwnerId.Value;
+            _fogAlliedScratch.Clear();
+            for (var playerIndex = 0; playerIndex < _players.Count; playerIndex++)
+            {
+                var player = _players[playerIndex];
+                if (AreAllied(ownerId, player.Id))
                 {
-                    radius = ResolveStat(entity.OwnerId.Value, ResearchStatIds.VisionRadius, radius, minValue: 0);
+                    _fogAlliedScratch.Add(player);
                 }
-                for (var y = entity.Position.Y - radius; y <= entity.Position.Y + radius; y++)
+            }
+
+            if (_fogAlliedScratch.Count == 0)
+            {
+                continue;
+            }
+
+            var radius = ResolveStat(
+                ownerId,
+                ResearchStatIds.VisionRadius,
+                MvpDefinitions.GetStats(entity.Kind).VisionRadius,
+                minValue: 0);
+
+            var origin = entity.Position;
+            var radiusSquared = radius * radius;
+            for (var y = origin.Y - radius; y <= origin.Y + radius; y++)
+            {
+                for (var x = origin.X - radius; x <= origin.X + radius; x++)
                 {
-                    for (var x = entity.Position.X - radius; x <= entity.Position.X + radius; x++)
+                    var dx = x - origin.X;
+                    var dy = y - origin.Y;
+                    if (dx * dx + dy * dy > radiusSquared)
                     {
-                        var position = new TilePosition(x, y);
-                        if (World.IsInside(position) && entity.Position.IsWithinEuclideanRange(position, radius))
-                        {
-                            player.SetVisible(position);
-                        }
+                        continue;
+                    }
+
+                    var position = new TilePosition(x, y);
+                    if (!World.IsInside(position))
+                    {
+                        continue;
+                    }
+
+                    for (var allyIndex = 0; allyIndex < _fogAlliedScratch.Count; allyIndex++)
+                    {
+                        _fogAlliedScratch[allyIndex].SetVisible(position);
                     }
                 }
             }

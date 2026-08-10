@@ -15,8 +15,10 @@ public sealed partial class GameSimulation
 
     private void ProcessMovement()
     {
-        foreach (var unit in World.Entities.Where(entity => entity.IsAlive && MvpDefinitions.UnitKinds.Contains(entity.Kind)).OrderBy(entity => entity.Id))
+        CollectSortedAliveEntities(_scratchEntities, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
+        for (var i = 0; i < _scratchEntities.Count; i++)
         {
+            var unit = _scratchEntities[i];
             var target = GetMovementTarget(unit);
             if (target is null || unit.Position == target.Value)
             {
@@ -127,7 +129,7 @@ public sealed partial class GameSimulation
             }
 
             entity.WorldPosition = waypointPosition;
-            entity.Position = entity.CurrentWaypoint.Value;
+            World.RelocateEntity(entity, entity.CurrentWaypoint.Value);
             entity.CurrentWaypoint = null;
             return entity.MovementPath.Count == 0 && (entity.Position == target || !IsGroundPassable(entity, target));
         }
@@ -144,7 +146,7 @@ public sealed partial class GameSimulation
         }
 
         entity.WorldPosition = nextPosition;
-        entity.Position = nextPosition.ToTilePosition();
+        World.RelocateEntity(entity, nextPosition.ToTilePosition());
         return false;
     }
 
@@ -169,9 +171,9 @@ public sealed partial class GameSimulation
             return [];
         }
 
-        var open = new PriorityQueue<TilePosition, (double F, double H, int Y, int X)>();
+        var open = new PriorityQueue<TilePosition, (int F, int H, int Y, int X)>();
         var previous = new Dictionary<TilePosition, TilePosition?>();
-        var costSoFar = new Dictionary<TilePosition, double>();
+        var costSoFar = new Dictionary<TilePosition, int>();
         previous[start] = null;
         costSoFar[start] = 0;
         open.Enqueue(start, (OctileDistance(start, target), OctileDistance(start, target), start.Y, start.X));
@@ -295,18 +297,22 @@ public sealed partial class GameSimulation
         return from.X != to.X && from.Y != to.Y;
     }
 
-    private static double GetStepCost(TilePosition from, TilePosition to)
+    /// <summary>Integer A* step cost (straight=10, diagonal=14 ≈ 10√2). See ADR 0001.</summary>
+    private const int PathCostStraight = 10;
+    private const int PathCostDiagonal = 14;
+
+    private static int GetStepCost(TilePosition from, TilePosition to)
     {
-        return IsDiagonalStep(from, to) ? Math.Sqrt(2) : 1;
+        return IsDiagonalStep(from, to) ? PathCostDiagonal : PathCostStraight;
     }
 
-    private static double OctileDistance(TilePosition from, TilePosition to)
+    private static int OctileDistance(TilePosition from, TilePosition to)
     {
         var dx = Math.Abs(from.X - to.X);
         var dy = Math.Abs(from.Y - to.Y);
         var diagonal = Math.Min(dx, dy);
         var straight = Math.Max(dx, dy) - diagonal;
-        return diagonal * Math.Sqrt(2) + straight;
+        return diagonal * PathCostDiagonal + straight * PathCostStraight;
     }
 
     private bool IsGroundPassable(WorldEntity mover, TilePosition tile)
@@ -359,14 +365,15 @@ public sealed partial class GameSimulation
             }
 
             var minDistance = radius + otherRadius;
-            var nextDistance = position.DistanceTo(entity.WorldPosition);
-            if (nextDistance >= minDistance)
+            var minDistanceSq = minDistance * minDistance;
+            var nextDistanceSq = position.DistanceSquaredTo(entity.WorldPosition);
+            if (nextDistanceSq >= minDistanceSq)
             {
                 continue;
             }
 
-            var currentDistance = mover.WorldPosition.DistanceTo(entity.WorldPosition);
-            if (currentDistance < minDistance && nextDistance > currentDistance)
+            var currentDistanceSq = mover.WorldPosition.DistanceSquaredTo(entity.WorldPosition);
+            if (currentDistanceSq < minDistanceSq && nextDistanceSq > currentDistanceSq)
             {
                 // Allow sliding out of an existing overlap.
                 continue;
@@ -398,21 +405,22 @@ public sealed partial class GameSimulation
 
     private static bool CircleIntersectsEntityFootprint(WorldPosition position, double radius, WorldEntity obstacle)
     {
-        return DistanceToEntityFootprint(position, obstacle) < radius;
+        return DistanceSquaredToEntityFootprint(position, obstacle) < radius * radius;
     }
 
     private static bool MovesOutOfExistingOverlap(WorldEntity mover, WorldPosition nextPosition, double radius, WorldEntity obstacle)
     {
-        var currentDistance = DistanceToEntityFootprint(mover.WorldPosition, obstacle);
-        if (currentDistance >= radius)
+        var currentDistanceSq = DistanceSquaredToEntityFootprint(mover.WorldPosition, obstacle);
+        var radiusSq = radius * radius;
+        if (currentDistanceSq >= radiusSq)
         {
             return false;
         }
 
-        return DistanceToEntityFootprint(nextPosition, obstacle) > currentDistance;
+        return DistanceSquaredToEntityFootprint(nextPosition, obstacle) > currentDistanceSq;
     }
 
-    private static double DistanceToEntityFootprint(WorldPosition position, WorldEntity obstacle)
+    private static double DistanceSquaredToEntityFootprint(WorldPosition position, WorldEntity obstacle)
     {
         var footprintKind = obstacle.Kind == EntityKind.GhostBuild && obstacle.BuildTargetKind is not null
             ? obstacle.BuildTargetKind.Value
@@ -422,7 +430,7 @@ public sealed partial class GameSimulation
         var closestY = Math.Clamp(position.Y, obstacle.Position.Y, obstacle.Position.Y + footprint.Height);
         var dx = position.X - closestX;
         var dy = position.Y - closestY;
-        return Math.Sqrt(dx * dx + dy * dy);
+        return dx * dx + dy * dy;
     }
 
     private static void ResetMovementPath(WorldEntity entity)

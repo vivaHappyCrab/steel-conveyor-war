@@ -396,7 +396,7 @@ public sealed partial class GameSimulation
                 // and must hide when adjacent to any footprint tile — not only near bastion.Position.
                 if (IsWithinBastionGarrisonRange(bastion, unit.Position))
                 {
-                    unit.Position = bastion.Position;
+                    World.RelocateEntity(unit, bastion.Position);
                     unit.WorldPosition = WorldPosition.FromTileCenter(bastion.Position);
                     ResetMovementPath(unit);
                     unit.IsGarrisoned = true;
@@ -489,30 +489,65 @@ public sealed partial class GameSimulation
             return null;
         }
 
-        return World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && !entity.IsGarrisoned
-                && entity.OwnerId is not null
-                && !AreAllied(origin.OwnerId, entity.OwnerId)
-                && origin.Position.IsWithinEuclideanRange(entity.Position, radius))
-            .OrderBy(entity => origin.Position.EuclideanDistanceSquared(entity.Position))
-            .ThenBy(entity => entity.Id)
-            .FirstOrDefault();
+        WorldEntity? best = null;
+        var bestDistanceSquared = 0;
+        var entities = World.Entities;
+        for (var i = 0; i < entities.Count; i++)
+        {
+            var entity = entities[i];
+            if (!entity.IsAlive
+                || entity.IsGarrisoned
+                || entity.OwnerId is null
+                || AreAllied(origin.OwnerId, entity.OwnerId)
+                || !origin.Position.IsWithinEuclideanRange(entity.Position, radius))
+            {
+                continue;
+            }
+
+            var distanceSquared = origin.Position.EuclideanDistanceSquared(entity.Position);
+            if (best is null
+                || distanceSquared < bestDistanceSquared
+                || (distanceSquared == bestDistanceSquared && entity.Id < best.Id))
+            {
+                best = entity;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return best;
     }
 
     private void CascadeBastionDeaths()
     {
-        foreach (var bastion in World.Entities.Where(entity => entity.Kind == EntityKind.Bastion && !entity.IsAlive).ToList())
+        _scratchDeadBastions.Clear();
+        var entities = World.Entities;
+        for (var i = 0; i < entities.Count; i++)
         {
-            foreach (var unit in World.Entities
-                         .Where(entity =>
-                             entity.AssignedBastionId == bastion.Id
-                             && entity.IsAlive
-                             && MvpDefinitions.UnitKinds.Contains(entity.Kind))
-                         .ToList())
+            var entity = entities[i];
+            if (entity.Kind == EntityKind.Bastion && !entity.IsAlive)
             {
-                unit.Health = 0;
+                _scratchDeadBastions.Add(entity);
+            }
+        }
+
+        for (var bastionIndex = 0; bastionIndex < _scratchDeadBastions.Count; bastionIndex++)
+        {
+            var bastion = _scratchDeadBastions[bastionIndex];
+            _scratchCascadeUnits.Clear();
+            for (var i = 0; i < entities.Count; i++)
+            {
+                var entity = entities[i];
+                if (entity.AssignedBastionId == bastion.Id
+                    && entity.IsAlive
+                    && MvpDefinitions.UnitKinds.Contains(entity.Kind))
+                {
+                    _scratchCascadeUnits.Add(entity);
+                }
+            }
+
+            for (var unitIndex = 0; unitIndex < _scratchCascadeUnits.Count; unitIndex++)
+            {
+                _scratchCascadeUnits[unitIndex].Health = 0;
             }
         }
     }

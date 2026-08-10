@@ -13,6 +13,9 @@
   "map": {
     "content": "maps/default.json"
   },
+  "buildCosts": {
+    "content": "build-costs.json"
+  },
   "window": {
     "width": 1280,
     "height": 720,

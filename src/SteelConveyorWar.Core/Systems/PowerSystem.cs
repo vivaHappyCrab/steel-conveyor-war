@@ -122,6 +122,11 @@ public sealed partial class GameSimulation
         }
     }
 
+    /// <summary>
+    /// Distributes this tick's <see cref="PlayerState.PowerProduced"/> into owned consumer buffers
+    /// emptiest-first: lowest <c>EnergyBuffer/Capacity</c> (exact rational order via cross-multiply),
+    /// then lowest entity id. Uses a min-heap so each unit is O(log N) instead of re-sorting all consumers.
+    /// </summary>
     private void FillEnergyBuffersEmptiestFirst(PlayerState player)
     {
         var remaining = player.PowerProduced;
@@ -130,32 +135,29 @@ public sealed partial class GameSimulation
             return;
         }
 
-        var consumers = World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && entity.OwnerId == player.Id
-                && entity.EnergyBufferCapacity > 0)
-            .ToList();
-
-        if (consumers.Count == 0)
+        var heap = new PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)>(EnergyFillPriorityComparer);
+        foreach (var entity in World.Entities)
         {
-            return;
-        }
-
-        while (remaining > 0)
-        {
-            var target = consumers
-                .Where(entity => entity.EnergyBuffer < entity.EnergyBufferCapacity)
-                .OrderBy(entity => (double)entity.EnergyBuffer / entity.EnergyBufferCapacity)
-                .ThenBy(entity => entity.Id)
-                .FirstOrDefault();
-            if (target is null)
+            if (!entity.IsAlive
+                || entity.OwnerId != player.Id
+                || entity.EnergyBufferCapacity <= 0
+                || entity.EnergyBuffer >= entity.EnergyBufferCapacity)
             {
-                break;
+                continue;
             }
 
+            heap.Enqueue(entity, (entity.EnergyBuffer, entity.EnergyBufferCapacity, entity.Id));
+        }
+
+        while (remaining > 0 && heap.Count > 0)
+        {
+            var target = heap.Dequeue();
             target.EnergyBuffer++;
             remaining--;
+            if (target.EnergyBuffer < target.EnergyBufferCapacity)
+            {
+                heap.Enqueue(target, (target.EnergyBuffer, target.EnergyBufferCapacity, target.Id));
+            }
         }
     }
 }
