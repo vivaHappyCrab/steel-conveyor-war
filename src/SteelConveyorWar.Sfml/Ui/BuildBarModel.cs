@@ -47,9 +47,10 @@ public static class BuildBarModel
         };
     }
 
-    public static int AffordableBuilds(EntityKind kind, Inventory inventory)
+    public static int AffordableBuilds(EntityKind kind, Inventory inventory, BuildCostCatalog? buildCosts = null)
     {
-        if (!MvpDefinitions.BuildCosts.TryGetValue(kind, out var cost))
+        var costs = (buildCosts ?? MvpBuildCostCatalog.Embedded).Costs;
+        if (!costs.TryGetValue(kind, out var cost))
         {
             return 0;
         }
@@ -94,12 +95,14 @@ public static class BuildBarModel
         WorldEntity entity,
         out EntityKind kind,
         out Direction direction,
-        out ItemRecipeId? recipe)
+        out ItemRecipeId? recipe,
+        BuildCostCatalog? buildCosts = null)
     {
         kind = ResolveCopyKind(entity);
         direction = Direction.East;
         recipe = null;
-        if (!MvpDefinitions.BuildCosts.ContainsKey(kind))
+        var costs = (buildCosts ?? MvpBuildCostCatalog.Embedded).Costs;
+        if (!costs.ContainsKey(kind))
         {
             return false;
         }

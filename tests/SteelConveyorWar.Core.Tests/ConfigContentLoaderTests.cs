@@ -13,6 +13,7 @@ public sealed class ConfigContentLoaderTests
         Assert.Equal("research.json", settings.ResearchContentFile);
         Assert.Equal(ResearchProfileIds.MvpB, settings.ResearchProfileId);
         Assert.Equal("maps/default.json", settings.MapContentFile);
+        Assert.Equal("build-costs.json", settings.BuildCostsContentFile);
         Assert.True(settings.Window.Width > 0);
         Assert.True(settings.Window.Height > 0);
         Assert.False(string.IsNullOrWhiteSpace(settings.Window.Title));
@@ -85,19 +86,71 @@ public sealed class ConfigContentLoaderTests
     }
 
     [Fact]
+    public void BuildCosts_ParseHappyPathMatchesEmbedded()
+    {
+        var loaded = BuildCostContentLoader.Parse(File.ReadAllText(FindConfigPath("build-costs.json")));
+        var embedded = MvpBuildCostCatalog.Embedded;
+
+        Assert.Equal(embedded.Costs.Count, loaded.Costs.Count);
+        foreach (var (kind, cost) in embedded.Costs)
+        {
+            Assert.True(loaded.Costs.TryGetValue(kind, out var loadedCost), $"Missing kind {kind}");
+            Assert.Equal(cost.Count, loadedCost.Count);
+            foreach (var (item, amount) in cost)
+            {
+                Assert.Equal(amount, loadedCost[item]);
+            }
+
+            Assert.Equal(embedded.BuildTicks[kind], loaded.BuildTicks[kind]);
+        }
+
+        Assert.Equal(embedded.Requirements.Count, loaded.Requirements.Count);
+        foreach (var (kind, tech) in embedded.Requirements)
+        {
+            Assert.Equal(tech, loaded.Requirements[kind]);
+        }
+    }
+
+    [Fact]
+    public void BuildCosts_RejectDuplicateKind()
+    {
+        const string json = """
+            {
+              "schemaVersion": 1,
+              "builds": [
+                { "kind": "Mine", "cost": { "IronPlate": 20 }, "buildTicks": 30 },
+                { "kind": "Mine", "cost": { "IronPlate": 10 }, "buildTicks": 30 }
+              ]
+            }
+            """;
+        var ex = Assert.Throws<InvalidOperationException>(() => BuildCostContentLoader.Parse(json));
+        Assert.Contains("Duplicate build kind", ex.Message);
+    }
+
+    [Fact]
+    public void BuildCosts_RejectEmptyCatalog()
+    {
+        Assert.Throws<InvalidOperationException>(() => BuildCostContentLoader.Parse("""{"schemaVersion":1,"builds":[]}"""));
+    }
+
+    [Fact]
     public void CreateNewGame_StoresLoadedCatalogs()
     {
         var tiles = TileContentLoader.Parse(File.ReadAllText(FindConfigPath("tiles.json")));
         var entities = EntityContentLoader.Parse(File.ReadAllText(FindConfigPath("entities.json")));
+        var buildCosts = BuildCostContentLoader.Parse(File.ReadAllText(FindConfigPath("build-costs.json")));
         var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(
             9,
             ResearchProfileIds.MvpB,
             MvpResearchCatalog.CreateEmbedded(),
             tiles,
-            entities));
+            entities,
+            BuildCosts: buildCosts));
         Assert.Equal(tiles.Tiles.Count, simulation.TileCatalog.Tiles.Count);
         Assert.Equal(entities.Entities.Count, simulation.EntityCatalog.Entities.Count);
         Assert.Contains("unit.commander", simulation.EntityCatalog.Entities.Keys);
+        Assert.Equal(buildCosts.Costs.Count, simulation.BuildCostCatalog.Costs.Count);
+        Assert.Equal(20, simulation.BuildCostCatalog.Costs[EntityKind.Mine][ItemId.IronPlate]);
     }
 
     private static string FindConfigPath(string fileName)
