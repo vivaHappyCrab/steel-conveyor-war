@@ -673,6 +673,32 @@ public sealed class GameSimulation
         return true;
     }
 
+    /// <summary>Test helper: clears an entity's primary inventory (not input/output buffers).</summary>
+    public bool ClearEntityInventoryForTests(int entityId)
+    {
+        var entity = World.GetEntity(entityId);
+        if (entity is null)
+        {
+            return false;
+        }
+
+        entity.Inventory.Clear();
+        return true;
+    }
+
+    /// <summary>Test helper: clears an entity's input buffer.</summary>
+    public bool ClearEntityInputBufferForTests(int entityId)
+    {
+        var entity = World.GetEntity(entityId);
+        if (entity is null)
+        {
+            return false;
+        }
+
+        entity.InputBuffer.Clear();
+        return true;
+    }
+
     /// <summary>
     /// Test helper: fills or sets a building energy buffer within capacity.
     /// </summary>
