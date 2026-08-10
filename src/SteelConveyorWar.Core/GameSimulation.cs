@@ -1228,12 +1228,6 @@ public sealed partial class GameSimulation
         }
     }
 
-    /// <summary>
-    /// Drains <see cref="MvpDefinitions.GetPowerDemand"/> from the building buffer when it can afford to run.
-    /// Returns false when the buffer is too low (work must pause). No demand configured → success (unpowered-free).
-    /// Successful drains accumulate into this tick's energy-stats consumption sample.
-    /// </summary>
-
     private static bool TryValidateCommanderInteract(WorldEntity? commander, WorldEntity? target)
     {
         if (commander is null
