@@ -21,6 +21,14 @@ public sealed class DeterminismHashTests
     }
 
     [Fact]
+    public void SameSeedQueuedCommandRuns_ProduceIdenticalHash()
+    {
+        var hashA = RunWithQueuedMove(seed: 42, ticks: 180);
+        var hashB = RunWithQueuedMove(seed: 42, ticks: 180);
+        Assert.Equal(hashA, hashB);
+    }
+
+    [Fact]
     public void DifferentSeeds_ProduceDifferentHashes()
     {
         var hashA = RunIdle(seed: 42, ticks: 30);
@@ -79,6 +87,21 @@ public sealed class DeterminismHashTests
         var commander = simulation.World.Entities.First(entity =>
             entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Commander);
         Assert.True(simulation.TryIssueMoveCommand(commander.Id, new TilePosition(12, 10)));
+        for (var i = 0; i < ticks; i++)
+        {
+            simulation.AdvanceTick();
+        }
+
+        return simulation.ComputeStateHash();
+    }
+
+    private static string RunWithQueuedMove(int seed, int ticks)
+    {
+        var simulation = GameSimulation.CreateNewGame(seed);
+        var commander = simulation.World.Entities.First(entity =>
+            entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Commander);
+        simulation.EnqueueForNextTick(tick => new Commands.IssueMoveCommand(
+            new PlayerId(1), tick, commander.Id, new TilePosition(12, 10)));
         for (var i = 0; i < ticks; i++)
         {
             simulation.AdvanceTick();

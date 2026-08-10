@@ -1,6 +1,6 @@
 namespace SteelConveyorWar.Core;
 
-public sealed class GameSimulation
+public sealed partial class GameSimulation
 {
     /// <summary>
     /// Default fixed tick rate used by Core for duration-in-ticks conversions
@@ -1399,6 +1399,7 @@ public sealed class GameSimulation
         }
 
         Tick++;
+        ApplyQueuedCommandsForCurrentTick();
         ProcessCommanderBuildOrders();
         ProcessCommanderDemolishOrders();
         ProcessCommanderMoveCommands();

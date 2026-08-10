@@ -126,8 +126,18 @@ This document records architecture and game-design decisions made while implemen
 - Tune energy demand/production balance and optional consumer priority tiers beyond emptiest-first once production loops are playtested.
 - Expand SFML research controls from prototype paging/hotkeys to a dedicated full tree panel.
 - Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.
-- Add tick-stamped command queue / state hash for multiplayer research lockstep.
+- Migrate SFML / bot hosts from immediate `Try*` to `EnqueueCommand` so all gameplay mutations are tick-ordered; tighten Core ownership checks on every command apply.
+- Network transport / matchmaker / rollback netcode remain out of scope (command queue is the Core prerequisite only).
 - Migrate remaining authoritative `WorldPosition` movement-step `Sqrt` / collision radii to fixed-point (or equivalent) so lockstep can leave the single-runtime guarantee — see ADR 0001.
+
+## Tick-Stamped Command Queue
+
+- Gameplay intents are `ISimulationCommand` DTOs (`SteelConveyorWar.Core.Commands`) with `Kind`, actor `PlayerId`, and `Tick`.
+- Hosts call `GameSimulation.EnqueueCommand` / `EnqueueForNextTick`; `AdvanceTick` increments `Tick`, then applies FIFO commands where `command.Tick == Tick`, then runs systems.
+- Covered intents: move/stop, ghost/queue build & demolish, rotate, research start/cancel & track allocation, factory production/bastion assign, bastion template/order, assembler recipe, hub/output deposit/withdraw (typed and untyped), collect output.
+- Legacy public `Try*` methods still mutate **immediately** for SFML and existing tests. Lockstep, replay, and fair bot logs must use the queue. `ApplyCommand` dispatches a DTO through the same handlers.
+- Serialization shape (JSON stub for tests/logs, not a wire protocol): envelope `{ "kind", "actor", "tick", "payload" }` via `SimulationCommandSerializer`. Enums as camelCase strings; `TechnologyId` as its string value; bastion waypoints as ordered `{x,y}` arrays; track allocations written sorted by track id. Round-trip covered by `CommandQueueTests`.
+- Determinism gate: same seed + same queued commands → same `ComputeStateHash` (`DeterminismHashTests.SameSeedQueuedCommandRuns_ProduceIdenticalHash`, `CommandQueueTests`).
 
 ## Authoritative Numeric Policy
 
@@ -143,7 +153,7 @@ This document records architecture and game-design decisions made while implemen
 - Doubles use IEEE bit patterns (`DoubleToInt64Bits`). Unordered collections are sorted before hashing.
 - Primary quality gate: dual independent runs with the same seed/commands must match (`DeterminismHashTests`). A checked-in golden hex is optional; when adding/updating one, bump `AlgorithmVersion` if the surface changed, re-run the fixture, and commit the new constant intentionally.
 - **Issue #80 decision:** do **not** check in a golden hex yet. MVP Core still churns fields the hasher fingerprints (combat, energy buffers, recipes, research profile/catalog, factory spawn caps, balance timing). Dual-run already covers accidental non-determinism; a golden would mostly regress on intentional edits and inflate noise. Add a CI-asserted golden later once the hash surface stabilizes or multiplayer lockstep needs a fixed oracle.
-- Out of surface: SFML/UI, wall-clock, tick-stamped command logs, presentation-only floats listed under Authoritative Numeric Policy, and **presentation side-channels in Core** (below).
+- Out of surface: SFML/UI, wall-clock, tick-stamped command logs, pending command buffer contents (applied commands affect hashed state; the queue itself is not hashed), presentation-only floats listed under Authoritative Numeric Policy, and **presentation side-channels in Core** (below).
 - Teach map generation to consume `RandomSeed` before any claim of seed-driven layouts (no MVP map-disk format).
 
 ## Presentation state in Core
