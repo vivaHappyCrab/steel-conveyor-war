@@ -8,7 +8,8 @@ public sealed record GameSettings(
     int DefaultRandomSeed,
     string ResearchContentFile,
     string ResearchProfileId,
-    string MapContentFile)
+    string MapContentFile,
+    string BuildCostsContentFile)
 {
     public static GameSettings Default { get; } = new(
         SchemaVersion: 1,
@@ -18,5 +19,6 @@ public sealed record GameSettings(
         DefaultRandomSeed: 42,
         ResearchContentFile: "research.json",
         ResearchProfileId: ResearchProfileIds.MvpB,
-        MapContentFile: "maps/default.json");
+        MapContentFile: "maps/default.json",
+        BuildCostsContentFile: "build-costs.json");
 }

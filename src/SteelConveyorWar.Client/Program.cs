@@ -22,6 +22,7 @@ var catalog = LoadRequiredJson(configDirectory, gameSettings.ResearchContentFile
 var tiles = LoadRequiredJson(configDirectory, "tiles.json", TileContentLoader.Parse, "tile catalog");
 var entities = LoadRequiredJson(configDirectory, "entities.json", EntityContentLoader.Parse, "entity catalog");
 var map = LoadRequiredJson(configDirectory, gameSettings.MapContentFile, MapSettingsLoader.Parse, "map settings");
+var buildCosts = LoadRequiredJson(configDirectory, gameSettings.BuildCostsContentFile, BuildCostContentLoader.Parse, "build-cost catalog");
 
 var options = new GameCreationOptions(
     gameSettings.DefaultRandomSeed,
@@ -29,7 +30,8 @@ var options = new GameCreationOptions(
     catalog,
     tiles,
     entities,
-    map);
+    map,
+    buildCosts);
 
 var simulation = GameSimulation.CreateNewGame(options);
 var display = HostDisplayOptionsLoader.Parse(gameJson, gameSettings.TicksPerSecond);

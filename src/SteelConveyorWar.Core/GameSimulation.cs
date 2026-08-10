@@ -27,7 +27,8 @@ public sealed class GameSimulation
         ResearchCatalog catalog,
         ResearchProfileDefinition profile,
         TileCatalog tiles,
-        EntityCatalog entities)
+        EntityCatalog entities,
+        BuildCostCatalog buildCosts)
     {
         World = world;
         _players = players.ToList();
@@ -36,6 +37,7 @@ public sealed class GameSimulation
         ResearchProfile = profile;
         TileCatalog = tiles;
         EntityCatalog = entities;
+        BuildCostCatalog = buildCosts;
         _researchSystem = new ResearchSystem(catalog, profile);
         foreach (var player in _players)
         {
@@ -54,6 +56,8 @@ public sealed class GameSimulation
     public TileCatalog TileCatalog { get; }
 
     public EntityCatalog EntityCatalog { get; }
+
+    public BuildCostCatalog BuildCostCatalog { get; }
 
     public long Tick { get; private set; }
 
@@ -118,7 +122,8 @@ public sealed class GameSimulation
             options.Catalog,
             profile,
             options.Tiles,
-            options.Entities);
+            options.Entities,
+            options.ResolvedBuildCosts);
         simulation.CreateStartingEntities();
         simulation.UpdatePower();
         simulation.RecordEnergyStatsSample();
@@ -169,7 +174,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        if (!World.IsInside(position) || !MvpDefinitions.BuildCosts.TryGetValue(targetKind, out var cost))
+        if (!World.IsInside(position) || !BuildCostCatalog.Costs.TryGetValue(targetKind, out var cost))
         {
             return false;
         }
@@ -201,7 +206,7 @@ public sealed class GameSimulation
             ghost.SelectedItemRecipe = selectedItemRecipe;
         }
 
-        var buildTicks = MvpDefinitions.BuildTicks.GetValueOrDefault(targetKind, TicksPerSecond);
+        var buildTicks = BuildCostCatalog.BuildTicks.GetValueOrDefault(targetKind, TicksPerSecond);
         if (commander.OwnerId is not null)
         {
             buildTicks = ResolveStat(commander.OwnerId.Value, ResearchStatIds.ConstructionTicks, buildTicks);
@@ -228,7 +233,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        if (!MvpDefinitions.BuildCosts.ContainsKey(targetKind) || !IsBuildUnlocked(commander.OwnerId.Value, targetKind) || !CanPlaceBuilding(targetKind, position))
+        if (!BuildCostCatalog.Costs.ContainsKey(targetKind) || !IsBuildUnlocked(commander.OwnerId.Value, targetKind) || !CanPlaceBuilding(targetKind, position))
         {
             return false;
         }
@@ -342,7 +347,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        if (!MvpDefinitions.BuildCosts.TryGetValue(costKind, out var fullCost))
+        if (!BuildCostCatalog.Costs.TryGetValue(costKind, out var fullCost))
         {
             return false;
         }
@@ -409,7 +414,7 @@ public sealed class GameSimulation
         return Math.Max(1, moveTicks);
     }
 
-    private static bool TryResolveDemolishCostKind(WorldEntity? commander, WorldEntity? target, out EntityKind costKind)
+    private bool TryResolveDemolishCostKind(WorldEntity? commander, WorldEntity? target, out EntityKind costKind)
     {
         costKind = default;
         if (commander is null
@@ -427,7 +432,7 @@ public sealed class GameSimulation
         {
             if (target.BuildTargetKind is not { } ghostTarget
                 || ghostTarget == EntityKind.Bastion
-                || !MvpDefinitions.BuildCosts.ContainsKey(ghostTarget))
+                || !BuildCostCatalog.Costs.ContainsKey(ghostTarget))
             {
                 return false;
             }
@@ -439,7 +444,7 @@ public sealed class GameSimulation
         if (target.Kind == EntityKind.Bastion
             || target.Kind == EntityKind.Commander
             || MvpDefinitions.UnitKinds.Contains(target.Kind)
-            || !MvpDefinitions.BuildCosts.ContainsKey(target.Kind))
+            || !BuildCostCatalog.Costs.ContainsKey(target.Kind))
         {
             return false;
         }
@@ -2022,7 +2027,7 @@ public sealed class GameSimulation
             return true;
         }
 
-        if (MvpDefinitions.BuildRequirements.TryGetValue(kind, out var requiredTechnology))
+        if (BuildCostCatalog.Requirements.TryGetValue(kind, out var requiredTechnology))
         {
             return player.ResearchedTechnologies.Contains(requiredTechnology);
         }

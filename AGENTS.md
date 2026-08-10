@@ -16,7 +16,7 @@
 - `src/SteelConveyorWar.Client` — composition root / executable
 - `tests/SteelConveyorWar.Core.Tests` — headless core tests (no SFML reference)
 - `tests/SteelConveyorWar.Sfml.Tests` — SFML adapter tests
-- `config/` — runtime content (`game`/`research`/`tiles`/`entities` JSON); remaining recipes/combat/build costs in `MvpDefinitions.cs`
+- `config/` — runtime content (`game`/`research`/`tiles`/`entities`/`build-costs` JSON); remaining recipes/combat/footprints/stacks/power in `MvpDefinitions.cs`
 - `resources/` — presentation assets only
 
 ## Verification
