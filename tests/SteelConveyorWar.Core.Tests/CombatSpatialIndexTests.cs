@@ -3,58 +3,69 @@ namespace SteelConveyorWar.Core.Tests;
 public sealed class CombatSpatialIndexTests
 {
     [Fact]
-    public void QueryByPositionInEuclideanRange_MatchesFullEntityScanOrdering()
+    public void ProcessCombat_SplashDamagesNearbyHostile_NotFriendly()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        var p1 = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
-        var p2 = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
-        Assert.True(simulation.TryTeleportEntityForTests(p1.Id, new TilePosition(40, 40)));
-        Assert.True(simulation.TryTeleportEntityForTests(p2.Id, new TilePosition(43, 40)));
+        var enemyCommander = simulation.World.Entities.Single(entity =>
+            entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        Assert.True(simulation.TryTeleportEntityForTests(enemyCommander.Id, new TilePosition(2, 2)));
 
         Assert.True(simulation.TrySpawnEntityForTests(
-            EntityKind.BasicTank,
-            new TilePosition(41, 42),
+            EntityKind.MediumTank,
+            new TilePosition(40, 40),
             new PlayerId(1),
             out var tankId));
+        Assert.True(simulation.TrySpawnEntityForTests(
+            EntityKind.LightBot,
+            new TilePosition(41, 40),
+            new PlayerId(2),
+            out var primaryId));
+        Assert.True(simulation.TrySpawnEntityForTests(
+            EntityKind.LightBot,
+            new TilePosition(42, 40),
+            new PlayerId(2),
+            out var splashHostileId));
+        Assert.True(simulation.TrySpawnEntityForTests(
+            EntityKind.Wall,
+            new TilePosition(41, 41),
+            new PlayerId(1),
+            out var friendlyId));
 
-        var center = new TilePosition(40, 40);
-        const int radius = 5;
-        var spatial = CombatSpatialIndex.Build(simulation.World.Entities);
+        var primary = simulation.World.GetEntity(primaryId)!;
+        var splashHostile = simulation.World.GetEntity(splashHostileId)!;
+        var friendly = simulation.World.GetEntity(friendlyId)!;
+        var primaryBefore = primary.Health;
+        var splashBefore = splashHostile.Health;
+        var friendlyBefore = friendly.Health;
 
-        var fromIndex = spatial.QueryByPositionInEuclideanRange(center, radius)
-            .Where(entity => entity.IsAlive && !entity.IsGarrisoned && entity.OwnerId is not null)
-            .OrderBy(entity => center.EuclideanDistanceSquared(entity.Position))
-            .ThenBy(entity => entity.Id)
-            .Select(entity => entity.Id)
-            .ToList();
+        var expectedPrimary = simulation.ComputeCombatDamageForTests(tankId, primaryId);
+        var expectedSplash = simulation.ComputeCombatDamageForTests(tankId, splashHostileId);
+        Assert.True(expectedPrimary > 0);
+        Assert.True(expectedSplash > 0);
+        Assert.True(MvpDefinitions.GetStats(EntityKind.MediumTank).SplashRadius > 0);
 
-        var fromFullScan = simulation.World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && !entity.IsGarrisoned
-                && entity.OwnerId is not null
-                && center.IsWithinEuclideanRange(entity.Position, radius))
-            .OrderBy(entity => center.EuclideanDistanceSquared(entity.Position))
-            .ThenBy(entity => entity.Id)
-            .Select(entity => entity.Id)
-            .ToList();
+        simulation.AdvanceTick();
 
-        Assert.Equal(fromFullScan, fromIndex);
-        Assert.Contains(p1.Id, fromIndex);
-        Assert.Contains(p2.Id, fromIndex);
-        Assert.Contains(tankId, fromIndex);
+        Assert.Equal(primaryBefore - expectedPrimary, primary.Health);
+        Assert.Equal(splashBefore - expectedSplash, splashHostile.Health);
+        Assert.Equal(friendlyBefore, friendly.Health);
     }
 
     [Fact]
-    public void HasAlliedWallAt_DetectsWallOnFootprintTile()
+    public void ProcessCombat_WallBlocksGroundToGround_UsesSpatialWallLookup()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        var wallTile = new TilePosition(12, 12);
-        Assert.True(simulation.TrySpawnEntityForTests(EntityKind.Wall, wallTile, new PlayerId(1), out _));
+        var attacker = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        var defender = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
 
-        var spatial = CombatSpatialIndex.Build(simulation.World.Entities);
-        Assert.True(spatial.HasAlliedWallAt(wallTile, new PlayerId(1), simulation.AreAllied));
-        Assert.False(spatial.HasAlliedWallAt(wallTile, new PlayerId(2), simulation.AreAllied));
-        Assert.False(spatial.HasAlliedWallAt(new TilePosition(13, 12), new PlayerId(1), simulation.AreAllied));
+        Assert.True(simulation.TryTeleportEntityForTests(attacker.Id, new TilePosition(50, 50)));
+        Assert.True(simulation.TryTeleportEntityForTests(defender.Id, new TilePosition(52, 50)));
+        Assert.True(simulation.TrySpawnEntityForTests(EntityKind.Wall, new TilePosition(51, 50), new PlayerId(1), out _));
+
+        var healthBefore = defender.Health;
+        simulation.AdvanceTick();
+
+        Assert.Equal(healthBefore, defender.Health);
+        Assert.True(attacker.AttackCooldownRemaining > 0);
     }
 }
