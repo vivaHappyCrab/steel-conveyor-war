@@ -1568,7 +1568,11 @@ public sealed class GameSimulation
     /// Ballistic and AirToGround ignore walls. Buildings/walls as targets are never covered.
     /// Allied means same TeamId (static map-config alliances).
     /// </summary>
-    private bool IsGroundToGroundBlockedByAlliedWall(WorldEntity attacker, WorldEntity target, ProjectileKind projectileKind)
+    private bool IsGroundToGroundBlockedByAlliedWall(
+        WorldEntity attacker,
+        WorldEntity target,
+        ProjectileKind projectileKind,
+        CombatSpatialIndex spatial)
     {
         if (projectileKind != ProjectileKind.GroundToGround)
         {
@@ -1587,10 +1591,7 @@ public sealed class GameSimulation
                 continue;
             }
 
-            if (World.GetEntitiesAt(tile).Any(entity =>
-                    entity.IsAlive
-                    && MvpDefinitions.IsWallKind(entity.Kind)
-                    && AreAllied(entity.OwnerId, target.OwnerId)))
+            if (spatial.HasAlliedWallAt(tile, target.OwnerId.Value, AreAllied))
             {
                 return true;
             }
@@ -3570,6 +3571,8 @@ public sealed class GameSimulation
     private void ProcessCombat()
     {
         _combatShotsThisTick.Clear();
+        // One spatial rebuild per combat pass: range queries stay neighborhood-limited without #66.
+        var spatial = CombatSpatialIndex.Build(World.Entities);
         foreach (var attacker in World.Entities.Where(entity =>
                      entity.IsAlive
                      && !entity.IsGarrisoned
@@ -3590,13 +3593,12 @@ public sealed class GameSimulation
 
             var stats = MvpDefinitions.GetStats(attacker.Kind);
             var attackRange = stats.AttackRange;
-            var target = World.Entities
+            var target = spatial.QueryByPositionInEuclideanRange(attacker.Position, attackRange)
                 .Where(entity =>
                     entity.IsAlive
                     && !entity.IsGarrisoned
                     && entity.OwnerId is not null
                     && !AreAllied(attacker.OwnerId, entity.OwnerId))
-                .Where(entity => attacker.Position.IsWithinEuclideanRange(entity.Position, attackRange))
                 .OrderBy(entity => attacker.Position.EuclideanDistanceSquared(entity.Position))
                 .ThenBy(entity => entity.Id)
                 .FirstOrDefault();
@@ -3612,7 +3614,7 @@ public sealed class GameSimulation
 
             attacker.AttackCooldownRemaining = ResolveAttackCooldown(attacker, stats);
 
-            if (IsGroundToGroundBlockedByAlliedWall(attacker, target, stats.ProjectileKind))
+            if (IsGroundToGroundBlockedByAlliedWall(attacker, target, stats.ProjectileKind, spatial))
             {
                 continue;
             }
@@ -3630,14 +3632,13 @@ public sealed class GameSimulation
 
             if (stats.SplashRadius > 0)
             {
-                foreach (var splashTarget in World.Entities
+                foreach (var splashTarget in spatial.QueryByPositionInEuclideanRange(target.Position, stats.SplashRadius)
                              .Where(entity =>
                                  entity.IsAlive
                                  && !entity.IsGarrisoned
                                  && entity.Id != target.Id
                                  && entity.OwnerId is not null
-                                 && !AreAllied(attacker.OwnerId, entity.OwnerId)
-                                 && target.Position.IsWithinEuclideanRange(entity.Position, stats.SplashRadius))
+                                 && !AreAllied(attacker.OwnerId, entity.OwnerId))
                              .OrderBy(entity => entity.Id)
                              .ToList())
                 {
