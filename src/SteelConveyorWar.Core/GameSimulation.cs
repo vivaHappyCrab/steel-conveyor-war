@@ -13,6 +13,16 @@ public sealed class GameSimulation
     private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickConsumedByKind = new();
     private int _nextEntityId = 1;
 
+    /// <summary>
+    /// Orders fill candidates by fill fraction ascending (<c>buffer/capacity</c> via cross-multiply), then entity id.
+    /// </summary>
+    private static readonly Comparer<(int Buffer, int Capacity, int Id)> EnergyFillPriorityComparer =
+        Comparer<(int Buffer, int Capacity, int Id)>.Create(static (left, right) =>
+        {
+            var cmp = ((long)left.Buffer * right.Capacity).CompareTo((long)right.Buffer * left.Capacity);
+            return cmp != 0 ? cmp : left.Id.CompareTo(right.Id);
+        });
+
     private GameSimulation(
         GameWorld world,
         IReadOnlyList<PlayerState> players,
@@ -2130,6 +2140,11 @@ public sealed class GameSimulation
         }
     }
 
+    /// <summary>
+    /// Distributes this tick's <see cref="PlayerState.PowerProduced"/> into owned consumer buffers
+    /// emptiest-first: lowest <c>EnergyBuffer/Capacity</c> (exact rational order via cross-multiply),
+    /// then lowest entity id. Uses a min-heap so each unit is O(log N) instead of re-sorting all consumers.
+    /// </summary>
     private void FillEnergyBuffersEmptiestFirst(PlayerState player)
     {
         var remaining = player.PowerProduced;
@@ -2138,32 +2153,29 @@ public sealed class GameSimulation
             return;
         }
 
-        var consumers = World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && entity.OwnerId == player.Id
-                && entity.EnergyBufferCapacity > 0)
-            .ToList();
-
-        if (consumers.Count == 0)
+        var heap = new PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)>(EnergyFillPriorityComparer);
+        foreach (var entity in World.Entities)
         {
-            return;
-        }
-
-        while (remaining > 0)
-        {
-            var target = consumers
-                .Where(entity => entity.EnergyBuffer < entity.EnergyBufferCapacity)
-                .OrderBy(entity => (double)entity.EnergyBuffer / entity.EnergyBufferCapacity)
-                .ThenBy(entity => entity.Id)
-                .FirstOrDefault();
-            if (target is null)
+            if (!entity.IsAlive
+                || entity.OwnerId != player.Id
+                || entity.EnergyBufferCapacity <= 0
+                || entity.EnergyBuffer >= entity.EnergyBufferCapacity)
             {
-                break;
+                continue;
             }
 
+            heap.Enqueue(entity, (entity.EnergyBuffer, entity.EnergyBufferCapacity, entity.Id));
+        }
+
+        while (remaining > 0 && heap.Count > 0)
+        {
+            var target = heap.Dequeue();
             target.EnergyBuffer++;
             remaining--;
+            if (target.EnergyBuffer < target.EnergyBufferCapacity)
+            {
+                heap.Enqueue(target, (target.EnergyBuffer, target.EnergyBufferCapacity, target.Id));
+            }
         }
     }
 
