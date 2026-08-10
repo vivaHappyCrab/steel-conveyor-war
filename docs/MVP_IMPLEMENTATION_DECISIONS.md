@@ -86,7 +86,7 @@ This document records architecture and game-design decisions made while implemen
 - `EntityStats` includes Armor, `ProjectileKind` (`GroundToGround` | `Ballistic` | `AirToGround`), and `SplashRadius` (0 = single target). MG turrets/bots/БМК are G2G; cannon/rocket/medium tank are Ballistic; AA turret/bot are AirToGround. Splash applies in the same `ProcessCombat` pass to enemies near the primary target (ordered by entity id).
 - Walls/SteelWalls block **GroundToGround** damage to allied **ground** units (БМК + `UnitKinds` except Scout) when a Bresenham LoS tile between attacker and target holds a Wall/SteelWall owned by a player with the same `TeamId` as the target. Ballistic and AirToGround ignore walls. Buildings and walls as targets still take full formula-C damage.
 - Research modifiers (`ResearchStatIds.AttackDamage` / `Armor` / `AttackCooldownTicks` / `MaxHealth`, plus existing `VisionRadius`) flow through `ResolveStat` / `AddModifierEffect`. `ProcessCombat` and FoW/HP sync use resolved values (MaxHealth delta adjusts current HP when the cap changes).
-- Friendly fire is disabled for MVP (same `TeamId`). Victory is evaluated by commander survival: the last player with a living БМК wins.
+- Friendly fire is disabled for MVP (same `TeamId`). Victory is evaluated by commander survival: the last player with a living БМК wins. Dead commanders are purged by `World.RemoveDead` after `CheckVictory` in the same tick (and on post-game `AdvanceTick` if death came from out-of-tick APIs); FoW/render already ignore `!IsAlive`, so retention is not required for corpse UI.
 - Baseline combat tables live in `docs/MVP_GDD.md` §12 and `MvpDefinitions.GetStats`.
 
 ## Fog Of War And Tech Signatures

@@ -1306,6 +1306,9 @@ public sealed class GameSimulation
     {
         if (Status != GameStatus.InProgress)
         {
+            // DamageEntity / similar APIs may kill a commander and end the match without
+            // reaching RemoveDead; still purge corpses if a host advances after game-over.
+            World.RemoveDead();
             return;
         }
 
