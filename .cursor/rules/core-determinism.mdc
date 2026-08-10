@@ -10,7 +10,7 @@ alwaysApply: false
 - No wall-clock time (`DateTime`, `Stopwatch`, `Environment.TickCount`) in simulation updates.
 - No unseeded randomness. Seeds belong to the simulation.
 - Gameplay-affecting iteration must be order-stable (prefer entity id ordering).
-- Authoritative floating-point use is a multiplayer risk — isolate and document it.
+- Authoritative floating-point use is a multiplayer risk — follow ADR 0001 / decisions § Authoritative Numeric Policy (prefer integer or distance-squared; remaining doubles require the single-runtime guarantee).
 - New mechanics need public testable APIs and Core unit tests without opening a window.
 
 ```csharp
