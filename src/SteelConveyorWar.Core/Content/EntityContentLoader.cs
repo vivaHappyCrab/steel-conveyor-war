@@ -44,6 +44,19 @@ public static class EntityContentLoader
                 throw new InvalidOperationException($"Entity '{entity.Id}' is missing a kind.");
             }
 
+            if (!Enum.TryParse<EntityKind>(entity.Kind, ignoreCase: false, out _))
+            {
+                throw new InvalidOperationException(
+                    $"Entity '{entity.Id}' has unknown kind '{entity.Kind}' (must match EntityKind).");
+            }
+
+            if (entity.LossCondition is not null
+                && !string.Equals(entity.LossCondition, "Defeat", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Entity '{entity.Id}' has unsupported lossCondition '{entity.LossCondition}' (supported: Defeat).");
+            }
+
             if (!entities.TryAdd(
                     entity.Id,
                     new EntityDefinition(

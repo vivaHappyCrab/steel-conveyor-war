@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "builds": [
+    {
+      "kind": "Mine",
+      "cost": { "IronPlate": 20 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "CoalMine",
+      "cost": { "IronPlate": 25 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "OilWell",
+      "cost": { "IronPlate": 30, "CopperPlate": 10 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "Smelter",
+      "cost": { "IronPlate": 15 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "Refinery",
+      "cost": { "IronPlate": 40, "CopperPlate": 20 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "SolarPanel",
+      "cost": { "IronPlate": 10, "CopperPlate": 10 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "CoalPlant",
+      "cost": { "IronPlate": 25, "CopperPlate": 10 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "Assembler",
+      "cost": { "IronPlate": 30, "CopperPlate": 15 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "Hub",
+      "cost": { "IronPlate": 20 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "Conveyor",
+      "cost": { "IronPlate": 1 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "UndergroundConveyor",
+      "cost": { "IronPlate": 4, "CopperPlate": 2 },
+      "buildTicks": 30,
+      "requiredTechnology": "technology.t2.underground-conveyors"
+    },
+    {
+      "kind": "Inserter",
+      "cost": { "IronPlate": 2, "CopperPlate": 1 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "TankFactory",
+      "cost": { "IronPlate": 40, "CopperPlate": 20 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "DroneCenter",
+      "cost": { "IronPlate": 35, "CopperPlate": 25 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "Laboratory",
+      "cost": { "IronPlate": 25, "CopperPlate": 20 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "Wall",
+      "cost": { "IronPlate": 2 },
+      "buildTicks": 30,
+      "requiredTechnology": "technology.t1.concrete-walls"
+    },
+    {
+      "kind": "SteelWall",
+      "cost": { "Steel": 2 },
+      "buildTicks": 30,
+      "requiredTechnology": "technology.t2.steel-walls"
+    },
+    {
+      "kind": "MachineGunTurret",
+      "cost": { "IronPlate": 20, "CopperPlate": 10 },
+      "buildTicks": 30,
+      "requiredTechnology": "technology.t1.machine-gun-turret"
+    },
+    {
+      "kind": "CannonTurret",
+      "cost": { "Steel": 15, "CopperPlate": 10 },
+      "buildTicks": 30
+    },
+    {
+      "kind": "AntiAirTurret",
+      "cost": { "Steel": 12, "CopperPlate": 15 },
+      "buildTicks": 30,
+      "requiredTechnology": "technology.t2.anti-air-turret"
+    },
+    {
+      "kind": "Bastion",
+      "cost": { "IronPlate": 60, "CopperPlate": 30, "Steel": 10 },
+      "buildTicks": 30
+    }
+  ]
+}

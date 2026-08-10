@@ -14,9 +14,12 @@ alwaysApply: false
 - Prefer renaming placeholder files over leaving `Class1.cs` / `UnitTest1.cs`.
 
 ```csharp
-// ❌ BAD — gameplay in adapter
+// ❌ BAD — gameplay mutation in adapter / bypassing commands
 entity.Health -= 10;
 
-// ✅ GOOD — command/API on core
+// ✅ GOOD — production mutation via public command API
+simulation.TryQueueCommanderMove(playerId, commanderId, target);
+
+// ✅ GOOD — test-only damage remains internal (Core.Tests via InternalsVisibleTo)
 simulation.DamageEntity(entity.Id, 10);
 ```
