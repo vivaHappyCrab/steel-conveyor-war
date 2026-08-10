@@ -5,7 +5,8 @@ namespace SteelConveyorWar.Core;
 
 /// <summary>
 /// Versioned deterministic fingerprint of authoritative simulation state.
-/// Dual-run equality is the primary gate; checked-in goldens are optional and must be refreshed after intentional surface changes.
+/// Dual-run equality is the primary gate. Checked-in goldens remain deferred (#80) while the hash surface churns;
+/// when added, refresh after intentional surface changes and bump <see cref="AlgorithmVersion"/> if needed.
 /// </summary>
 public static class SimulationStateHasher
 {
