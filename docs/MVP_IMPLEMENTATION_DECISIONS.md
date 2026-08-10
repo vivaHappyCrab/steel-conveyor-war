@@ -18,6 +18,7 @@ This document records architecture and game-design decisions made while implemen
 - **Still code-owned:** build costs, recipes, combat stats, footprints, stack sizes, and most timing constants in `MvpDefinitions.cs`. Tile/entity JSON catalogs are ID registries for content ids — they do not yet replace enum-driven simulation behavior.
 - Embedded `MvpResearchCatalog` remains the parity fallback for unit tests and `GameCreationOptions.Default` only (not for Client disk startup).
 - Window width/height/title come from `game.json` into `SfmlDisplayOptions`; side-panel layout scales from window width.
+- Local seat binding is host-owned: `SfmlDisplayOptions.LocalPlayerId` (default P1) drives selection/FoW/input/HUD. Client resolves `--local-player <id>` via `LocalPlayerBinding` (see README). Not a Core/config concern yet; not networked multiplayer.
 - `simulation.ticksPerSecond` is parsed for future hosts but the Client/SFML loop still uses `GameSimulation.TicksPerSecond` (const 30) until wired.
 
 ## Scope Strategy

@@ -55,7 +55,7 @@ public sealed class SfmlGameRunner
             State.Windowed);
         window.Closed += (_, _) => window.Close();
         window.SetFramerateLimit(60);
-        var localPlayer = new PlayerId(1);
+        var localPlayer = display.LocalPlayerId;
         int? selectedEntityId = simulation.World.Entities.First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander).Id;
         var isBuildMenuOpen = false;
         EntityKind? pendingBuildKind = null;
@@ -1207,12 +1207,12 @@ public sealed class SfmlGameRunner
 
         foreach (var entity in visibleEntities.Where(entity => !IsUnitDrawKind(entity.Kind)))
         {
-            DrawEntity(target, simulation, entity, selectedEntityId == entity.Id);
+            DrawEntity(target, simulation, localPlayer, entity, selectedEntityId == entity.Id);
         }
 
         foreach (var entity in visibleEntities.Where(entity => IsUnitDrawKind(entity.Kind)))
         {
-            DrawEntity(target, simulation, entity, selectedEntityId == entity.Id);
+            DrawEntity(target, simulation, localPlayer, entity, selectedEntityId == entity.Id);
         }
 
         DrawCombatShots(target, combatShots);
@@ -1301,7 +1301,12 @@ public sealed class SfmlGameRunner
         return entity.OwnerId == localPlayer || simulation.GetVisibility(localPlayer, entity.Position) == VisibilityState.Visible;
     }
 
-    private static void DrawEntity(IRenderTarget target, GameSimulation simulation, WorldEntity entity, bool isSelected)
+    private static void DrawEntity(
+        IRenderTarget target,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        WorldEntity entity,
+        bool isSelected)
     {
         var drawKind = entity.Kind == EntityKind.GhostBuild && entity.BuildTargetKind is not null
             ? entity.BuildTargetKind.Value
@@ -1313,12 +1318,12 @@ public sealed class SfmlGameRunner
             : new Vector2f(
                 entity.Position.X * TileSize + footprint.Width * TileSize / 2f,
                 entity.Position.Y * TileSize + footprint.Height * TileSize / 2f);
-        var color = GetEntityColor(entity);
+        var color = GetEntityColor(entity, localPlayer);
         var ink = new Color(245, 245, 245, 220);
 
         if (isMobile)
         {
-            DrawMobileUnit(target, entity, center, color, ink);
+            DrawMobileUnit(target, entity, localPlayer, center, color, ink);
             if (isSelected)
             {
                 DrawMobileSelection(target, entity);
@@ -1366,7 +1371,13 @@ public sealed class SfmlGameRunner
         }
     }
 
-    private static void DrawMobileUnit(IRenderTarget target, WorldEntity entity, Vector2f center, Color color, Color ink)
+    private static void DrawMobileUnit(
+        IRenderTarget target,
+        WorldEntity entity,
+        PlayerId localPlayer,
+        Vector2f center,
+        Color color,
+        Color ink)
     {
         var radius = (float)(MvpDefinitions.GetCollisionSize(entity.Kind).Radius * TileSize);
         if (radius < TileSize * 0.2f)
@@ -1374,12 +1385,14 @@ public sealed class SfmlGameRunner
             radius = TileSize * 0.2f;
         }
 
+        var outline = entity.OwnerId == localPlayer ? Color.White : new Color(230, 140, 140);
+
         if (entity.Kind == EntityKind.Commander)
         {
             using var unit = new CircleShape(radius)
             {
                 FillColor = color,
-                OutlineColor = entity.OwnerId == new PlayerId(1) ? Color.White : new Color(230, 140, 140),
+                OutlineColor = outline,
                 OutlineThickness = 2f,
                 Origin = new Vector2f(radius, radius),
                 Position = center
@@ -1391,7 +1404,7 @@ public sealed class SfmlGameRunner
             using var unit = new ConvexShape(3)
             {
                 FillColor = color,
-                OutlineColor = entity.OwnerId == new PlayerId(1) ? Color.White : new Color(230, 140, 140),
+                OutlineColor = outline,
                 OutlineThickness = 2f,
                 Position = center
             };
@@ -1406,7 +1419,7 @@ public sealed class SfmlGameRunner
             using var unit = new RectangleShape(new Vector2f(side, side))
             {
                 FillColor = color,
-                OutlineColor = entity.OwnerId == new PlayerId(1) ? Color.White : new Color(230, 140, 140),
+                OutlineColor = outline,
                 OutlineThickness = 2f,
                 Origin = new Vector2f(side / 2f, side / 2f),
                 Position = center
@@ -2467,11 +2480,11 @@ public sealed class SfmlGameRunner
         return null;
     }
 
-    private static Color GetEntityColor(WorldEntity entity)
+    private static Color GetEntityColor(WorldEntity entity, PlayerId localPlayer)
     {
         return entity.Kind switch
         {
-            EntityKind.Commander => entity.OwnerId == new PlayerId(1) ? new Color(70, 186, 255) : new Color(220, 70, 70),
+            EntityKind.Commander => entity.OwnerId == localPlayer ? new Color(70, 186, 255) : new Color(220, 70, 70),
             EntityKind.GhostBuild => new Color(70, 120, 180, 150),
             EntityKind.Bastion => new Color(95, 95, 190),
             EntityKind.Hub => new Color(180, 160, 90),
