@@ -9,7 +9,7 @@ alwaysApply: true
 - Integration branch: `develop`. Release branch: `main`.
 - Sources of truth in order: `docs/MVP_IMPLEMENTATION_DECISIONS.md`, `docs/MVP_GDD.md`, `docs/ТЗ.md`, `docs/agents/`.
 - Core stays headless and deterministic. SFML only adapts window/input/render.
-- Runtime loads `config/game.json`, `research.json`, `tiles.json`, `entities.json` (Core parse; Client/Headless I/O). Recipes/combat/build costs still live in `MvpDefinitions.cs` until migrated — do not pretend those domains are data-driven yet.
+- Runtime loads `config/game.json`, `research.json`, `tiles.json`, `entities.json`, `build-costs.json` (Core parse; Client/Headless I/O). Recipes/combat/footprints/stacks/power still live in `MvpDefinitions.cs` — do not pretend those domains are data-driven yet.
 - `SteelConveyorWar.Headless` is the Core-only host for bots/CI (no SFML window). Client remains the SFML composition root.
 - Never merge, approve PRs, or force-push protected branches. Hand off merge-ready PRs to a human.
 - Prefer `eng/verify.ps1` after meaningful changes. Core tests must not reference SFML.
