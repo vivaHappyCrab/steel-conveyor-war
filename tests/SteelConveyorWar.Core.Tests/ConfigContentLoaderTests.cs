@@ -62,6 +62,38 @@ public sealed class ConfigContentLoaderTests
         Assert.True(catalog.Entities.ContainsKey("unit.commander"));
         Assert.Equal("Commander", catalog.Entities["unit.commander"].Kind);
         Assert.True(catalog.Entities["unit.commander"].BuildsStructures);
+        Assert.Equal("Defeat", catalog.Entities["unit.commander"].LossCondition);
+        Assert.Equal(new HashSet<EntityKind> { EntityKind.Commander }, catalog.GetDefeatLossKinds());
+    }
+
+    [Fact]
+    public void Entities_RejectUnknownKind()
+    {
+        const string json = """
+            {
+              "schemaVersion": 1,
+              "entities": [
+                { "id": "unit.mystery", "name": "Mystery", "kind": "NotARealKind" }
+              ]
+            }
+            """;
+        var ex = Assert.Throws<InvalidOperationException>(() => EntityContentLoader.Parse(json));
+        Assert.Contains("unknown kind", ex.Message);
+    }
+
+    [Fact]
+    public void Entities_RejectUnsupportedLossCondition()
+    {
+        const string json = """
+            {
+              "schemaVersion": 1,
+              "entities": [
+                { "id": "unit.commander", "name": "Commander", "kind": "Commander", "lossCondition": "Resign" }
+              ]
+            }
+            """;
+        var ex = Assert.Throws<InvalidOperationException>(() => EntityContentLoader.Parse(json));
+        Assert.Contains("unsupported lossCondition", ex.Message);
     }
 
     [Fact]
@@ -98,6 +130,61 @@ public sealed class ConfigContentLoaderTests
         Assert.Equal(tiles.Tiles.Count, simulation.TileCatalog.Tiles.Count);
         Assert.Equal(entities.Entities.Count, simulation.EntityCatalog.Entities.Count);
         Assert.Contains("unit.commander", simulation.EntityCatalog.Entities.Keys);
+    }
+
+    [Fact]
+    public void LossCondition_FromEntityCatalog_DrivesVictory()
+    {
+        var entities = EntityContentLoader.Parse(File.ReadAllText(FindConfigPath("entities.json")));
+        var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(
+            42,
+            ResearchProfileIds.MvpB,
+            MvpResearchCatalog.CreateEmbedded(),
+            TileCatalog.Empty,
+            entities));
+        var enemyCommander = simulation.World.Entities.Single(
+            entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+
+        simulation.DamageEntity(enemyCommander.Id, enemyCommander.Health);
+
+        Assert.Equal(GameStatus.PlayerWon, simulation.Status);
+        Assert.Equal(new PlayerId(1), simulation.WinnerId);
+    }
+
+    [Fact]
+    public void LossCondition_AbsentInCatalog_DoesNotDefeatOnCommanderDeath()
+    {
+        const string json = """
+            {
+              "schemaVersion": 1,
+              "entities": [
+                {
+                  "id": "unit.commander",
+                  "name": "Armored Mobile Commander",
+                  "kind": "Commander",
+                  "buildsStructures": true,
+                  "lossCondition": null
+                }
+              ]
+            }
+            """;
+        var entities = EntityContentLoader.Parse(json);
+        Assert.Empty(entities.GetDefeatLossKinds());
+
+        var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(
+            42,
+            ResearchProfileIds.MvpB,
+            MvpResearchCatalog.CreateEmbedded(),
+            TileCatalog.Empty,
+            entities));
+        var enemyCommander = simulation.World.Entities.Single(
+            entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+
+        simulation.DamageEntity(enemyCommander.Id, enemyCommander.Health);
+
+        Assert.Equal(GameStatus.InProgress, simulation.Status);
+        Assert.Null(simulation.WinnerId);
+        Assert.False(simulation.Players.Single(player => player.Id == new PlayerId(2)).IsDefeated);
     }
 
     private static string FindConfigPath(string fileName)

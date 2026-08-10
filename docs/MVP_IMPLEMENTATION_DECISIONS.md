@@ -15,7 +15,8 @@ This document records architecture and game-design decisions made while implemen
 
 - **Ownership:** Core owns parse/validate of JSON content (`ResearchContentLoader`, `GameSettingsLoader`, `TileContentLoader`, `EntityContentLoader`). Client owns path resolution and file I/O, then passes parsed catalogs into `GameCreationOptions`. SFML never parses gameplay JSON; it only receives display options from Client.
 - **Authoritative at runtime (Client fail-fast):** `config/game.json`, `config/research.json`, `config/tiles.json`, `config/entities.json`. Missing or invalid files abort startup.
-- **Still code-owned:** build costs, recipes, combat stats, footprints, stack sizes, and most timing constants in `MvpDefinitions.cs`. Tile/entity JSON catalogs are ID registries for content ids — they do not yet replace enum-driven simulation behavior.
+- **Still code-owned:** build costs, recipes, combat stats, footprints, stack sizes, and most timing constants in `MvpDefinitions.cs`.
+- **Partial data-driven behavior (issue #82 slice):** `entities.json` `lossCondition: "Defeat"` drives victory/defeat evaluation via `EntityCatalog.GetDefeatLossKinds()` → `GameSimulation.CheckVictory`. Empty entity catalog (unit-test default) keeps the MVP commander-survival fallback. Tile JSON (`walkable` / `resource`) and entity `buildsStructures` remain registry/metadata fields and do **not** yet replace enum-driven placement, movement, or production. Do **not** claim fully data-driven entities/tiles.
 - Embedded `MvpResearchCatalog` remains the parity fallback for unit tests and `GameCreationOptions.Default` only (not for Client disk startup).
 - Window width/height/title come from `game.json` into `SfmlDisplayOptions`; side-panel layout scales from window width.
 - `simulation.ticksPerSecond` is parsed for future hosts but the Client/SFML loop still uses `GameSimulation.TicksPerSecond` (const 30) until wired.
@@ -86,7 +87,7 @@ This document records architecture and game-design decisions made while implemen
 - `EntityStats` includes Armor, `ProjectileKind` (`GroundToGround` | `Ballistic` | `AirToGround`), and `SplashRadius` (0 = single target). MG turrets/bots/БМК are G2G; cannon/rocket/medium tank are Ballistic; AA turret/bot are AirToGround. Splash applies in the same `ProcessCombat` pass to enemies near the primary target (ordered by entity id).
 - Walls/SteelWalls block **GroundToGround** damage to allied **ground** units (БМК + `UnitKinds` except Scout) when a Bresenham LoS tile between attacker and target holds a Wall/SteelWall owned by a player with the same `TeamId` as the target. Ballistic and AirToGround ignore walls. Buildings and walls as targets still take full formula-C damage.
 - Research modifiers (`ResearchStatIds.AttackDamage` / `Armor` / `AttackCooldownTicks` / `MaxHealth`, plus existing `VisionRadius`) flow through `ResolveStat` / `AddModifierEffect`. `ProcessCombat` and FoW/HP sync use resolved values (MaxHealth delta adjusts current HP when the cap changes).
-- Friendly fire is disabled for MVP (same `TeamId`). Victory is evaluated by commander survival: the last player with a living БМК wins.
+- Victory is evaluated from entity-catalog `lossCondition: "Defeat"` kinds when an entity catalog is loaded (repo `entities.json` marks the commander). Empty catalogs (most unit tests) keep the MVP commander-survival fallback. Friendly fire is disabled for MVP (same `TeamId`).
 - Baseline combat tables live in `docs/MVP_GDD.md` §12 and `MvpDefinitions.GetStats`.
 
 ## Fog Of War And Tech Signatures

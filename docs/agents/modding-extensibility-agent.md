@@ -19,7 +19,7 @@ New entities/items/tech ids, balance constants, config schema work, or hardcoded
 
 - Runtime loads `config/game.json`, `research.json`, `tiles.json`, and `entities.json` via Core parsers + Client I/O (fail-fast on missing/invalid)
 - Recipes, combat stats, build costs, and most timings still live in `MvpDefinitions.cs`
-- Tile/entity JSON catalogs are authoritative **id registries**; simulation still uses Core enums for gameplay
+- **Behavior slice (#82):** `entities.json` `lossCondition` drives defeat/victory; tile `walkable`/`resource` and entity `buildsStructures` are still metadata/registry fields. Not fully data-driven entities.
 - Until remaining balance migrates: put new recipes/costs/stats in `MvpDefinitions`, keep SFML free of balance, document shifts in implementation decisions
 
 ## Must preserve

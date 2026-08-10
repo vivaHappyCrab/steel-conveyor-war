@@ -6,7 +6,7 @@ Known gaps that CI/agents should not pretend are covered.
 |-----|--------|-------|
 | Map `RandomSeed` drives starting terrain only (no biomes) | Procedural depth | Seeded mirrored patches covered by `MapGenerationTests`; full biomes are non-goals |
 | No on-disk map/seed-map persistence | Session resume / opaque map blobs | **Documented MVP non-goal** (GDD §17; regenerate from seed+params later). See `MVP_IMPLEMENTATION_DECISIONS.md` § Map And Session Lifetime |
-| Remaining balance still in `MvpDefinitions.cs` | Modding/data-driven claims | Research + game/tiles/entities JSON load at runtime; recipes/combat/build costs still code |
+| Remaining balance still in `MvpDefinitions.cs` | Modding/data-driven claims | Research + game JSON load at runtime; entity `lossCondition` drives victory (#82); tiles/buildsStructures still registry; recipes/combat/build costs still code |
 | Authoritative state fields are broadly mutable | Encapsulation / adapter safety | Prefer new public APIs |
 | No golden same-seed/same-commands state hash test | Multiplayer readiness | **Closed for dual-run gate:** `SimulationStateHasher` + `DeterminismHashTests`. Optional checked-in golden still deferred while systems churn; refresh policy in `MVP_IMPLEMENTATION_DECISIONS.md` |
 | Limited Bastion order / combat loop coverage | Combat regressions | Victory damage path exists; broaden orders/combat |
