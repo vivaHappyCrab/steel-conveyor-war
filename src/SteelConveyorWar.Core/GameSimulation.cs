@@ -2,6 +2,13 @@ namespace SteelConveyorWar.Core;
 
 public sealed class GameSimulation
 {
+    /// <summary>
+    /// Default fixed tick rate used by Core for duration-in-ticks conversions
+    /// (build timing fallbacks, energy history windows, tests). Host loops must
+    /// drive wall-clock pacing from <see cref="GameSettings.TicksPerSecond"/>
+    /// (loaded from <c>game.json</c>); keep that value aligned with this default
+    /// unless intentionally retiming the match.
+    /// </summary>
     public const int TicksPerSecond = 30;
 
     private readonly List<PlayerState> _players;

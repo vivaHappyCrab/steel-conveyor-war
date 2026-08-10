@@ -33,7 +33,8 @@ var simulation = GameSimulation.CreateNewGame(options);
 var display = new SfmlDisplayOptions(
     gameSettings.Window.Width,
     gameSettings.Window.Height,
-    gameSettings.Window.Title);
+    gameSettings.Window.Title,
+    gameSettings.TicksPerSecond);
 new SfmlGameRunner().Run(simulation, smokeTest ? 3 : null, display);
 
 static string ResolveConfigDirectory()

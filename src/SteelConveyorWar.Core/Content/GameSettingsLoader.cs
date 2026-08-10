@@ -26,6 +26,8 @@ public static class GameSettingsLoader
             throw new InvalidOperationException("game.json is missing gameId.");
         }
 
+        var ticksPerSecond = ResolveTicksPerSecond(dto.Simulation?.TicksPerSecond);
+
         var window = dto.Window;
         var width = window?.Width is > 0 ? (uint)window.Width : WindowSettings.Default.Width;
         var height = window?.Height is > 0 ? (uint)window.Height : WindowSettings.Default.Height;
@@ -37,12 +39,28 @@ public static class GameSettingsLoader
             dto.SchemaVersion,
             dto.GameId,
             string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.GameId : dto.DisplayName,
-            dto.Simulation?.TicksPerSecond is > 0 ? dto.Simulation.TicksPerSecond : GameSettings.Default.TicksPerSecond,
+            ticksPerSecond,
             dto.Simulation?.DefaultRandomSeed ?? GameSettings.Default.DefaultRandomSeed,
             string.IsNullOrWhiteSpace(dto.Research?.Content) ? GameSettings.Default.ResearchContentFile : dto.Research.Content,
             string.IsNullOrWhiteSpace(dto.Research?.Profile) ? GameSettings.Default.ResearchProfileId : dto.Research.Profile,
             string.IsNullOrWhiteSpace(dto.Map?.Content) ? GameSettings.Default.MapContentFile : dto.Map.Content,
             new WindowSettings(width, height, title));
+    }
+
+    private static int ResolveTicksPerSecond(int? configured)
+    {
+        if (configured is null or 0)
+        {
+            return GameSettings.Default.TicksPerSecond;
+        }
+
+        if (configured < 0)
+        {
+            throw new InvalidOperationException(
+                $"simulation.ticksPerSecond must be a positive integer (got '{configured}').");
+        }
+
+        return configured.Value;
     }
 
     private sealed class GameConfigDto
