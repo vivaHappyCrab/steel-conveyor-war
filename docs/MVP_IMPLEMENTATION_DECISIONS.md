@@ -13,11 +13,11 @@ This document records architecture and game-design decisions made while implemen
 
 ## Config Loading
 
-- **Ownership:** Core owns parse/validate of JSON content (`ResearchContentLoader`, `GameSettingsLoader`, `TileContentLoader`, `EntityContentLoader`). Client owns path resolution and file I/O, then passes parsed catalogs into `GameCreationOptions`. SFML never parses gameplay JSON; it only receives display options from Client.
+- **Ownership:** Core owns parse/validate of simulation JSON content (`ResearchContentLoader`, `GameSettingsLoader`, `TileContentLoader`, `EntityContentLoader`). Client owns path resolution and file I/O, then passes parsed catalogs into `GameCreationOptions`. SFML never parses gameplay JSON; it only receives display options from Client.
 - **Authoritative at runtime (Client fail-fast):** `config/game.json`, `config/research.json`, `config/tiles.json`, `config/entities.json`. Missing or invalid files abort startup.
 - **Still code-owned:** build costs, recipes, combat stats, footprints, stack sizes, and most timing constants in `MvpDefinitions.cs`. Tile/entity JSON catalogs are ID registries for content ids — they do not yet replace enum-driven simulation behavior.
 - Embedded `MvpResearchCatalog` remains the parity fallback for unit tests and `GameCreationOptions.Default` only (not for Client disk startup).
-- Window width/height/title come from `game.json` into `SfmlDisplayOptions`; side-panel layout scales from window width.
+- **Host-only window block:** `game.json` may include a presentation `window` `{ width, height, title }` section. Client `HostDisplayOptionsLoader` parses it into `SfmlDisplayOptions`; Core `GameSettings` / `GameSettingsLoader` intentionally ignore it so sim content stays SFML-free. Side-panel layout scales from window width.
 - `simulation.ticksPerSecond` is parsed for future hosts but the Client/SFML loop still uses `GameSimulation.TicksPerSecond` (const 30) until wired.
 
 ## Scope Strategy

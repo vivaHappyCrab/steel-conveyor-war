@@ -26,13 +26,6 @@ public static class GameSettingsLoader
             throw new InvalidOperationException("game.json is missing gameId.");
         }
 
-        var window = dto.Window;
-        var width = window?.Width is > 0 ? (uint)window.Width : WindowSettings.Default.Width;
-        var height = window?.Height is > 0 ? (uint)window.Height : WindowSettings.Default.Height;
-        var title = string.IsNullOrWhiteSpace(window?.Title)
-            ? (string.IsNullOrWhiteSpace(dto.DisplayName) ? WindowSettings.Default.Title : dto.DisplayName)
-            : window!.Title;
-
         return new GameSettings(
             dto.SchemaVersion,
             dto.GameId,
@@ -41,8 +34,7 @@ public static class GameSettingsLoader
             dto.Simulation?.DefaultRandomSeed ?? GameSettings.Default.DefaultRandomSeed,
             string.IsNullOrWhiteSpace(dto.Research?.Content) ? GameSettings.Default.ResearchContentFile : dto.Research.Content,
             string.IsNullOrWhiteSpace(dto.Research?.Profile) ? GameSettings.Default.ResearchProfileId : dto.Research.Profile,
-            string.IsNullOrWhiteSpace(dto.Map?.Content) ? GameSettings.Default.MapContentFile : dto.Map.Content,
-            new WindowSettings(width, height, title));
+            string.IsNullOrWhiteSpace(dto.Map?.Content) ? GameSettings.Default.MapContentFile : dto.Map.Content);
     }
 
     private sealed class GameConfigDto
@@ -53,7 +45,6 @@ public static class GameSettingsLoader
         public SimulationConfigDto? Simulation { get; set; }
         public ResearchConfigDto? Research { get; set; }
         public MapConfigRefDto? Map { get; set; }
-        public WindowConfigDto? Window { get; set; }
     }
 
     private sealed class SimulationConfigDto
@@ -71,12 +62,5 @@ public static class GameSettingsLoader
     private sealed class MapConfigRefDto
     {
         public string Content { get; set; } = "maps/default.json";
-    }
-
-    private sealed class WindowConfigDto
-    {
-        public int Width { get; set; }
-        public int Height { get; set; }
-        public string Title { get; set; } = "";
     }
 }
