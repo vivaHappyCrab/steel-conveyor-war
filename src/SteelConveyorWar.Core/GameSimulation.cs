@@ -607,7 +607,10 @@ public sealed class GameSimulation
         return false;
     }
 
-    public bool TryForceCompleteResearch(PlayerId playerId, TechnologyId technologyId, bool confirmExclusive = true)
+    /// <summary>
+    /// Test/debug helper: instantly completes a technology. Not part of the production command surface.
+    /// </summary>
+    internal bool TryForceCompleteResearch(PlayerId playerId, TechnologyId technologyId, bool confirmExclusive = true)
     {
         var research = GetPlayer(playerId).Research;
         if (research.CompletedTechnologies.Contains(technologyId))
@@ -634,7 +637,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test helper: snaps an entity to a tile and clears movement/garrison/cooldown so combat setups stay deterministic.
     /// </summary>
-    public bool TryTeleportEntityForTests(int entityId, TilePosition position)
+    internal bool TryTeleportEntityForTests(int entityId, TilePosition position)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null || !entity.IsAlive)
@@ -652,7 +655,7 @@ public sealed class GameSimulation
     }
 
     /// <summary>Test helper: whether <paramref name="entityId"/> may occupy <paramref name="position"/>.</summary>
-    public bool CanOccupyWorldPositionForTests(int entityId, WorldPosition position)
+    internal bool CanOccupyWorldPositionForTests(int entityId, WorldPosition position)
     {
         var entity = World.GetEntity(entityId);
         return entity is not null && CanOccupyWorldPosition(entity, position);
@@ -661,7 +664,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test helper: sets entity health within [0, MaxHealth] for combat/victory scenarios.
     /// </summary>
-    public bool TrySetEntityHealthForTests(int entityId, int health)
+    internal bool TrySetEntityHealthForTests(int entityId, int health)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null || health < 0 || health > entity.MaxHealth)
@@ -676,7 +679,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test helper: fills or sets a building energy buffer within capacity.
     /// </summary>
-    public bool TrySetEnergyBufferForTests(int entityId, int energy)
+    internal bool TrySetEnergyBufferForTests(int entityId, int energy)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null || !entity.IsAlive || entity.EnergyBufferCapacity <= 0)
@@ -691,7 +694,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test helper: spawns a completed entity (skips ghost construction) for combat setups.
     /// </summary>
-    public bool TrySpawnEntityForTests(EntityKind kind, TilePosition position, PlayerId ownerId, out int entityId)
+    internal bool TrySpawnEntityForTests(EntityKind kind, TilePosition position, PlayerId ownerId, out int entityId)
     {
         entityId = -1;
         if (!World.IsInside(position) || kind == EntityKind.GhostBuild)
@@ -707,7 +710,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test helper: injects a research modifier without completing a technology.
     /// </summary>
-    public void ApplyResearchModifierForTests(PlayerId playerId, AddModifierEffect effect)
+    internal void ApplyResearchModifierForTests(PlayerId playerId, AddModifierEffect effect)
     {
         GetPlayer(playerId).Research.AppliedModifiersMutable.Add(effect);
         SyncResolvedMaxHealthForPlayer(playerId);
@@ -716,7 +719,7 @@ public sealed class GameSimulation
     /// <summary>
     /// Test/helper: formula-C damage for the current research-scaled stats of attacker and target.
     /// </summary>
-    public int ComputeCombatDamageForTests(int attackerId, int targetId)
+    internal int ComputeCombatDamageForTests(int attackerId, int targetId)
     {
         var attacker = World.GetEntity(attackerId);
         var target = World.GetEntity(targetId);
@@ -900,12 +903,18 @@ public sealed class GameSimulation
         };
     }
 
-    public void AddPlayerItems(PlayerId playerId, ItemId item, int amount)
+    /// <summary>
+    /// Test/debug helper: grants items to player inventory without a gameplay source. Not part of the production command surface.
+    /// </summary>
+    internal void AddPlayerItems(PlayerId playerId, ItemId item, int amount)
     {
         GetPlayer(playerId).Inventory.Add(item, amount);
     }
 
-    public bool AddItemToEntity(int entityId, ItemId item, int amount)
+    /// <summary>
+    /// Test/debug helper: injects items into an entity buffer/inventory. Not part of the production command surface.
+    /// </summary>
+    internal bool AddItemToEntity(int entityId, ItemId item, int amount)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null)
@@ -1279,7 +1288,10 @@ public sealed class GameSimulation
             <= MvpDefinitions.CommanderInteractRadius;
     }
 
-    public void DamageEntity(int entityId, int damage)
+    /// <summary>
+    /// Test/debug helper: applies raw damage and runs death/victory cascades. Not part of the production command surface.
+    /// </summary>
+    internal void DamageEntity(int entityId, int damage)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null || !entity.IsAlive || damage <= 0)
