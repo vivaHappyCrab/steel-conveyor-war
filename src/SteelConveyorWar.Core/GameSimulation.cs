@@ -1,6 +1,6 @@
 namespace SteelConveyorWar.Core;
 
-public sealed class GameSimulation
+public sealed partial class GameSimulation
 {
     public const int TicksPerSecond = 30;
 
@@ -1310,6 +1310,7 @@ public sealed class GameSimulation
         }
 
         Tick++;
+        ApplyQueuedCommandsForCurrentTick();
         ProcessCommanderBuildOrders();
         ProcessCommanderDemolishOrders();
         ProcessCommanderMoveCommands();

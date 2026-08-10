@@ -119,12 +119,22 @@ This document records architecture and game-design decisions made while implemen
 - Tune energy demand/production balance and optional consumer priority tiers beyond emptiest-first once production loops are playtested.
 - Expand SFML research controls from prototype paging/hotkeys to a dedicated full tree panel.
 - Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.
-- Add tick-stamped command queue / state hash for multiplayer research lockstep.
+- Migrate SFML / bot hosts from immediate `Try*` to `EnqueueCommand` so all gameplay mutations are tick-ordered; tighten Core ownership checks on every command apply.
+- Network transport / matchmaker / rollback netcode remain out of scope (command queue is the Core prerequisite only).
+
+## Tick-Stamped Command Queue
+
+- Gameplay intents are `ISimulationCommand` DTOs (`SteelConveyorWar.Core.Commands`) with `Kind`, actor `PlayerId`, and `Tick`.
+- Hosts call `GameSimulation.EnqueueCommand` / `EnqueueForNextTick`; `AdvanceTick` increments `Tick`, then applies FIFO commands where `command.Tick == Tick`, then runs systems.
+- Covered intents: move/stop, ghost/queue build & demolish, rotate, research start/cancel & track allocation, factory production/bastion assign, bastion template/order, assembler recipe, hub/output deposit/withdraw (typed and untyped), collect output.
+- Legacy public `Try*` methods still mutate **immediately** for SFML and existing tests. Lockstep, replay, and fair bot logs must use the queue. `ApplyCommand` dispatches a DTO through the same handlers.
+- Serialization shape (JSON stub for tests/logs, not a wire protocol): envelope `{ "kind", "actor", "tick", "payload" }` via `SimulationCommandSerializer`. Enums as camelCase strings; `TechnologyId` as its string value; bastion waypoints as ordered `{x,y}` arrays; track allocations written sorted by track id. Round-trip covered by `CommandQueueTests`.
+- Determinism gate: same seed + same queued commands → same `ComputeStateHash` (`DeterminismHashTests.SameSeedQueuedCommandRuns_ProduceIdenticalHash`, `CommandQueueTests`).
 
 ## Simulation State Hash
 
 - `SimulationStateHasher.AlgorithmVersion` (currently `5`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (teamId/inventory/visibility/research/power), ordered entities (buffers, energy buffer, sticky smelt recipe, work totals, paths, combat/build fields, bastion order waypoints).
 - Doubles use IEEE bit patterns (`DoubleToInt64Bits`). Unordered collections are sorted before hashing.
 - Primary quality gate: dual independent runs with the same seed/commands must match (`DeterminismHashTests`). A checked-in golden hex is optional; when adding/updating one, bump `AlgorithmVersion` if the surface changed, re-run the fixture, and commit the new constant intentionally.
-- Out of surface: SFML/UI, wall-clock, tick-stamped command logs.
+- Out of surface: SFML/UI, wall-clock, pending command buffer contents (applied commands affect hashed state; the queue itself is not hashed).
 - Teach map generation to consume `RandomSeed` before any claim of seed-driven layouts (no MVP map-disk format).
