@@ -1,0 +1,69 @@
+using SteelConveyorWar.Core;
+using SteelConveyorWar.Headless;
+
+var options = HeadlessHostOptions.Parse(args);
+
+var configDirectory = ResolveConfigDirectory();
+if (!Directory.Exists(configDirectory))
+{
+    throw new InvalidOperationException($"Config directory not found. Looked under '{configDirectory}'.");
+}
+
+var gameConfigPath = Path.Combine(configDirectory, "game.json");
+if (!File.Exists(gameConfigPath))
+{
+    throw new FileNotFoundException("Required game settings file is missing.", gameConfigPath);
+}
+
+var gameSettings = GameSettingsLoader.Parse(File.ReadAllText(gameConfigPath));
+var catalog = LoadRequiredJson(configDirectory, gameSettings.ResearchContentFile, ResearchContentLoader.Parse, "research catalog");
+var tiles = LoadRequiredJson(configDirectory, "tiles.json", TileContentLoader.Parse, "tile catalog");
+var entities = LoadRequiredJson(configDirectory, "entities.json", EntityContentLoader.Parse, "entity catalog");
+var map = LoadRequiredJson(configDirectory, gameSettings.MapContentFile, MapSettingsLoader.Parse, "map settings");
+
+var creation = new GameCreationOptions(
+    gameSettings.DefaultRandomSeed,
+    gameSettings.ResearchProfileId,
+    catalog,
+    tiles,
+    entities,
+    map);
+
+var simulation = GameSimulation.CreateNewGame(creation);
+var result = HeadlessHostRunner.Run(simulation, options);
+
+Console.WriteLine(
+    $"headless ok ticks={result.Tick} commands={result.CommandsIssued} status={result.Status} winner={(result.WinnerId is null ? "none" : result.WinnerId.Value.Value.ToString())} hash={result.StateHash}");
+
+return 0;
+
+static string ResolveConfigDirectory()
+{
+    var candidates = new[]
+    {
+        Path.Combine(AppContext.BaseDirectory, "config"),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "config")),
+        Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "config"))
+    };
+
+    foreach (var candidate in candidates)
+    {
+        if (Directory.Exists(candidate))
+        {
+            return candidate;
+        }
+    }
+
+    return Path.Combine(AppContext.BaseDirectory, "config");
+}
+
+static T LoadRequiredJson<T>(string configDirectory, string fileName, Func<string, T> parse, string label)
+{
+    var path = Path.Combine(configDirectory, fileName);
+    if (!File.Exists(path))
+    {
+        throw new FileNotFoundException($"Required {label} file is missing.", path);
+    }
+
+    return parse(File.ReadAllText(path));
+}

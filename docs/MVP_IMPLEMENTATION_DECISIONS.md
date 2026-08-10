@@ -5,6 +5,7 @@ This document records architecture and game-design decisions made while implemen
 ## Architecture
 
 - Gameplay rules live in `SteelConveyorWar.Core`; SFML remains a rendering and input adapter.
+- Composition roots: `SteelConveyorWar.Client` opens an SFML window; `SteelConveyorWar.Headless` is a Core-only host that loads `config/`, calls `CreateNewGame`, applies a stub command/AI step, then `AdvanceTick` (usable from CI without a display). Full bot AI and network transport remain follow-ups.
 - The core simulation advances only through fixed ticks and explicit public APIs.
 - Authoritative Core state is encapsulated for adapters/tests: mutable entity/player fields use `{ get; internal set; }`, inventories expose public `Try*` with `internal` `Add`/`Clear`, and research collections are public `IReadOnly*` with assembly-internal mutable storage. External code mutates via `GameSimulation` APIs (including test helpers such as `TryForceCompleteResearch`).
 - MVP recipes/combat/build costs remain compact enums + `MvpDefinitions.cs` in Core. Research technologies and match bootstrap settings load from `config/*.json`. Broader migration of remaining balance to `config/` remains a follow-up.
@@ -13,8 +14,8 @@ This document records architecture and game-design decisions made while implemen
 
 ## Config Loading
 
-- **Ownership:** Core owns parse/validate of JSON content (`ResearchContentLoader`, `GameSettingsLoader`, `TileContentLoader`, `EntityContentLoader`). Client owns path resolution and file I/O, then passes parsed catalogs into `GameCreationOptions`. SFML never parses gameplay JSON; it only receives display options from Client.
-- **Authoritative at runtime (Client fail-fast):** `config/game.json`, `config/research.json`, `config/tiles.json`, `config/entities.json`. Missing or invalid files abort startup.
+- **Ownership:** Core owns parse/validate of JSON content (`ResearchContentLoader`, `GameSettingsLoader`, `TileContentLoader`, `EntityContentLoader`). Client and Headless own path resolution and file I/O, then pass parsed catalogs into `GameCreationOptions`. SFML never parses gameplay JSON; it only receives display options from Client.
+- **Authoritative at runtime (Client/Headless fail-fast):** `config/game.json`, `config/research.json`, `config/tiles.json`, `config/entities.json`. Missing or invalid files abort startup.
 - **Still code-owned:** build costs, recipes, combat stats, footprints, stack sizes, and most timing constants in `MvpDefinitions.cs`. Tile/entity JSON catalogs are ID registries for content ids — they do not yet replace enum-driven simulation behavior.
 - Embedded `MvpResearchCatalog` remains the parity fallback for unit tests and `GameCreationOptions.Default` only (not for Client disk startup).
 - Window width/height/title come from `game.json` into `SfmlDisplayOptions`; side-panel layout scales from window width.
