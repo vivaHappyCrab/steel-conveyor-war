@@ -642,7 +642,7 @@ public sealed class GameSimulation
             return false;
         }
 
-        entity.Position = position;
+        World.RelocateEntity(entity, position);
         entity.WorldPosition = WorldPosition.FromTileCenter(position);
         entity.MoveTarget = null;
         ResetMovementPath(entity);
@@ -3028,7 +3028,7 @@ public sealed class GameSimulation
                 // and must hide when adjacent to any footprint tile — not only near bastion.Position.
                 if (IsWithinBastionGarrisonRange(bastion, unit.Position))
                 {
-                    unit.Position = bastion.Position;
+                    World.RelocateEntity(unit, bastion.Position);
                     unit.WorldPosition = WorldPosition.FromTileCenter(bastion.Position);
                     ResetMovementPath(unit);
                     unit.IsGarrisoned = true;
@@ -3263,7 +3263,7 @@ public sealed class GameSimulation
             }
 
             entity.WorldPosition = waypointPosition;
-            entity.Position = entity.CurrentWaypoint.Value;
+            World.RelocateEntity(entity, entity.CurrentWaypoint.Value);
             entity.CurrentWaypoint = null;
             return entity.MovementPath.Count == 0 && (entity.Position == target || !IsGroundPassable(entity, target));
         }
@@ -3280,7 +3280,7 @@ public sealed class GameSimulation
         }
 
         entity.WorldPosition = nextPosition;
-        entity.Position = nextPosition.ToTilePosition();
+        World.RelocateEntity(entity, nextPosition.ToTilePosition());
         return false;
     }
 
