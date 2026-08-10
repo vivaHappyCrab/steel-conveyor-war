@@ -136,5 +136,21 @@ This document records architecture and game-design decisions made while implemen
 - Doubles use IEEE bit patterns (`DoubleToInt64Bits`). Unordered collections are sorted before hashing.
 - Primary quality gate: dual independent runs with the same seed/commands must match (`DeterminismHashTests`). A checked-in golden hex is optional; when adding/updating one, bump `AlgorithmVersion` if the surface changed, re-run the fixture, and commit the new constant intentionally.
 - **Issue #80 decision:** do **not** check in a golden hex yet. MVP Core still churns fields the hasher fingerprints (combat, energy buffers, recipes, research profile/catalog, factory spawn caps, balance timing). Dual-run already covers accidental non-determinism; a golden would mostly regress on intentional edits and inflate noise. Add a CI-asserted golden later once the hash surface stabilizes or multiplayer lockstep needs a fixed oracle.
-- Out of surface: SFML/UI, wall-clock, tick-stamped command logs, presentation-only floats listed under Authoritative Numeric Policy.
+- Out of surface: SFML/UI, wall-clock, tick-stamped command logs, presentation-only floats listed under Authoritative Numeric Policy, and **presentation side-channels in Core** (below).
 - Teach map generation to consume `RandomSeed` before any claim of seed-driven layouts (no MVP map-disk format).
+
+## Presentation state in Core
+
+MVP keeps a few presentation-only side-channels inside Core so SFML can draw tracers / overlays without owning sim-derived FX. They are intentional, not a license to grow an SFML dependency in Core.
+
+| Field / API | Location | Consumer | Hashed? |
+|-------------|----------|----------|---------|
+| `SimulationPresentationSink` / `CombatShotsThisTick` | `GameSimulation.Presentation` (alias `CombatShotsThisTick`) | SFML combat tracers | **No** |
+| `EnergyStats` (`EnergyStatsHistory`) | `PlayerState` | SFML energy overlay (**P**) | **No** |
+| `TechSignatures` | `PlayerState` (via `GetTechSignatureHotspots`) | SFML fog tech-signature overlay | **No** |
+
+**Hash exclusion policy**
+
+- Authoritative lockstep / dual-run identity uses only `SimulationStateHasher` surfaces. Presentation fields must never be written into the hasher.
+- Adding a new Core field that only serves UI/FX: document it in this table, mark it presentation-only in XML docs, omit it from the hasher, and extend `DeterminismHashTests.PresentationSideChannels_DoNotAffectStateHash` (or an equivalent comment gate on `SimulationStateHasher`).
+- Do **not** remove combat tracers or the energy overlay as part of clarifying this boundary; isolation/docs first. Moving FX fully out of Core is a later refactor if multipath/replay needs a cleaner event bus.

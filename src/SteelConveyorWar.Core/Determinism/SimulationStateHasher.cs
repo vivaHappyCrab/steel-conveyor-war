@@ -9,6 +9,16 @@ namespace SteelConveyorWar.Core;
 /// when added, refresh after intentional surface changes and bump <see cref="AlgorithmVersion"/> if needed.
 /// Authoritative doubles are hashed as IEEE bits; numeric policy for remaining FP is ADR 0001.
 /// </summary>
+/// <remarks>
+/// Presentation exclusion gate (must stay out of the hash surface):
+/// <list type="bullet">
+/// <item><see cref="SimulationPresentationSink"/> / <see cref="GameSimulation.CombatShotsThisTick"/></item>
+/// <item><see cref="PlayerState.EnergyStats"/></item>
+/// <item><see cref="PlayerState.TechSignatures"/></item>
+/// </list>
+/// Policy: docs/MVP_IMPLEMENTATION_DECISIONS.md § Presentation state in Core.
+/// Guarded by <c>DeterminismHashTests.PresentationSideChannels_DoNotAffectStateHash</c>.
+/// </remarks>
 public static class SimulationStateHasher
 {
     public const int AlgorithmVersion = 5;
@@ -41,6 +51,7 @@ public static class SimulationStateHasher
                 }
             }
 
+            // Presentation-only PlayerState.EnergyStats / TechSignatures are intentionally omitted.
             foreach (var player in simulation.Players.OrderBy(player => player.Id.Value))
             {
                 WritePlayer(writer, player, world.Size);
@@ -50,6 +61,8 @@ public static class SimulationStateHasher
             {
                 WriteEntity(writer, entity);
             }
+
+            // Presentation-only SimulationPresentationSink / CombatShotsThisTick intentionally omitted.
         }
 
         var hash = SHA256.HashData(stream.ToArray());

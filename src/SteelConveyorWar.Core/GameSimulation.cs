@@ -6,7 +6,7 @@ public sealed class GameSimulation
 
     private readonly List<PlayerState> _players;
     private readonly ResearchSystem _researchSystem;
-    private readonly List<CombatShotEvent> _combatShotsThisTick = new();
+    private readonly SimulationPresentationSink _presentation = new();
     private readonly Dictionary<PlayerId, int> _tickPowerProduced = new();
     private readonly Dictionary<PlayerId, int> _tickPowerConsumed = new();
     private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickProducedByKind = new();
@@ -53,10 +53,16 @@ public sealed class GameSimulation
     public IReadOnlyList<PlayerState> Players => _players;
 
     /// <summary>
-    /// Presentation-only shots fired during the last <see cref="AdvanceTick"/> combat pass.
-    /// Not included in determinism hashing.
+    /// Presentation side-channels (combat tracers, etc.). Not hashed; see
+    /// <c>docs/MVP_IMPLEMENTATION_DECISIONS.md</c> § Presentation state in Core.
     /// </summary>
-    public IReadOnlyList<CombatShotEvent> CombatShotsThisTick => _combatShotsThisTick;
+    public SimulationPresentationSink Presentation => _presentation;
+
+    /// <summary>
+    /// Convenience alias for <see cref="SimulationPresentationSink.CombatShotsThisTick"/>.
+    /// Presentation-only; not included in determinism hashing.
+    /// </summary>
+    public IReadOnlyList<CombatShotEvent> CombatShotsThisTick => _presentation.CombatShotsThisTick;
 
     public GameStatus Status { get; private set; } = GameStatus.InProgress;
 
@@ -3577,7 +3583,7 @@ public sealed class GameSimulation
 
     private void ProcessCombat()
     {
-        _combatShotsThisTick.Clear();
+        _presentation.ClearCombatShots();
         foreach (var attacker in World.Entities.Where(entity =>
                      entity.IsAlive
                      && !entity.IsGarrisoned
@@ -3625,7 +3631,7 @@ public sealed class GameSimulation
                 continue;
             }
 
-            _combatShotsThisTick.Add(new CombatShotEvent(
+            _presentation.AddCombatShot(new CombatShotEvent(
                 attacker.Id,
                 target.Id,
                 attacker.WorldPosition,
