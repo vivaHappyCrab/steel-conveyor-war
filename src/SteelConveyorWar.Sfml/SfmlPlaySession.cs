@@ -2,12 +2,15 @@ using SFML.Graphics;
 using SFML.System;
 using SFML.Window;
 using SteelConveyorWar.Core;
+using SteelConveyorWar.Core.Commands;
 
 namespace SteelConveyorWar.Sfml;
 
 /// <summary>
 /// Owns SFML session state, input bindings, camera updates, and frame presentation.
 /// Gameplay mutations go through <see cref="GameSimulation"/> APIs only.
+/// R21: UI mode state lives in <see cref="SessionState"/>; intents route through
+/// <see cref="InputCommandMapper"/> into <see cref="SfmlCommandGateway"/>.
 /// </summary>
 internal sealed class SfmlPlaySession
 {
@@ -36,57 +39,30 @@ internal sealed class SfmlPlaySession
         window.Closed += (_, _) => window.Close();
         window.SetFramerateLimit(60);
         var localPlayer = display.LocalPlayerId;
-        int? selectedEntityId = simulation.World.Entities.First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander).Id;
-        var isBuildMenuOpen = false;
-        EntityKind? pendingBuildKind = null;
-        var pendingDirection = Direction.East;
-        ItemRecipeId? pendingRecipe = null;
-        var recipePage = 0;
-        var templateUnitIndex = 0;
-        var bastionPendingMode = BastionPendingInputMode.None;
-        var patrolWaypoints = new List<TilePosition>();
-        var sidebarStorageHits = new List<SidebarStorageHit>();
-        var isResearchOverlayOpen = false;
-        var isEnergyOverlayOpen = false;
-        var isBastionCompositionOpen = false;
-        var energySelectedInterval = EnergyStatsWindowKind.Seconds30;
-        TechnologyId? researchSelectedId = null;
-        TechnologyId? researchLastClickId = null;
-        var researchLastClickSeconds = -1f;
-        var researchScrollY = 0f;
+        // R24: fail fast with a domain-friendly message if the requested seat is not on this map
+        // (e.g. --local-player 3 on a 2-player map) instead of a raw First() exception below.
+        LocalPlayerBinding.EnsureSeatControllable(simulation, localPlayer);
+        // R02: all gameplay mutations flow through the deferred command sink so local input takes the
+        // same tick-scheduled, replayable path as remote input.
+        var commandSink = new DeferredCommandSink(simulation);
+        var commands = new SfmlCommandGateway(commandSink);
+        var initialSelectedId = simulation.World.Entities
+            .First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander)
+            .Id;
+        var session = new SessionState(initialSelectedId);
+        var inputMapper = new InputCommandMapper(localPlayer, session, commands);
         var researchClickClock = new Clock();
         var font = SfmlFontLoader.TryLoadFont();
-        int? demolishHoldEntityId = null;
-        var demolishHoldElapsed = 0f;
-        var demolishHoldCommitted = false;
 
-        void ClearDemolishHold()
+        float ClampResearchScroll(ResearchTreePanelModel tree)
         {
-            demolishHoldEntityId = null;
-            demolishHoldElapsed = 0f;
-            demolishHoldCommitted = false;
+            var clamped = ResearchTreePanelModel.ClampScroll(
+                session.ResearchScrollY,
+                tree.ContentHeight,
+                tree.ContentViewport.Height);
+            session.SetResearchScrollY(clamped);
+            return clamped;
         }
-
-        void CloseResearchOverlay()
-        {
-            isResearchOverlayOpen = false;
-            researchSelectedId = null;
-            researchLastClickId = null;
-            researchScrollY = 0f;
-        }
-
-        void CloseEnergyOverlay()
-        {
-            isEnergyOverlayOpen = false;
-        }
-
-        void CloseBastionComposition()
-        {
-            isBastionCompositionOpen = false;
-        }
-
-        float ClampResearchScroll(ResearchTreePanelModel tree) =>
-            ResearchTreePanelModel.ClampScroll(researchScrollY, tree.ContentHeight, tree.ContentViewport.Height);
 
         FloatRect GetMinimapBounds() =>
             new(
@@ -133,12 +109,6 @@ internal sealed class SfmlPlaySession
             ClampCamera();
         }
 
-        void ClearBastionPending()
-        {
-            bastionPendingMode = BastionPendingInputMode.None;
-            patrolWaypoints.Clear();
-        }
-
         void ClampCamera()
         {
             camera.Clamp(worldWidthPx, worldHeightPx, playfieldWidth, playfieldHeight);
@@ -170,294 +140,50 @@ internal sealed class SfmlPlaySession
             return simulation.World.IsInside(tile) ? tile : null;
         }
 
-        window.KeyPressed += (_, args) =>
+        InputModifiers CurrentModifiers() =>
+            new(
+                Keyboard.IsKeyPressed(Keyboard.Key.LShift) || Keyboard.IsKeyPressed(Keyboard.Key.RShift),
+                Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl));
+
+        SessionHoverContext BuildHoverContext()
         {
-            var key = args.Code.ToString();
-            var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
-
-            if (key == "Escape" && bastionPendingMode != BastionPendingInputMode.None)
+            var tile = TileFromScreen(Mouse.GetPosition(window));
+            if (tile is null)
             {
-                ClearBastionPending();
-                return;
+                return new SessionHoverContext(null, null, false);
             }
 
-            if (key == "Escape" && isEnergyOverlayOpen)
-            {
-                CloseEnergyOverlay();
-                return;
-            }
+            var entity = simulation.World.GetTopEntityAt(tile.Value);
+            var visible = entity is not null
+                && WorldRenderer.IsVisibleToLocalPlayer(simulation, localPlayer, entity);
+            return new SessionHoverContext(tile, entity, visible);
+        }
 
-            if (key == "Escape" && isResearchOverlayOpen)
+        void ApplyCameraRequest(InputMapResult result)
+        {
+            if (result.Camera == SessionCameraRequest.CenterOnSelected)
             {
-                CloseResearchOverlay();
-                return;
-            }
-
-            if (key == "Escape" && isBastionCompositionOpen)
-            {
-                CloseBastionComposition();
-                return;
-            }
-
-            if (key is "Enter" or "Return"
-                && bastionPendingMode == BastionPendingInputMode.PatrolWaypoints
-                && selectedEntity?.Kind == EntityKind.Bastion
-                && selectedEntity.OwnerId == localPlayer
-                && patrolWaypoints.Count is >= 2 and <= 4)
-            {
-                simulation.TryIssueBastionOrder(
-                    selectedEntity.Id,
-                    localPlayer,
-                    new BastionOrder(BastionOrderKind.Patrol, Waypoints: patrolWaypoints.ToArray()));
-                ClearBastionPending();
-                return;
-            }
-
-            if (key == "F1")
-            {
-                SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, localPlayer, ref selectedEntityId);
-                selectedEntity = simulation.World.GetEntity(selectedEntityId!.Value);
-                if (selectedEntity is not null)
+                var selected = inputMapper.GetSelectedEntity(simulation);
+                if (selected is not null)
                 {
-                    camera.CenterOnWorldPosition(selectedEntity.WorldPosition, playfieldWidth, playfieldHeight);
+                    camera.CenterOnWorldPosition(selected.WorldPosition, playfieldWidth, playfieldHeight);
                     ClampCamera();
                 }
-
-                isBuildMenuOpen = false;
-                pendingBuildKind = null;
-                pendingDirection = Direction.East;
-                pendingRecipe = null;
-                ClearDemolishHold();
-                CloseBastionComposition();
-                ClearBastionPending();
-                return;
             }
-
-            if (key == "Q")
+            else if (result.Camera == SessionCameraRequest.CenterOnTile && result.CameraTile is not null)
             {
-                var mousePosition = Mouse.GetPosition(window);
-                var tile = TileFromScreen(mousePosition);
-                if (tile is not null)
-                {
-                    var hoverEntity = simulation.World.GetTopEntityAt(tile.Value);
-                    if (hoverEntity is not null
-                        && WorldRenderer.IsVisibleToLocalPlayer(simulation, localPlayer, hoverEntity)
-                        && BuildBarModel.TryCopyFromWorldEntity(hoverEntity, out var copyKind, out var copyDirection, out var copyRecipe))
-                    {
-                        SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, localPlayer, ref selectedEntityId);
-                        isBuildMenuOpen = true;
-                        pendingBuildKind = copyKind;
-                        pendingDirection = copyDirection;
-                        pendingRecipe = copyRecipe;
-                        recipePage = 0;
-                    }
-                }
-
-                return;
+                CenterCameraOnTile(result.CameraTile.Value);
             }
+        }
 
-            if (key == "B" && selectedEntity?.Kind == EntityKind.Commander && selectedEntity.OwnerId == localPlayer)
-            {
-                isBuildMenuOpen = !isBuildMenuOpen;
-                pendingBuildKind = isBuildMenuOpen ? BuildMenuCatalog.BuildableKinds[0] : null;
-                pendingDirection = Direction.East;
-                pendingRecipe = null;
-                recipePage = 0;
-                ClearDemolishHold();
-                return;
-            }
-
-            if (key == "S"
-                && selectedEntity?.Kind == EntityKind.Commander
-                && selectedEntity.OwnerId == localPlayer)
-            {
-                simulation.TryStopCommander(selectedEntity.Id, localPlayer);
-                ClearDemolishHold();
-                return;
-            }
-
-            if (key == "R")
-            {
-                var counterClockwise = Keyboard.IsKeyPressed(Keyboard.Key.LShift) || Keyboard.IsKeyPressed(Keyboard.Key.RShift);
-                if (isBuildMenuOpen && pendingBuildKind is not null && BuildBarModel.IsDirectedKind(pendingBuildKind.Value))
-                {
-                    pendingDirection = SfmlInputHelpers.RotateDirection(pendingDirection, clockwise: !counterClockwise);
-                    return;
-                }
-
-                var hoverTile = TileFromScreen(Mouse.GetPosition(window));
-                if (hoverTile is not null)
-                {
-                    var hoverEntity = simulation.World.GetTopEntityAt(hoverTile.Value);
-                    if (hoverEntity is not null
-                        && hoverEntity.OwnerId == localPlayer
-                        && BuildBarModel.IsDirectedKind(hoverEntity.Kind)
-                        && simulation.TryRotateEntity(hoverEntity.Id, localPlayer, clockwise: !counterClockwise))
-                    {
-                        return;
-                    }
-                }
-
-                if (selectedEntity is not null && selectedEntity.OwnerId == localPlayer)
-                {
-                    simulation.TryRotateEntity(selectedEntity.Id, localPlayer, clockwise: !counterClockwise);
-                }
-
-                return;
-            }
-
-            if (!isBuildMenuOpen
-                && isBastionCompositionOpen
-                && selectedEntity?.Kind == EntityKind.Bastion
-                && selectedEntity.OwnerId == localPlayer
-                && key is "PageDown" or "RBracket" or "PageUp" or "LBracket")
-            {
-                var unlocked = BastionCompositionPanelModel.UnlockedUnitKinds(simulation, localPlayer);
-                var count = Math.Max(1, unlocked.Length);
-                var delta = key is "PageDown" or "RBracket" ? 1 : -1;
-                templateUnitIndex = (templateUnitIndex + delta + count) % count;
-                return;
-            }
-
-            if (key is "PageDown" or "RBracket")
-            {
-                recipePage++;
-                return;
-            }
-
-            if (key is "PageUp" or "LBracket")
-            {
-                recipePage = Math.Max(0, recipePage - 1);
-                return;
-            }
-
-            if (key == "T")
-            {
-                CloseEnergyOverlay();
-                CloseBastionComposition();
-                if (isResearchOverlayOpen)
-                {
-                    CloseResearchOverlay();
-                }
-                else
-                {
-                    isResearchOverlayOpen = true;
-                    researchScrollY = 0f;
-                }
-
-                return;
-            }
-
-            if (key == "P")
-            {
-                CloseResearchOverlay();
-                CloseBastionComposition();
-                if (isEnergyOverlayOpen)
-                {
-                    CloseEnergyOverlay();
-                }
-                else
-                {
-                    isEnergyOverlayOpen = true;
-                }
-
-                return;
-            }
-
-            if (key == "E"
-                && selectedEntity?.Kind == EntityKind.Bastion
-                && selectedEntity.OwnerId == localPlayer)
-            {
-                CloseResearchOverlay();
-                CloseEnergyOverlay();
-                isBastionCompositionOpen = !isBastionCompositionOpen;
-                return;
-            }
-
-            if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Assembler && SfmlInputHelpers.TryGetRecipeShortcut(key, out var recipeId))
-            {
-                simulation.TrySetAssemblerRecipe(selectedEntity.Id, localPlayer, recipeId);
-                recipePage = 0;
-                return;
-            }
-
-            if (!isResearchOverlayOpen && !isEnergyOverlayOpen && !isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Laboratory && SfmlInputHelpers.TryGetNumberShortcut(key, out var researchIndex))
-            {
-                var ownerId = selectedEntity.OwnerId ?? localPlayer;
-                var panel = ResearchPanelModel.FromSnapshot(simulation.GetResearchSnapshot(ownerId), recipePage);
-                if (researchIndex < panel.PageEntries.Count)
-                {
-                    var entry = panel.PageEntries[researchIndex];
-                    simulation.TrySelectResearch(
-                        ownerId,
-                        entry.Id,
-                        confirmExclusive: entry.RequiresExclusiveConfirmation,
-                        preferredTrackId: entry.TrackId);
-                }
-
-                return;
-            }
-
-            if (!isBuildMenuOpen
-                && selectedEntity is not null
-                && MvpDefinitions.FactoryKinds.Contains(selectedEntity.Kind)
-                && selectedEntity.OwnerId == localPlayer)
-            {
-                if (SfmlInputHelpers.TryGetNumberShortcut(key, out var factoryRecipeIndex))
-                {
-                    var recipes = HudOverlay.GetFactoryRecipes(selectedEntity.Kind).ToList();
-                    if (factoryRecipeIndex < recipes.Count)
-                    {
-                        simulation.TrySetFactoryProduction(selectedEntity.Id, localPlayer, recipes[factoryRecipeIndex].OutputKind);
-                    }
-
-                    return;
-                }
-            }
-
-            if (!isBuildMenuOpen
-                && selectedEntity?.Kind == EntityKind.Bastion
-                && selectedEntity.OwnerId == localPlayer)
-            {
-                if (BastionOrderBarModel.TryGetCommandFromKey(key, out var orderCommand))
-                {
-                    BastionUiOverlay.ApplyBastionOrderCommand(simulation, selectedEntity.Id, localPlayer, orderCommand, ref bastionPendingMode, patrolWaypoints);
-                    return;
-                }
-
-                if (SfmlInputHelpers.TryGetNumberShortcut(key, out var bastionIndex)
-                    && SfmlInputHelpers.TrySelectOwnedBastionByIndex(simulation, localPlayer, bastionIndex, ref selectedEntityId))
-                {
-                    recipePage = 0;
-                    templateUnitIndex = 0;
-                    ClearBastionPending();
-                    return;
-                }
-
-                if (BastionUiOverlay.TryAdjustBastionTemplate(key, simulation, selectedEntity, localPlayer, templateUnitIndex))
-                {
-                    return;
-                }
-            }
-
-            if (!isBuildMenuOpen)
-            {
-                return;
-            }
-
-            if (SfmlInputHelpers.TryGetNumberShortcut(key, out var buildIndex) && buildIndex < BuildMenuCatalog.BuildableKinds.Length)
-            {
-                pendingBuildKind = BuildMenuCatalog.BuildableKinds[buildIndex];
-                if (!BuildBarModel.IsDirectedKind(pendingBuildKind.Value))
-                {
-                    pendingDirection = Direction.East;
-                }
-
-                if (pendingBuildKind != EntityKind.Assembler)
-                {
-                    pendingRecipe = null;
-                }
-            }
+        window.KeyPressed += (_, args) =>
+        {
+            ApplyCameraRequest(
+                inputMapper.HandleKeyPressed(
+                    simulation,
+                    args.Code.ToString(),
+                    CurrentModifiers(),
+                    BuildHoverContext()));
         };
         window.MouseButtonPressed += (_, args) =>
         {
@@ -470,43 +196,33 @@ internal sealed class SfmlPlaySession
                 return;
             }
 
-            if (button == "Left" && isBuildMenuOpen
+            if (button == "Left" && session.IsBuildMenuOpen
                 && BuildBarOverlay.TryPickBuildBarKind(mousePosition, windowWidth, windowHeight, panelX, out var barKind))
             {
-                pendingBuildKind = barKind;
-                if (!BuildBarModel.IsDirectedKind(barKind))
-                {
-                    pendingDirection = Direction.East;
-                }
-
-                if (barKind != EntityKind.Assembler)
-                {
-                    pendingRecipe = null;
-                }
-
+                session.SelectPendingBuildKind(barKind);
                 return;
             }
 
-            if (isEnergyOverlayOpen && button == "Left")
+            if (session.IsEnergyOverlayOpen && button == "Left")
             {
                 var bottomReserved = SfmlUiLayout.BuildBarSlotSize + SfmlUiLayout.BuildBarBottomMargin + 8f;
-                var stats = simulation.GetPlayer(localPlayer).EnergyStats.Query((int)energySelectedInterval);
+                var stats = simulation.GetPlayer(localPlayer).EnergyStats.Query((int)session.EnergySelectedInterval);
                 var panel = EnergyStatsPanelModel.Build(
                     stats,
-                    energySelectedInterval,
+                    session.EnergySelectedInterval,
                     windowWidth,
                     windowHeight,
                     panelX,
                     bottomReserved);
                 if (panel.HitExit(mousePosition))
                 {
-                    CloseEnergyOverlay();
+                    session.CloseEnergyOverlay();
                     return;
                 }
 
                 if (panel.TryHitInterval(mousePosition, out var interval))
                 {
-                    energySelectedInterval = interval;
+                    session.SetEnergySelectedInterval(interval);
                     return;
                 }
 
@@ -516,67 +232,40 @@ internal sealed class SfmlPlaySession
                 }
             }
 
-            if (isResearchOverlayOpen && button == "Left")
+            if (session.IsResearchOverlayOpen && button == "Left")
             {
-                CloseEnergyOverlay();
+                session.CloseEnergyOverlay();
                 var bottomReserved = SfmlUiLayout.BuildBarSlotSize + SfmlUiLayout.BuildBarBottomMargin + 8f;
                 var overlayBounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
                 var snapshot = simulation.GetResearchSnapshot(localPlayer);
-                var tree = ResearchTreePanelModel.FromSnapshot(snapshot, overlayBounds, researchSelectedId);
-                researchScrollY = ClampResearchScroll(tree);
+                var tree = ResearchTreePanelModel.FromSnapshot(snapshot, overlayBounds, session.ResearchSelectedId);
+                ClampResearchScroll(tree);
 
                 if (tree.HitExit(mousePosition))
                 {
-                    CloseResearchOverlay();
+                    session.CloseResearchOverlay();
                     return;
                 }
 
                 if (tree.HitAllocation(mousePosition))
                 {
-                    SfmlInputHelpers.ToggleResearchAllocation(simulation, localPlayer);
+                    inputMapper.ToggleResearchAllocation(simulation);
                     return;
                 }
 
                 if (tree.HitAction(mousePosition))
                 {
-                    if (researchSelectedId is not null)
-                    {
-                        if (tree.CanCancelSelected)
-                        {
-                            simulation.TryCancelResearch(localPlayer, researchSelectedId.Value);
-                        }
-                        else if (tree.CanStartSelected)
-                        {
-                            var node = tree.SelectedNode;
-                            simulation.TrySelectResearch(
-                                localPlayer,
-                                researchSelectedId.Value,
-                                confirmExclusive: node?.RequiresExclusiveConfirmation == true,
-                                preferredTrackId: node?.TrackId);
-                        }
-                    }
-
+                    inputMapper.HandleResearchAction(tree);
                     return;
                 }
 
-                if (tree.TryPickNode(mousePosition, researchScrollY, out var techId))
+                if (tree.TryPickNode(mousePosition, session.ResearchScrollY, out var techId))
                 {
-                    var now = researchClickClock.ElapsedTime.AsSeconds();
-                    var isDouble = researchLastClickId == techId
-                        && now - researchLastClickSeconds <= SfmlUiLayout.ResearchDoubleClickSeconds;
-                    researchSelectedId = techId;
-                    researchLastClickId = techId;
-                    researchLastClickSeconds = now;
-                    if (isDouble)
-                    {
-                        var node = tree.Nodes.First(n => n.Id == techId);
-                        simulation.TrySelectResearch(
-                            localPlayer,
-                            techId,
-                            confirmExclusive: node.RequiresExclusiveConfirmation,
-                            preferredTrackId: node.TrackId);
-                    }
-
+                    inputMapper.HandleResearchNodeClick(
+                        simulation,
+                        techId,
+                        researchClickClock.ElapsedTime.AsSeconds(),
+                        tree);
                     return;
                 }
 
@@ -589,9 +278,10 @@ internal sealed class SfmlPlaySession
             if (IsOverSidePanel(mousePosition)
                 && HudOverlay.TryHandleSidebarStorageClick(
                     simulation,
+                    commands,
                     localPlayer,
-                    selectedEntityId,
-                    sidebarStorageHits,
+                    session.SelectedEntityId,
+                    session.SidebarStorageHits,
                     mousePosition,
                     button))
             {
@@ -606,45 +296,12 @@ internal sealed class SfmlPlaySession
                     return;
                 }
 
-                if (button == "Left")
-                {
-                    CenterCameraOnTile(minimapTile.Value);
-                    return;
-                }
-
-                if (button == "Right")
-                {
-                    var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
-                    if (selectedEntity?.Kind == EntityKind.Commander && selectedEntity.OwnerId == localPlayer)
-                    {
-                        var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
-                        var clickedEntity = simulation.World.GetTopEntityAt(minimapTile.Value);
-                        if (ctrlPressed
-                            && clickedEntity is not null
-                            && simulation.TryDepositToHubOrInput(selectedEntity.Id, clickedEntity.Id))
-                        {
-                            return;
-                        }
-
-                        simulation.TryIssueMoveCommand(selectedEntity.Id, localPlayer, minimapTile.Value);
-                        return;
-                    }
-
-                    if (BastionUiOverlay.TryHandleBastionPendingMapClick(
-                            simulation,
-                            selectedEntity,
-                            localPlayer,
-                            bastionPendingMode,
-                            patrolWaypoints,
-                            minimapTile.Value,
-                            confirmPatrol: true,
-                            out var consumedRight)
-                        && consumedRight)
-                    {
-                        ClearBastionPending();
-                    }
-                }
-
+                ApplyCameraRequest(
+                    inputMapper.HandleMinimapClick(
+                        simulation,
+                        button,
+                        minimapTile.Value,
+                        CurrentModifiers()));
                 return;
             }
 
@@ -653,15 +310,15 @@ internal sealed class SfmlPlaySession
                 return;
             }
 
-            var selectedForBar = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
+            var selectedForBar = inputMapper.GetSelectedEntity(simulation);
             if (button == "Left"
-                && !isBuildMenuOpen
-                && !isResearchOverlayOpen
-                && !isEnergyOverlayOpen
+                && !session.IsBuildMenuOpen
+                && !session.IsResearchOverlayOpen
+                && !session.IsEnergyOverlayOpen
                 && selectedForBar?.Kind == EntityKind.Bastion
                 && selectedForBar.OwnerId == localPlayer)
             {
-                if (isBastionCompositionOpen)
+                if (session.IsBastionCompositionOpen)
                 {
                     var bottomReserved = SfmlUiLayout.BuildBarSlotSize + SfmlUiLayout.BuildBarBottomMargin + 8f;
                     var compositionSlots = BastionCompositionPanelModel.BuildSlots(simulation, selectedForBar);
@@ -672,7 +329,7 @@ internal sealed class SfmlPlaySession
                             panelX,
                             bottomReserved))
                     {
-                        CloseBastionComposition();
+                        session.CloseBastionComposition();
                         return;
                     }
 
@@ -686,12 +343,11 @@ internal sealed class SfmlPlaySession
                             out var adjust))
                     {
                         var slot = compositionSlots[slotIndex];
-                        templateUnitIndex = slotIndex;
-                        simulation.TrySetBastionTemplate(
+                        session.SetTemplateUnitIndex(slotIndex);
+                        inputMapper.SetBastionTemplateFromComposition(
                             selectedForBar.Id,
-                            localPlayer,
                             slot.UnitKind,
-                            Math.Max(0, slot.TemplateMax + (int)adjust));
+                            slot.TemplateMax + (int)adjust);
                         return;
                     }
 
@@ -708,7 +364,7 @@ internal sealed class SfmlPlaySession
 
                 if (BastionUiOverlay.TryPickBastionOrderCommand(mousePosition, windowWidth, windowHeight, panelX, out var barCommand))
                 {
-                    BastionUiOverlay.ApplyBastionOrderCommand(simulation, selectedForBar.Id, localPlayer, barCommand, ref bastionPendingMode, patrolWaypoints);
+                    inputMapper.ApplyBastionOrderCommand(selectedForBar.Id, barCommand);
                     return;
                 }
             }
@@ -719,122 +375,17 @@ internal sealed class SfmlPlaySession
                 return;
             }
 
-            if (button == "Left")
-            {
-                var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
-                if (BastionUiOverlay.TryHandleBastionPendingMapClick(
-                        simulation,
-                        selectedEntity,
-                        localPlayer,
-                        bastionPendingMode,
-                        patrolWaypoints,
-                        tile.Value,
-                        confirmPatrol: false,
-                        out var consumedLeft)
-                    && consumedLeft)
-                {
-                    if (bastionPendingMode is BastionPendingInputMode.AttackTarget or BastionPendingInputMode.ScoutTarget)
-                    {
-                        ClearBastionPending();
-                    }
-
-                    return;
-                }
-
-                var clickedEntity = simulation.World.GetTopEntityAt(tile.Value);
-                var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
-                if (ctrlPressed
-                    && selectedEntity?.Kind == EntityKind.Commander
-                    && selectedEntity.OwnerId == localPlayer
-                    && clickedEntity is not null)
-                {
-                    simulation.TryWithdrawFromHubOrOutput(selectedEntity.Id, clickedEntity.Id);
-                }
-                else if (isBuildMenuOpen && pendingBuildKind is not null && selectedEntity?.Kind == EntityKind.Commander)
-                {
-                    simulation.TryQueueCommanderBuild(
-                        selectedEntity.Id,
-                        pendingBuildKind.Value,
-                        tile.Value,
-                        pendingDirection,
-                        pendingRecipe);
-                }
-                else
-                {
-                    var previousSelectedId = selectedEntityId;
-                    selectedEntityId = clickedEntity is not null && WorldRenderer.IsVisibleToLocalPlayer(simulation, localPlayer, clickedEntity)
-                        ? clickedEntity.Id
-                        : null;
-                    if (selectedEntityId != previousSelectedId)
-                    {
-                        CloseBastionComposition();
-                    }
-
-                    recipePage = 0;
-                    templateUnitIndex = 0;
-                    isBuildMenuOpen = false;
-                    pendingBuildKind = null;
-                    pendingDirection = Direction.East;
-                    pendingRecipe = null;
-                    ClearDemolishHold();
-                    ClearBastionPending();
-                }
-            }
-            else if (button == "Right")
-            {
-                var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
-                if (selectedEntity?.Kind == EntityKind.Commander && selectedEntity.OwnerId == localPlayer)
-                {
-                    if (isBuildMenuOpen)
-                    {
-                        // Build mode: RMB starts demolish hold on a valid target; empty/invalid = no-op (not move).
-                        var clickedEntity = simulation.World.GetTopEntityAt(tile.Value);
-                        if (clickedEntity is not null
-                            && simulation.IsDemolishableTarget(selectedEntity.Id, clickedEntity.Id))
-                        {
-                            demolishHoldEntityId = clickedEntity.Id;
-                            demolishHoldElapsed = 0f;
-                            demolishHoldCommitted = false;
-                        }
-                        else
-                        {
-                            ClearDemolishHold();
-                        }
-
-                        return;
-                    }
-
-                    var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
-                    var clickedEntityMove = simulation.World.GetTopEntityAt(tile.Value);
-                    if (ctrlPressed
-                        && clickedEntityMove is not null
-                        && simulation.TryDepositToHubOrInput(selectedEntity.Id, clickedEntityMove.Id))
-                    {
-                        return;
-                    }
-
-                    simulation.TryIssueMoveCommand(selectedEntity.Id, localPlayer, tile.Value);
-                    return;
-                }
-
-                if (BastionUiOverlay.TryHandleBastionPendingMapClick(
-                        simulation,
-                        selectedEntity,
-                        localPlayer,
-                        bastionPendingMode,
-                        patrolWaypoints,
-                        tile.Value,
-                        confirmPatrol: true,
-                        out var consumedRight)
-                    && consumedRight)
-                {
-                    ClearBastionPending();
-                }
-            }
+            ApplyCameraRequest(
+                inputMapper.HandleWorldClick(
+                    simulation,
+                    button,
+                    tile.Value,
+                    CurrentModifiers(),
+                    confirmPatrolOnRightOrMinimap: button == "Right"));
         };
         window.MouseWheelScrolled += (_, args) =>
         {
-            if (!isResearchOverlayOpen)
+            if (!session.IsResearchOverlayOpen)
             {
                 return;
             }
@@ -845,16 +396,17 @@ internal sealed class SfmlPlaySession
             var tree = ResearchTreePanelModel.FromSnapshot(
                 simulation.GetResearchSnapshot(localPlayer),
                 overlayBounds,
-                researchSelectedId);
+                session.ResearchSelectedId);
             if (!tree.ContainsContentViewport(mousePosition) && !tree.ContainsOverlay(mousePosition))
             {
                 return;
             }
 
-            researchScrollY = ResearchTreePanelModel.ClampScroll(
-                researchScrollY - args.Delta * ResearchTreePanelModel.ScrollStep,
-                tree.ContentHeight,
-                tree.ContentViewport.Height);
+            session.SetResearchScrollY(
+                ResearchTreePanelModel.ClampScroll(
+                    session.ResearchScrollY - args.Delta * ResearchTreePanelModel.ScrollStep,
+                    tree.ContentHeight,
+                    tree.ContentViewport.Height));
         };
         window.MouseButtonReleased += (_, args) =>
         {
@@ -865,7 +417,7 @@ internal sealed class SfmlPlaySession
 
             if (args.Button.ToString() == "Right")
             {
-                ClearDemolishHold();
+                session.ClearDemolishHold();
             }
         };
 
@@ -881,47 +433,37 @@ internal sealed class SfmlPlaySession
             window.DispatchEvents();
             var frameDt = clock.Restart().AsSeconds();
 
-            if (isBuildMenuOpen
-                && demolishHoldEntityId is not null
-                && Mouse.IsButtonPressed(Mouse.Button.Right)
-                && selectedEntityId is not null)
-            {
-                var holdCommander = simulation.World.GetEntity(selectedEntityId.Value);
-                var mouseTile = TileFromScreen(Mouse.GetPosition(window));
-                var hoverTarget = mouseTile is null ? null : simulation.World.GetTopEntityAt(mouseTile.Value);
-                if (holdCommander?.Kind != EntityKind.Commander
-                    || holdCommander.OwnerId != localPlayer
-                    || hoverTarget is null
-                    || hoverTarget.Id != demolishHoldEntityId.Value
-                    || !simulation.IsDemolishableTarget(holdCommander.Id, hoverTarget.Id))
-                {
-                    ClearDemolishHold();
-                }
-                else if (!demolishHoldCommitted)
-                {
-                    demolishHoldElapsed += frameDt;
-                    if (demolishHoldElapsed >= SfmlUiLayout.DemolishHoldSeconds)
-                    {
-                        simulation.TryQueueCommanderDemolish(holdCommander.Id, demolishHoldEntityId.Value);
-                        demolishHoldCommitted = true;
-                    }
-                }
-            }
-            else if (!Mouse.IsButtonPressed(Mouse.Button.Right))
-            {
-                ClearDemolishHold();
-            }
+            var mouseTile = TileFromScreen(Mouse.GetPosition(window));
+            var hoverTarget = mouseTile is null ? null : simulation.World.GetTopEntityAt(mouseTile.Value);
+            inputMapper.TickDemolishHold(
+                simulation,
+                frameDt,
+                Mouse.IsButtonPressed(Mouse.Button.Right),
+                hoverTarget?.Id);
 
             accumulator += frameDt;
-            while (accumulator >= fixedDelta)
+            // R23: cap ticks per frame and drop excess backlog (see FixedStepPacer) so a long pause
+            // (minimized window, breakpoint) can't trigger a spiral-of-death catch-up. Dropping is
+            // acceptable for this local host; a future lockstep network host must stall/resync.
+            var (ticksThisFrame, pacedAccumulator) = FixedStepPacer.Plan(accumulator, fixedDelta);
+            accumulator = pacedAccumulator;
+            for (var tickIndex = 0; tickIndex < ticksThisFrame; tickIndex++)
             {
                 simulation.AdvanceTick();
                 foreach (var shot in simulation.CombatShotsThisTick)
                 {
-                    lingeringShots.Add((shot, SfmlUiLayout.CombatShotLingerSeconds));
+                    // R27: only buffer tracers the local player can actually see, so hidden combat
+                    // cannot be inferred from tracer endpoints.
+                    if (WorldRenderer.IsShotVisibleToLocalPlayer(simulation, localPlayer, shot))
+                    {
+                        lingeringShots.Add((shot, SfmlUiLayout.CombatShotLingerSeconds));
+                    }
                 }
 
-                accumulator -= fixedDelta;
+                // R27: re-validate the current selection every tick. If a non-owned entity has left
+                // the local player's vision (or was removed), drop the selection so the HUD stops
+                // leaking its live HP/position/orders.
+                inputMapper.RefreshSelectionVisibility(simulation);
             }
 
             for (var i = lingeringShots.Count - 1; i >= 0; i--)
@@ -960,7 +502,7 @@ internal sealed class SfmlPlaySession
                     if (mousePosition.Y < SfmlUiLayout.TopBarHeight + SfmlUiLayout.EdgeScrollBand) { dy -= pan; }
                     else if (mousePosition.Y > windowHeight - SfmlUiLayout.EdgeScrollBand)
                     {
-                        var overBuildBar = isBuildMenuOpen
+                        var overBuildBar = session.IsBuildMenuOpen
                             && BuildBarOverlay.GetBuildBarBounds(windowWidth, windowHeight, panelX, out _, out _).Contains(new Vector2f(mousePosition.X, mousePosition.Y));
                         if (!overBuildBar) { dy += pan; }
                     }
@@ -974,7 +516,7 @@ internal sealed class SfmlPlaySession
             {
                 window.SetView(worldView);
                 var hoverTile = TileFromScreen(mousePosition);
-                if (isBuildMenuOpen
+                if (session.IsBuildMenuOpen
                     && BuildBarOverlay.GetBuildBarBounds(windowWidth, windowHeight, panelX, out _, out _).Contains(new Vector2f(mousePosition.X, mousePosition.Y)))
                 {
                     hoverTile = null;
@@ -984,11 +526,11 @@ internal sealed class SfmlPlaySession
                     window,
                     simulation,
                     localPlayer,
-                    selectedEntityId,
-                    isBuildMenuOpen ? pendingBuildKind : null,
-                    pendingDirection,
+                    session.SelectedEntityId,
+                    session.IsBuildMenuOpen ? session.PendingBuildKind : null,
+                    session.PendingDirection,
                     hoverTile,
-                    patrolWaypoints,
+                    session.PatrolWaypoints,
                     lingeringShots.Select(entry => entry.Shot).ToList(),
                     camera.X,
                     camera.Y,
@@ -1003,76 +545,76 @@ internal sealed class SfmlPlaySession
                 window,
                 simulation,
                 localPlayer,
-                selectedEntityId,
-                isBuildMenuOpen,
-                pendingBuildKind,
-                pendingDirection,
-                pendingRecipe,
-                recipePage,
-                templateUnitIndex,
-                bastionPendingMode,
-                patrolWaypoints.Count,
+                session.SelectedEntityId,
+                session.IsBuildMenuOpen,
+                session.PendingBuildKind,
+                session.PendingDirection,
+                session.PendingRecipe,
+                session.RecipePage,
+                session.TemplateUnitIndex,
+                session.BastionPendingMode,
+                session.PatrolWaypoints.Count,
                 font,
                 windowWidth,
                 windowHeight,
                 panelX,
                 panelTop,
-                isResearchOverlayOpen,
-                researchSelectedId,
-                sidebarStorageHits);
-            if (isEnergyOverlayOpen)
+                session.IsResearchOverlayOpen,
+                session.ResearchSelectedId,
+                session.SidebarStorageHits);
+            if (session.IsEnergyOverlayOpen)
             {
                 var bottomReserved = SfmlUiLayout.BuildBarSlotSize + SfmlUiLayout.BuildBarBottomMargin + 8f;
-                var stats = simulation.GetPlayer(localPlayer).EnergyStats.Query((int)energySelectedInterval);
+                var stats = simulation.GetPlayer(localPlayer).EnergyStats.Query((int)session.EnergySelectedInterval);
                 var energyPanel = EnergyStatsPanelModel.Build(
                     stats,
-                    energySelectedInterval,
+                    session.EnergySelectedInterval,
                     windowWidth,
                     windowHeight,
                     panelX,
                     bottomReserved);
                 EnergyStatsOverlay.DrawEnergyStatsOverlay(window, energyPanel, font, mousePosition);
             }
-            else if (isResearchOverlayOpen)
+            else if (session.IsResearchOverlayOpen)
             {
                 var bottomReserved = SfmlUiLayout.BuildBarSlotSize + SfmlUiLayout.BuildBarBottomMargin + 8f;
                 var overlayBounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
                 var tree = ResearchTreePanelModel.FromSnapshot(
                     simulation.GetResearchSnapshot(localPlayer),
                     overlayBounds,
-                    researchSelectedId);
-                researchScrollY = ClampResearchScroll(tree);
-                ResearchTreeOverlay.DrawResearchTreeOverlay(window, tree, font, researchScrollY, windowWidth, windowHeight);
+                    session.ResearchSelectedId);
+                ClampResearchScroll(tree);
+                ResearchTreeOverlay.DrawResearchTreeOverlay(window, tree, font, session.ResearchScrollY, windowWidth, windowHeight);
             }
 
-            if (isBuildMenuOpen)
+            if (session.IsBuildMenuOpen)
             {
                 BuildBarOverlay.DrawBuildBar(
                     window,
                     simulation,
                     localPlayer,
-                    selectedEntityId,
-                    pendingBuildKind,
-                    pendingDirection,
-                    pendingRecipe,
+                    session.SelectedEntityId,
+                    session.PendingBuildKind,
+                    session.PendingDirection,
+                    session.PendingRecipe,
                     font,
                     windowWidth,
                     windowHeight,
                     panelX,
                     mousePosition);
             }
-            else if (!isResearchOverlayOpen && !isEnergyOverlayOpen)
+            else if (!session.IsResearchOverlayOpen && !session.IsEnergyOverlayOpen)
             {
-                var selectedForOrders = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
+                var selectedForOrders = inputMapper.GetSelectedEntity(simulation);
                 if (selectedForOrders?.Kind == EntityKind.Bastion && selectedForOrders.OwnerId == localPlayer)
                 {
-                    if (isBastionCompositionOpen)
+                    if (session.IsBastionCompositionOpen)
                     {
                         BastionUiOverlay.DrawBastionCompositionPanel(
                             window,
                             simulation,
                             selectedForOrders,
-                            templateUnitIndex,
+                            session.TemplateUnitIndex,
                             font,
                             windowWidth,
                             windowHeight,
@@ -1083,7 +625,7 @@ internal sealed class SfmlPlaySession
                     BastionUiOverlay.DrawBastionOrderBar(
                         window,
                         selectedForOrders,
-                        bastionPendingMode,
+                        session.BastionPendingMode,
                         font,
                         windowWidth,
                         windowHeight,
@@ -1092,7 +634,7 @@ internal sealed class SfmlPlaySession
                 }
                 else
                 {
-                    CloseBastionComposition();
+                    session.CloseBastionComposition();
                 }
             }
 

@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace SteelConveyorWar.Core;
 
 public static class MvpDefinitions
@@ -14,13 +16,14 @@ public static class MvpDefinitions
     /// <summary>Coal mine cycle (3× baseline).</summary>
     public const int CoalMineWorkTicks = 45;
     public const int HubStorageStacks = 20;
-    public const double MobileMoveWorldUnitsPerTick = 0.125;
+    public const long MobileMoveWorldUnitsPerTick = WorldUnits.MobileMoveMilliPerTick;
     public const int BaseBastionTemplateCapacity = 10;
     public const int BaseMaxBastions = 1;
     public const int MaxBastionsAfterUnlock = 4;
 
-    public static readonly HashSet<EntityKind> UnitKinds =
-    [
+    // R05: FrozenSet cannot be mutated by callers (previously a public mutable HashSet).
+    public static readonly FrozenSet<EntityKind> UnitKinds = new[]
+    {
         EntityKind.LightBot,
         EntityKind.BasicTank,
         EntityKind.Scout,
@@ -28,13 +31,13 @@ public static class MvpDefinitions
         EntityKind.MediumTank,
         EntityKind.AntiAirBot,
         EntityKind.RocketLauncher
-    ];
+    }.ToFrozenSet();
 
-    public static readonly HashSet<EntityKind> FactoryKinds =
-    [
+    public static readonly FrozenSet<EntityKind> FactoryKinds = new[]
+    {
         EntityKind.TankFactory,
         EntityKind.DroneCenter
-    ];
+    }.ToFrozenSet();
 
     /// <summary>
     /// Embedded construction costs (parity with <c>config/build-costs.json</c>). Prefer
@@ -49,29 +52,12 @@ public static class MvpDefinitions
     public static IReadOnlyDictionary<EntityKind, TechnologyId> BuildRequirements =>
         MvpBuildCostCatalog.Embedded.Requirements;
 
-    public static readonly IReadOnlyDictionary<EntityKind, int> PowerDemand =
-        new Dictionary<EntityKind, int>
-        {
-            [EntityKind.Mine] = 2,
-            [EntityKind.CoalMine] = 2,
-            [EntityKind.OilWell] = 3,
-            [EntityKind.Smelter] = 3,
-            [EntityKind.Refinery] = 5,
-            [EntityKind.Assembler] = 4,
-            [EntityKind.TankFactory] = 5,
-            [EntityKind.DroneCenter] = 4,
-            [EntityKind.Laboratory] = 4,
-            [EntityKind.MachineGunTurret] = 1,
-            [EntityKind.CannonTurret] = 2,
-            [EntityKind.AntiAirTurret] = 2
-        };
+    /// <summary>R18: delegates to <see cref="GameplayTablesCatalog.Embedded"/>.</summary>
+    public static IReadOnlyDictionary<EntityKind, int> PowerDemand =>
+        GameplayTablesCatalog.Embedded.PowerDemand;
 
-    public static readonly IReadOnlyDictionary<EntityKind, int> PowerProduction =
-        new Dictionary<EntityKind, int>
-        {
-            [EntityKind.SolarPanel] = 5,
-            [EntityKind.CoalPlant] = 20
-        };
+    public static IReadOnlyDictionary<EntityKind, int> PowerProduction =>
+        GameplayTablesCatalog.Embedded.PowerProduction;
 
     /// <summary>Per-building energy buffer capacity = demand × this factor (ticks of full drain).</summary>
     public const int EnergyBufferCapacityFactor = 100;
@@ -82,58 +68,21 @@ public static class MvpDefinitions
         return demand <= 0 ? 0 : demand * EnergyBufferCapacityFactor;
     }
 
-    public static int GetPowerDemand(EntityKind kind) => PowerDemand.GetValueOrDefault(kind);
+    public static int GetPowerDemand(EntityKind kind) => GameplayTablesCatalog.Embedded.GetPowerDemand(kind);
 
-    public static readonly IReadOnlyDictionary<ItemId, int> ItemStackSizes =
-        new Dictionary<ItemId, int>
-        {
-            [ItemId.IronOre] = 50,
-            [ItemId.CopperOre] = 50,
-            [ItemId.Coal] = 50,
-            [ItemId.CrudeOil] = 50,
-            [ItemId.IronPlate] = 100,
-            [ItemId.CopperPlate] = 100,
-            [ItemId.Steel] = 50,
-            [ItemId.Fuel] = 50,
-            [ItemId.IronGear] = 100,
-            [ItemId.Composite] = 100,
-            [ItemId.SciencePackT1] = 50,
-            [ItemId.SciencePackT2] = 50,
-            [ItemId.Ammo] = 100,
-            [ItemId.Shell] = 50,
-            [ItemId.AntiAirShell] = 50
-        };
+    public static IReadOnlyDictionary<ItemId, int> ItemStackSizes =>
+        GameplayTablesCatalog.Embedded.ItemStackSizes;
 
-    public static int GetMaxStackSize(ItemId item)
-    {
-        return ItemStackSizes.GetValueOrDefault(item, 50);
-    }
+    public static int GetMaxStackSize(ItemId item) => GameplayTablesCatalog.Embedded.GetMaxStackSize(item);
 
-    public static WorldSize GetFootprint(EntityKind kind)
-    {
-        return kind switch
-        {
-            EntityKind.Mine or EntityKind.CoalMine or EntityKind.OilWell or EntityKind.Smelter or EntityKind.Assembler or EntityKind.Laboratory or EntityKind.Hub => new WorldSize(2, 2),
-            EntityKind.Bastion or EntityKind.TankFactory or EntityKind.DroneCenter => new WorldSize(3, 3),
-            _ => new WorldSize(1, 1)
-        };
-    }
+    public static WorldSize GetFootprint(EntityKind kind) => GameplayTablesCatalog.Embedded.GetFootprint(kind);
 
     /// <summary>Player-facing storage UI / inventory rules: only Commander and Hub.</summary>
     public static bool HasPlayerInventory(EntityKind kind) =>
         kind is EntityKind.Commander or EntityKind.Hub;
 
-    public static CollisionSize GetCollisionSize(EntityKind kind)
-    {
-        return kind switch
-        {
-            EntityKind.Commander => new CollisionSize(0.35),
-            EntityKind.Scout => new CollisionSize(0.25),
-            EntityKind.LightBot or EntityKind.MediumBot or EntityKind.AntiAirBot or EntityKind.RocketLauncher => new CollisionSize(0.3),
-            EntityKind.BasicTank or EntityKind.MediumTank => new CollisionSize(0.4),
-            _ => new CollisionSize(0)
-        };
-    }
+    public static CollisionSize GetCollisionSize(EntityKind kind) =>
+        GameplayTablesCatalog.Embedded.GetCollisionSize(kind);
 
     public static bool IsPassableLogistic(EntityKind kind)
     {
@@ -179,91 +128,19 @@ public static class MvpDefinitions
     /// <summary>
     /// Resistance multipliers in basis points (10_000 = 1.0) for ProjectileKind × target category.
     /// </summary>
-    public static int GetResistanceBasisPoints(ProjectileKind projectileKind, CombatTargetCategory targetCategory)
-    {
-        return (projectileKind, targetCategory) switch
-        {
-            (ProjectileKind.GroundToGround, CombatTargetCategory.Unit) => 10_000,
-            (ProjectileKind.GroundToGround, CombatTargetCategory.Building) => 9_000,
-            (ProjectileKind.GroundToGround, CombatTargetCategory.Wall) => 7_000,
-            (ProjectileKind.Ballistic, CombatTargetCategory.Unit) => 10_000,
-            (ProjectileKind.Ballistic, CombatTargetCategory.Building) => 11_000,
-            (ProjectileKind.Ballistic, CombatTargetCategory.Wall) => 13_000,
-            (ProjectileKind.AirToGround, CombatTargetCategory.Unit) => 11_000,
-            (ProjectileKind.AirToGround, CombatTargetCategory.Building) => 5_000,
-            (ProjectileKind.AirToGround, CombatTargetCategory.Wall) => 4_000,
-            _ => 10_000
-        };
-    }
+    public static int GetResistanceBasisPoints(ProjectileKind projectileKind, CombatTargetCategory targetCategory) =>
+        GameplayTablesCatalog.Embedded.GetResistanceBasisPoints(projectileKind, targetCategory);
 
-    public static readonly IReadOnlyDictionary<EntityKind, ProductionRecipe> ProductionRecipes =
-        new Dictionary<EntityKind, ProductionRecipe>
-        {
-            [EntityKind.LightBot] = new(Cost((ItemId.IronPlate, 5)), EntityKind.LightBot, 60, TechnologyId.LightBot),
-            [EntityKind.BasicTank] = new(Cost((ItemId.IronPlate, 12), (ItemId.CopperPlate, 4)), EntityKind.BasicTank, 105),
-            [EntityKind.Scout] = new(Cost((ItemId.Composite, 4)), EntityKind.Scout, 60, TechnologyId.Scout),
-            [EntityKind.MediumBot] = new(Cost((ItemId.Steel, 5)), EntityKind.MediumBot, 105, TechnologyId.MediumBot),
-            [EntityKind.MediumTank] = new(Cost((ItemId.Steel, 10), (ItemId.Fuel, 3)), EntityKind.MediumTank, 150, TechnologyId.MediumTank),
-            [EntityKind.AntiAirBot] = new(Cost((ItemId.Steel, 6), (ItemId.CopperPlate, 8)), EntityKind.AntiAirBot, 120, TechnologyId.AntiAirTurret),
-            [EntityKind.RocketLauncher] = new(Cost((ItemId.Steel, 8), (ItemId.Fuel, 5)), EntityKind.RocketLauncher, 165, TechnologyId.RocketLauncher)
-        };
+    public static IReadOnlyDictionary<EntityKind, ProductionRecipe> ProductionRecipes =>
+        GameplayTablesCatalog.Embedded.ProductionRecipes;
 
-    public static readonly IReadOnlyDictionary<ItemRecipeId, ItemRecipeDefinition> ItemRecipes =
-        new Dictionary<ItemRecipeId, ItemRecipeDefinition>
-        {
-            [ItemRecipeId.IronGear] = new(ItemRecipeId.IronGear, Cost((ItemId.IronPlate, 2)), ItemId.IronGear, 1, 40),
-            [ItemRecipeId.Composite] = new(ItemRecipeId.Composite, Cost((ItemId.IronPlate, 1), (ItemId.CopperPlate, 1)), ItemId.Composite, 1, 60),
-            [ItemRecipeId.SciencePackT1] = new(ItemRecipeId.SciencePackT1, Cost((ItemId.IronGear, 1), (ItemId.CopperPlate, 1)), ItemId.SciencePackT1, 1, 35),
-            [ItemRecipeId.SciencePackT2] = new(ItemRecipeId.SciencePackT2, Cost((ItemId.Composite, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1)), ItemId.SciencePackT2, 1, 45)
-        };
+    public static IReadOnlyDictionary<ItemRecipeId, ItemRecipeDefinition> ItemRecipes =>
+        GameplayTablesCatalog.Embedded.ItemRecipes;
 
     // Research catalog moved to Research/MvpResearchCatalog.cs
 
+    public static IReadOnlyDictionary<EntityKind, int> TechSignatureIntensity =>
+        GameplayTablesCatalog.Embedded.TechSignatureIntensity;
 
-    public static readonly IReadOnlyDictionary<EntityKind, int> TechSignatureIntensity =
-        new Dictionary<EntityKind, int>
-        {
-            [EntityKind.Smelter] = 2,
-            [EntityKind.TankFactory] = 4,
-            [EntityKind.DroneCenter] = 3,
-            [EntityKind.Refinery] = 4,
-            [EntityKind.Assembler] = 3,
-            [EntityKind.Laboratory] = 3,
-            [EntityKind.CoalPlant] = 2
-        };
-
-    public static EntityStats GetStats(EntityKind kind)
-    {
-        return kind switch
-        {
-            EntityKind.Commander => new EntityStats(300, 10, 3, 25, 8, 7, Armor: 2, ProjectileKind: ProjectileKind.GroundToGround),
-            EntityKind.Bastion => new EntityStats(450, VisionRadius: 12, Armor: 4),
-            EntityKind.Hub => new EntityStats(150, VisionRadius: 4, Armor: 1),
-            EntityKind.Mine or EntityKind.CoalMine or EntityKind.OilWell => new EntityStats(120, VisionRadius: 3, Armor: 1),
-            EntityKind.Smelter or EntityKind.Refinery => new EntityStats(120, VisionRadius: 3, Armor: 1),
-            EntityKind.Assembler => new EntityStats(130, VisionRadius: 3, Armor: 1),
-            EntityKind.SolarPanel or EntityKind.CoalPlant => new EntityStats(90, VisionRadius: 3, Armor: 1),
-            EntityKind.TankFactory or EntityKind.DroneCenter or EntityKind.Laboratory => new EntityStats(160, VisionRadius: 4, Armor: 2),
-            EntityKind.Wall => new EntityStats(180, VisionRadius: 1, Armor: 8),
-            EntityKind.SteelWall => new EntityStats(320, VisionRadius: 1, Armor: 14),
-            EntityKind.MachineGunTurret => new EntityStats(130, 8, 5, 10, VisionRadius: 6, Armor: 2, ProjectileKind: ProjectileKind.GroundToGround),
-            EntityKind.CannonTurret => new EntityStats(170, 24, 6, 25, VisionRadius: 7, Armor: 4, ProjectileKind: ProjectileKind.Ballistic, SplashRadius: 1),
-            EntityKind.AntiAirTurret => new EntityStats(140, 14, 6, 15, VisionRadius: 7, Armor: 2, ProjectileKind: ProjectileKind.AirToGround),
-            EntityKind.LightBot => new EntityStats(35, 5, 1, 18, 5, 4, Armor: 0, ProjectileKind: ProjectileKind.GroundToGround),
-            EntityKind.BasicTank => new EntityStats(90, 14, 3, 24, 9, 5, Armor: 3, ProjectileKind: ProjectileKind.GroundToGround),
-            EntityKind.Scout => new EntityStats(25, 0, 0, 30, 3, 10, Armor: 0),
-            EntityKind.MediumBot => new EntityStats(60, 10, 1, 16, 4, 5, Armor: 1, ProjectileKind: ProjectileKind.GroundToGround),
-            EntityKind.MediumTank => new EntityStats(150, 24, 4, 28, 10, 6, Armor: 5, ProjectileKind: ProjectileKind.Ballistic, SplashRadius: 1),
-            EntityKind.AntiAirBot => new EntityStats(70, 10, 4, 16, 6, 6, Armor: 1, ProjectileKind: ProjectileKind.AirToGround),
-            EntityKind.RocketLauncher => new EntityStats(75, 32, 7, 36, 12, 6, Armor: 0, ProjectileKind: ProjectileKind.Ballistic, SplashRadius: 2),
-            EntityKind.GhostBuild => new EntityStats(20, VisionRadius: 0),
-            EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter => new EntityStats(40, VisionRadius: 1, Armor: 0),
-            _ => new EntityStats(60, VisionRadius: 2, Armor: 1)
-        };
-    }
-
-    private static IReadOnlyDictionary<ItemId, int> Cost(params (ItemId Item, int Amount)[] costs)
-    {
-        return costs.ToDictionary(cost => cost.Item, cost => cost.Amount);
-    }
+    public static EntityStats GetStats(EntityKind kind) => GameplayTablesCatalog.Embedded.GetStats(kind);
 }

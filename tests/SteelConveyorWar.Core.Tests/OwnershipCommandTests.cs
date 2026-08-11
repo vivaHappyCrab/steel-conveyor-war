@@ -1,7 +1,62 @@
+using SteelConveyorWar.Core.Commands;
+
 namespace SteelConveyorWar.Core.Tests;
 
 public sealed class OwnershipCommandTests
 {
+    // R01: entity-targeted commander commands must reject a foreign actor even when the caller
+    // knows the victim's CommanderId. These flow through the untrusted ApplyCommand sink.
+    [Fact]
+    public void ApplyCommand_RejectsForeignActor_AcrossCommanderCommandKinds()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var attacker = new PlayerId(1);
+        var victim = new PlayerId(2);
+
+        var victimCommander = simulation.World.Entities.Single(entity =>
+            entity.Kind == EntityKind.Commander && entity.OwnerId == victim);
+        var victimHub = simulation.World.Entities.Single(entity =>
+            entity.Kind == EntityKind.Hub && entity.OwnerId == victim);
+
+        var buildPosition = NearBlue(simulation, 2, 6, playerId: 2);
+
+        var foreignCommands = new ISimulationCommand[]
+        {
+            new QueueCommanderBuildCommand(attacker, 1, victimCommander.Id, EntityKind.TankFactory, buildPosition),
+            new PlaceGhostBuildFromCommanderCommand(attacker, 1, victimCommander.Id, EntityKind.TankFactory, buildPosition),
+            new QueueCommanderDemolishCommand(attacker, 1, victimCommander.Id, victimHub.Id),
+            new CollectOutputBufferCommand(attacker, 1, victimCommander.Id, victimHub.Id),
+            new WithdrawFromHubOrOutputCommand(attacker, 1, victimCommander.Id, victimHub.Id),
+            new DepositToHubOrInputCommand(attacker, 1, victimCommander.Id, victimHub.Id),
+            new DepositItemTypeToHubOrInputCommand(attacker, 1, victimCommander.Id, victimHub.Id, ItemId.IronPlate),
+            new WithdrawItemTypeFromHubOrOutputCommand(attacker, 1, victimCommander.Id, victimHub.Id, ItemId.IronPlate),
+        };
+
+        var entityCountBefore = simulation.World.Entities.Count;
+
+        foreach (var command in foreignCommands)
+        {
+            Assert.False(simulation.ApplyCommand(command), $"Foreign actor must be rejected for {command.Kind}.");
+        }
+
+        // No ghost/entity was created and the buffer command left no mutation.
+        Assert.Equal(entityCountBefore, simulation.World.Entities.Count);
+    }
+
+    [Fact]
+    public void ApplyCommand_AllowsOwnerActor_ForCommanderCommand()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var owner = new PlayerId(2);
+        var commander = simulation.World.Entities.Single(entity =>
+            entity.Kind == EntityKind.Commander && entity.OwnerId == owner);
+        var hub = simulation.World.Entities.Single(entity =>
+            entity.Kind == EntityKind.Hub && entity.OwnerId == owner);
+
+        Assert.True(simulation.ApplyCommand(
+            new WithdrawFromHubOrOutputCommand(owner, 1, commander.Id, hub.Id)));
+    }
+
     [Fact]
     public void TryIssueMoveCommand_RejectsForeignCommander()
     {

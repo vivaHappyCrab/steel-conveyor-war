@@ -22,6 +22,15 @@ namespace SteelConveyorWar.Core.Commands;
 /// </remarks>
 public static class SimulationCommandSerializer
 {
+    /// <summary>
+    /// R11: current command wire protocol version. Bump on any breaking envelope/payload change and
+    /// widen <see cref="MinSupportedProtocolVersion"/> only when older shapes remain decodable.
+    /// </summary>
+    public const int ProtocolVersion = 1;
+
+    /// <summary>Oldest protocol version this build can still decode.</summary>
+    public const int MinSupportedProtocolVersion = 1;
+
     private static readonly JsonSerializerOptions Options = CreateOptions();
 
     public static string Serialize(ISimulationCommand command)
@@ -53,6 +62,51 @@ public static class SimulationCommandSerializer
         return envelopes.Select(FromDto).ToArray();
     }
 
+    /// <summary>
+    /// R09: no-throw deserialization for untrusted wire input. Returns <c>false</c> on any
+    /// malformed payload (invalid JSON, missing required fields, unknown kind) instead of throwing.
+    /// </summary>
+    public static bool TryDeserialize(string? json, out ISimulationCommand? command)
+    {
+        command = null;
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return false;
+        }
+
+        try
+        {
+            command = Deserialize(json);
+            return true;
+        }
+        catch (Exception)
+        {
+            command = null;
+            return false;
+        }
+    }
+
+    /// <summary>R09: no-throw batch deserialization for untrusted wire input.</summary>
+    public static bool TryDeserializeMany(string? json, out IReadOnlyList<ISimulationCommand> commands)
+    {
+        commands = Array.Empty<ISimulationCommand>();
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return false;
+        }
+
+        try
+        {
+            commands = DeserializeMany(json);
+            return true;
+        }
+        catch (Exception)
+        {
+            commands = Array.Empty<ISimulationCommand>();
+            return false;
+        }
+    }
+
     private static JsonSerializerOptions CreateOptions()
     {
         var options = new JsonSerializerOptions
@@ -69,7 +123,7 @@ public static class SimulationCommandSerializer
     {
         var actor = command.Actor.Value;
         var tick = command.Tick;
-        return command switch
+        var envelope = command switch
         {
             IssueMoveCommand c => new CommandEnvelopeDto(
                 c.Kind, actor, tick,
@@ -157,16 +211,29 @@ public static class SimulationCommandSerializer
             WithdrawItemTypeFromHubOrOutputCommand c => new CommandEnvelopeDto(
                 c.Kind, actor, tick,
                 new CommandPayloadDto { CommanderId = c.CommanderId, TargetEntityId = c.TargetEntityId, Item = c.Item }),
+            SelectResearchCommand c => new CommandEnvelopeDto(
+                c.Kind, actor, tick,
+                new CommandPayloadDto
+                {
+                    Technology = c.Technology.Value,
+                    ConfirmExclusive = c.ConfirmExclusive,
+                    PreferredTrackId = c.PreferredTrackId,
+                }),
             _ => throw new NotSupportedException($"Unknown command type '{command.GetType().Name}'."),
         };
+
+        // R11: stamp every envelope with the protocol version and carry the canonical (R03) sequence
+        // over the wire so replay/network peers reconstruct the exact ordering key.
+        return envelope with { ProtocolVersion = ProtocolVersion, Sequence = command.Sequence };
     }
 
     private static ISimulationCommand FromDto(CommandEnvelopeDto dto)
     {
+        ValidateProtocol(dto.ProtocolVersion);
         var actor = new PlayerId(dto.Actor);
         var tick = dto.Tick;
         var p = dto.Payload ?? new CommandPayloadDto();
-        return dto.Kind switch
+        ISimulationCommand command = dto.Kind switch
         {
             SimulationCommandKind.IssueMove => new IssueMoveCommand(
                 actor, tick, Require(p.EntityId, "entityId"), new TilePosition(Require(p.X, "x"), Require(p.Y, "y"))),
@@ -217,8 +284,36 @@ public static class SimulationCommandSerializer
             SimulationCommandKind.WithdrawItemTypeFromHubOrOutput => new WithdrawItemTypeFromHubOrOutputCommand(
                 actor, tick, Require(p.CommanderId, "commanderId"), Require(p.TargetEntityId, "targetEntityId"),
                 Require(p.Item, "item")),
+            SimulationCommandKind.SelectResearch => new SelectResearchCommand(
+                actor, tick, new TechnologyId(Require(p.Technology, "technology")),
+                p.ConfirmExclusive ?? false, p.PreferredTrackId),
             _ => throw new NotSupportedException($"Unknown command kind '{dto.Kind}'."),
         };
+
+        // R11/R03: reattach the wire-carried sequence (0 = unsequenced legacy). WithScheduling preserves
+        // the concrete runtime command type and its tick while re-stamping the ordering key.
+        return dto.Sequence != 0 && command is SimulationCommandBase based
+            ? based.WithScheduling(based.Tick, dto.Sequence)
+            : command;
+    }
+
+    /// <summary>
+    /// R11: reject envelopes from an unknown protocol version predictably (before touching payload). A
+    /// null version is a legacy pre-versioning envelope and is accepted at the current version.
+    /// </summary>
+    private static void ValidateProtocol(int? protocolVersion)
+    {
+        if (protocolVersion is null)
+        {
+            return;
+        }
+
+        if (protocolVersion.Value < MinSupportedProtocolVersion || protocolVersion.Value > ProtocolVersion)
+        {
+            throw new NotSupportedException(
+                $"Unsupported command protocol version {protocolVersion.Value}; " +
+                $"this build decodes [{MinSupportedProtocolVersion}, {ProtocolVersion}].");
+        }
     }
 
     private static T Require<T>(T? value, string name) where T : struct
@@ -245,7 +340,14 @@ public static class SimulationCommandSerializer
         SimulationCommandKind Kind,
         int Actor,
         long Tick,
-        CommandPayloadDto? Payload);
+        CommandPayloadDto? Payload)
+    {
+        /// <summary>R11: wire protocol version. Null on legacy pre-versioning envelopes.</summary>
+        public int? ProtocolVersion { get; init; }
+
+        /// <summary>R03/R11: canonical per-author ordering key carried over the wire.</summary>
+        public long Sequence { get; init; }
+    }
 
     private sealed class CommandPayloadDto
     {
@@ -260,6 +362,8 @@ public static class SimulationCommandSerializer
         public int? Count { get; set; }
         public int? WaypointIndex { get; set; }
         public bool? Clockwise { get; set; }
+        public bool? ConfirmExclusive { get; set; }
+        public string? PreferredTrackId { get; set; }
         public EntityKind? TargetKind { get; set; }
         public EntityKind? OutputKind { get; set; }
         public EntityKind? UnitKind { get; set; }

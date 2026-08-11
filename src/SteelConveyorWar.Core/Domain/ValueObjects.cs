@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace SteelConveyorWar.Core;
 
 public readonly record struct PlayerId(int Value);
@@ -36,45 +38,76 @@ public readonly record struct TilePosition(int X, int Y)
 
 public readonly record struct WorldSize(int Width, int Height);
 
-public readonly record struct WorldPosition(double X, double Y)
+public readonly record struct WorldPosition(long X, long Y)
 {
     public static WorldPosition FromTileCenter(TilePosition tile)
     {
-        return new WorldPosition(tile.X + 0.5, tile.Y + 0.5);
+        return new WorldPosition(WorldUnits.TileCenterMilli(tile.X), WorldUnits.TileCenterMilli(tile.Y));
     }
 
     public TilePosition ToTilePosition()
     {
-        return new TilePosition((int)Math.Floor(X), (int)Math.Floor(Y));
+        return new TilePosition(WorldUnits.MilliToTile(X), WorldUnits.MilliToTile(Y));
     }
 
     /// <summary>
-    /// Euclidean length. Prefer <see cref="DistanceSquaredTo"/> for ordering / radius checks
-    /// (ADR 0001). Remaining uses are movement step normalization under the MVP single-runtime
-    /// floating-point guarantee.
+    /// Euclidean length in millitiles via integer sqrt. Prefer <see cref="DistanceSquaredTo"/> for
+    /// ordering / radius checks (ADR 0001).
     /// </summary>
-    public double DistanceTo(WorldPosition other)
+    public long DistanceTo(WorldPosition other)
     {
-        return Math.Sqrt(DistanceSquaredTo(other));
+        return WorldUnits.IntegerSqrt(DistanceSquaredTo(other));
     }
 
-    public double DistanceSquaredTo(WorldPosition other)
+    public long DistanceSquaredTo(WorldPosition other)
     {
         var dx = X - other.X;
         var dy = Y - other.Y;
         return dx * dx + dy * dy;
     }
+
+    /// <summary>Presentation helper: millitiles → tile-space float.</summary>
+    public double ToTileSpaceX() => X / (double)WorldUnits.MilliPerTile;
+
+    /// <summary>Presentation helper: millitiles → tile-space float.</summary>
+    public double ToTileSpaceY() => Y / (double)WorldUnits.MilliPerTile;
 }
 
-public readonly record struct CollisionSize(double Radius);
+public readonly record struct CollisionSize(long RadiusMilli);
 
-public sealed record BastionOrder(
-    BastionOrderKind Kind,
-    TilePosition? Target = null,
-    IReadOnlyList<TilePosition>? Waypoints = null,
-    int WaypointIndex = 0)
+public sealed record BastionOrder
 {
-    public IReadOnlyList<TilePosition> WaypointList => Waypoints ?? Array.Empty<TilePosition>();
+    /// <summary>
+    /// R12: caller-owned <paramref name="Waypoints"/> are deep-copied into an immutable snapshot,
+    /// so mutating the source list after constructing (or enqueuing) an order cannot alter it.
+    /// Parameter names are preserved for existing positional/named call sites.
+    /// </summary>
+    public BastionOrder(
+        BastionOrderKind Kind,
+        TilePosition? Target = null,
+        IReadOnlyList<TilePosition>? Waypoints = null,
+        int WaypointIndex = 0)
+    {
+        this.Kind = Kind;
+        this.Target = Target;
+        WaypointList = Waypoints is null
+            ? ImmutableArray<TilePosition>.Empty
+            : Waypoints.ToImmutableArray();
+        this.WaypointIndex = WaypointIndex;
+    }
+
+    public BastionOrderKind Kind { get; init; }
+
+    public TilePosition? Target { get; init; }
+
+    /// <summary>
+    /// Immutable snapshot of the ordered waypoints (empty when none were supplied). Exposed as
+    /// <see cref="IReadOnlyList{T}"/> so existing <c>.Count</c> call sites keep compiling while the
+    /// backing store is an <see cref="ImmutableArray{T}"/>.
+    /// </summary>
+    public IReadOnlyList<TilePosition> WaypointList { get; init; }
+
+    public int WaypointIndex { get; init; }
 }
 
 public sealed record TechSignatureHotspot(int ZoneX, int ZoneY, int Intensity);

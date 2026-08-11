@@ -2,6 +2,21 @@
 
 **Severity:** High (gameplay) · **Домен:** fair observation / rendering · **Roadmap:** P0
 **Статус валидации:** ✅ Подтверждено по коду
+**Статус реализации:** ✅ Реализовано 2026-08-11 (`Rendering/WorldRenderer.cs`, `SfmlPlaySession.cs`, `Ui/HudOverlay.cs`, `SteelConveyorWar.Sfml.csproj`; тесты в `CombatShotVisibilityTests.cs`). ⚠️ Требуется прогон `dotnet build -c Release` + `dotnet test` (VM недоступна, изменения не скомпилированы).
+
+### Что сделано
+- `WorldRenderer.IsShotVisibleToLocalPlayer` — новый gate: трассер показывается, только если виден attacker/target (owned или на `Visible`-тайле) либо один из endpoints лежит на `Visible`-тайле.
+- `SfmlPlaySession`: combat shots фильтруются этим gate **на этапе захвата** в `lingeringShots` — скрытые выстрелы вообще не попадают в presentation-буфер локального игрока.
+- `SfmlPlaySession`: каждую симуляционную итерацию ре-валидируется `selectedEntityId` — если выбранная сущность удалена или больше не видна локальному игроку (`IsVisibleToLocalPlayer`), selection сбрасывается, чтобы HUD не читал live HP/energy/position/orders.
+- `HudOverlay.DrawHud`: защитный второй gate — панель выбранной сущности не рисуется, если она не видна локальному игроку.
+- `SteelConveyorWar.Sfml.csproj`: добавлен `InternalsVisibleTo` для `SteelConveyorWar.Sfml.Tests` (доступ к internal-хелперам gate из тестов).
+
+### Тесты (`SteelConveyorWar.Sfml.Tests`)
+- `Shot_InHiddenEnemyArea_IsNotVisibleToLocalPlayer`, `Shot_ByOwnedAttacker_IsAlwaysVisible`, `Shot_BecomesVisible_WhenEndpointEntersVision`, `HiddenEnemySelection_WouldBeDropped_ByVisibilityGate` (seed 42: враг стартует в `Unknown`, `TryTeleportEntityForTests` + `AdvanceTick` делает его `Visible`).
+
+### Отклонения от плана
+- Пункт 1/2 плана предлагал читать данные selection/HUD из observation snapshot (R04). R04 ещё не реализован, поэтому применён эквивалентный по эффекту visibility-gate (сброс selection + защитный gate в HUD) — утечка скрытых данных закрыта тем же критерием видимости. После реализации R04 стоит перевести HUD на snapshot.
+- Тест на «selection reset» проверяет сам gate (`IsVisibleToLocalPlayer`), а не игровой цикл `SfmlPlaySession.Run` (требует окна/SFML) — цикл использует ровно этот критерий.
 
 ## Проблема
 Видимость проверяется только в момент клика/выбора. После ухода enemy из vision `selectedEntityId` сохраняется, а HUD продолжает читать live HP/energy/production/world position/queued orders. Дополнительно все `CombatShotsThisTick` сохраняются без фильтрации по локальному игроку, и renderer рисует их без visibility gate. Итог: скрытое движение/бой можно отслеживать через выбранный объект и endpoints трассеров.

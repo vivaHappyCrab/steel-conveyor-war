@@ -11,11 +11,12 @@ public sealed class ConfigContentLoaderTests
         Assert.Equal("steel-conveyor-war", settings.GameId);
         Assert.Equal(42, settings.DefaultRandomSeed);
         Assert.Equal(30, settings.TicksPerSecond);
-        Assert.Equal(GameSimulation.TicksPerSecond, settings.TicksPerSecond);
+        Assert.Equal(GameSimulation.DefaultTicksPerSecond, settings.TicksPerSecond);
         Assert.Equal("research.json", settings.ResearchContentFile);
         Assert.Equal(ResearchProfileIds.MvpB, settings.ResearchProfileId);
         Assert.Equal("maps/default.json", settings.MapContentFile);
         Assert.Equal("build-costs.json", settings.BuildCostsContentFile);
+        Assert.Equal("gameplay-tables.json", settings.GameplayTablesContentFile);
         Assert.Equal("Steel Conveyor War", settings.DisplayName);
     }
 
@@ -187,23 +188,111 @@ public sealed class ConfigContentLoaderTests
     }
 
     [Fact]
+    public void GameplayTablesLoader_ParsesConfigEqualsEmbedded()
+    {
+        var loaded = GameplayTablesLoader.Parse(File.ReadAllText(FindConfigPath("gameplay-tables.json")));
+        var embedded = GameplayTablesCatalog.Embedded;
+
+        Assert.Equal(embedded.SchemaVersion, loaded.SchemaVersion);
+        Assert.Equal(embedded.PowerDemand, loaded.PowerDemand);
+        Assert.Equal(embedded.PowerProduction, loaded.PowerProduction);
+        Assert.Equal(embedded.ItemStackSizes, loaded.ItemStackSizes);
+        Assert.Equal(embedded.Footprints, loaded.Footprints);
+        Assert.Equal(embedded.CollisionRadius, loaded.CollisionRadius);
+        Assert.Equal(embedded.TechSignatureIntensity, loaded.TechSignatureIntensity);
+        Assert.Equal(embedded.Resistances, loaded.Resistances);
+
+        Assert.Equal(embedded.EntityStats.Count, loaded.EntityStats.Count);
+        foreach (var (kind, stats) in embedded.EntityStats)
+        {
+            Assert.Equal(stats, loaded.GetStats(kind));
+        }
+
+        Assert.Equal(embedded.ProductionRecipes.Count, loaded.ProductionRecipes.Count);
+        foreach (var (kind, recipe) in embedded.ProductionRecipes)
+        {
+            Assert.True(loaded.ProductionRecipes.TryGetValue(kind, out var loadedRecipe));
+            Assert.Equal(recipe.OutputKind, loadedRecipe.OutputKind);
+            Assert.Equal(recipe.WorkTicks, loadedRecipe.WorkTicks);
+            Assert.Equal(recipe.RequiredTechnology, loadedRecipe.RequiredTechnology);
+            Assert.Equal(recipe.Inputs, loadedRecipe.Inputs);
+        }
+
+        Assert.Equal(embedded.ItemRecipes.Count, loaded.ItemRecipes.Count);
+        foreach (var (id, recipe) in embedded.ItemRecipes)
+        {
+            Assert.True(loaded.ItemRecipes.TryGetValue(id, out var loadedRecipe));
+            Assert.Equal(recipe.OutputItem, loadedRecipe.OutputItem);
+            Assert.Equal(recipe.OutputAmount, loadedRecipe.OutputAmount);
+            Assert.Equal(recipe.WorkTicks, loadedRecipe.WorkTicks);
+            Assert.Equal(recipe.Inputs, loadedRecipe.Inputs);
+        }
+
+        Assert.Equal(
+            SimulationContentManifest.ComputeGameplayTablesIdentity(embedded),
+            SimulationContentManifest.ComputeGameplayTablesIdentity(loaded));
+    }
+
+    [Fact]
+    public void GameplayTables_RejectEmptyEntityStats()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            GameplayTablesLoader.Parse("""{"schemaVersion":1,"entityStats":{}}"""));
+    }
+
+    [Fact]
+    public void GameplayTables_RejectUnknownEntityKind()
+    {
+        const string json = """
+            {
+              "schemaVersion": 1,
+              "entityStats": {
+                "NotARealKind": { "maxHealth": 10 }
+              }
+            }
+            """;
+        var ex = Assert.Throws<InvalidOperationException>(() => GameplayTablesLoader.Parse(json));
+        Assert.Contains("unknown entity kind", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void CreateNewGame_StoresLoadedCatalogs()
     {
         var tiles = TileContentLoader.Parse(File.ReadAllText(FindConfigPath("tiles.json")));
         var entities = EntityContentLoader.Parse(File.ReadAllText(FindConfigPath("entities.json")));
         var buildCosts = BuildCostContentLoader.Parse(File.ReadAllText(FindConfigPath("build-costs.json")));
+        var gameplayTables = GameplayTablesLoader.Parse(File.ReadAllText(FindConfigPath("gameplay-tables.json")));
         var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(
             9,
             ResearchProfileIds.MvpB,
             MvpResearchCatalog.CreateEmbedded(),
             tiles,
             entities,
-            BuildCosts: buildCosts));
+            BuildCosts: buildCosts,
+            GameplayTables: gameplayTables));
         Assert.Equal(tiles.Tiles.Count, simulation.TileCatalog.Tiles.Count);
         Assert.Equal(entities.Entities.Count, simulation.EntityCatalog.Entities.Count);
         Assert.Contains("unit.commander", simulation.EntityCatalog.Entities.Keys);
         Assert.Equal(buildCosts.Costs.Count, simulation.BuildCostCatalog.Costs.Count);
         Assert.Equal(20, simulation.BuildCostCatalog.Costs[EntityKind.Mine][ItemId.IronPlate]);
+        Assert.Equal(gameplayTables.EntityStats.Count, simulation.GameplayTables.EntityStats.Count);
+        Assert.Equal(300, simulation.GameplayTables.GetStats(EntityKind.Commander).MaxHealth);
+    }
+
+    [Fact]
+    public void CreateNewGame_GameplayTablesOverride_IsVisibleOnSimulation()
+    {
+        var embedded = GameplayTablesCatalog.Embedded;
+        var stats = embedded.EntityStats.ToDictionary(pair => pair.Key, pair => pair.Value);
+        stats[EntityKind.Commander] = embedded.GetStats(EntityKind.Commander) with { MaxHealth = 999 };
+        var overridden = embedded with { EntityStats = stats };
+
+        var simulation = GameSimulation.CreateNewGame(
+            GameCreationOptions.Default with { RandomSeed = 11, GameplayTables = overridden });
+
+        Assert.Equal(999, simulation.GameplayTables.GetStats(EntityKind.Commander).MaxHealth);
+        // Static MvpDefinitions fallback stays on Embedded (parity for call sites without a match catalog).
+        Assert.Equal(300, MvpDefinitions.GetStats(EntityKind.Commander).MaxHealth);
     }
 
     [Fact]

@@ -3,9 +3,12 @@
   <PropertyGroup>
   </PropertyGroup>
 
-  <!-- Test-only friend: god-mode / setup helpers stay internal to Core. Do not add Sfml/Client without review. -->
+  <!-- Test-only friends: god-mode / setup helpers stay internal to Core, exposed only to the test
+       assemblies that drive them. Do NOT add the runtime Sfml/Client assemblies without review. -->
   <ItemGroup>
     <InternalsVisibleTo Include="SteelConveyorWar.Core.Tests" />
+    <InternalsVisibleTo Include="SteelConveyorWar.Sfml.Tests" />
+    <InternalsVisibleTo Include="SteelConveyorWar.Benchmarks" />
   </ItemGroup>
 
 </Project>

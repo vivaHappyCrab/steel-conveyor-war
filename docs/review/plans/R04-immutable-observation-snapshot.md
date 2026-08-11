@@ -2,6 +2,23 @@
 
 **Severity:** High · **Домен:** fair observation / bots · **Roadmap:** P0/P1
 **Статус валидации:** ✅ Подтверждено по коду
+**Статус реализации:** ✅ Реализовано 2026-08-11 (`Observation/ObservationSnapshots.cs`, `Observation/IPlayerView.cs`, `Observation/PlayerView.cs`; тесты в `PlayerViewTests.cs`). ⚠️ Требуется прогон `dotnet build -c Release` + `dotnet test` (VM недоступна, изменения не скомпилированы).
+
+### Что сделано
+- Новые immutable DTO (`Observation/ObservationSnapshots.cs`): `VisibleEntitySnapshot` (tick-stamped id/kind/ownerId/tile+world position/direction/health/maxHealth/isOwn + опциональный `Own`), `OwnEntityDetail` (владельческие buffers/orders/energy/производство/bastion-template — defensive-копии словарей) и `PlayerObservationSnapshot` (весь observation, привязанный к тику).
+- `IPlayerView`/`PlayerView` больше не отдают `WorldEntity`: `GetVisibleEntities()` → `IReadOnlyList<VisibleEntitySnapshot>`, `GetVisibleEntity(int)` → `VisibleEntitySnapshot?`, `IsEntityVisible(WorldEntity)` → `IsEntityVisible(int entityId)`. Добавлен `CaptureSnapshot()`.
+- Snapshot строится копированием значений на текущем тике (`_simulation.Tick`). Для чужих сущностей `Own == null` (buffers/orders не утекают); для собственных — заполнен `OwnEntityDetail` с копиями словарей.
+
+### Тесты (`SteelConveyorWar.Core.Tests/PlayerViewTests.cs`)
+- `RetainedEnemySnapshot_DoesNotReflectLaterChanges_WhenEntityReentersFog` — сохранённый enemy-snapshot не меняет `Position`/`ObservationTick` после ухода цели в FoW.
+- `EnemySnapshot_DoesNotExposeOwnerOnlyDetail` — `IsOwn == false`, `Own == null`.
+- `OwnSnapshot_ExposesEconomyDetail` — `IsOwn == true`, `Own != null` с копией инвентаря.
+- `CaptureSnapshot_FreezesVisibleEntitiesAtCurrentTick` — весь snapshot заморожен на тике, `AdvanceTick` не мутирует список.
+- Существующие FoW-тесты обновлены под новый контракт (`IsEntityVisible(id)`).
+
+### Отклонения от плана
+- Terrain/visibility остаются live per-tile запросами (`GetVisibility`/`TryGetTerrain`) — они не выдают `WorldEntity` и не позволяют удерживать hidden state, поэтому не требуют DTO. При необходимости terrain-slice можно добавить в `PlayerObservationSnapshot` позже.
+- Пункт 5 (удаление прямого доступа к `WorldEntity`): observation-контракт очищен; SFML HUD-gate (R27) следует позже перевести на потребление этих snapshot вместо прямого чтения `WorldEntity`.
 
 ## Проблема
 `PlayerView` фильтрует видимость только в момент запроса, но возвращает реальные `WorldEntity`. Бот может получить enemy entity, пока тайл видим, сохранить ссылку и после ухода противника в FoW продолжать читать актуальные `Position`, `Health`, order/buffers из того же объекта. Кроме того, видимая enemy entity раскрывает весь внутренний state, а не ограниченный game-design snapshot.

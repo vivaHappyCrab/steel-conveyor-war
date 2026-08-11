@@ -12,6 +12,10 @@ public sealed class AllianceMinimapTests
         Assert.Equal(2, map.Players[1].TeamId);
         Assert.Equal("Blue", map.Players[0].Name);
         Assert.Equal("Red", map.Players[1].Name);
+        Assert.Equal(new TilePosition(4, 56), map.Players[0].StartCommander);
+        Assert.Equal(new TilePosition(187, 56), map.Players[1].StartCommander);
+        Assert.Equal("#46BAFF", map.Players[0].Color);
+        Assert.Equal("#DC4646", map.Players[1].Color);
     }
 
     [Fact]
@@ -117,9 +121,9 @@ public sealed class AllianceMinimapTests
             1,
             "ally-wall",
             [
-                new MapPlayerDefinition(1, "Blue", 1),
-                new MapPlayerDefinition(2, "Red", 2),
-                new MapPlayerDefinition(3, "BlueAlly", 1)
+                new MapPlayerDefinition(1, "Blue", 1, new(4, 56), new(1, 56), new(5, 58)),
+                new MapPlayerDefinition(2, "Red", 2, new(187, 56), new(188, 56), new(186, 58)),
+                new MapPlayerDefinition(3, "BlueAlly", 1, new(40, 10), new(37, 10), new(41, 12))
             ]);
         var simulation = GameSimulation.CreateNewGame(GameCreationOptions.Default with { RandomSeed = 42, Map = map });
         Assert.Equal(3, simulation.Players.Count);

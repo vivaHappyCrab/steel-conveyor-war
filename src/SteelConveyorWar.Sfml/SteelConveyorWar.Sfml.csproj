@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <PackageReference Include="SFML.Net" Version="3.0.0" />
@@ -6,6 +6,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SteelConveyorWar.Core\SteelConveyorWar.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- R27: expose internal presentation-gating helpers (WorldRenderer visibility checks) to tests. -->
+    <InternalsVisibleTo Include="SteelConveyorWar.Sfml.Tests" />
   </ItemGroup>
 
 </Project>

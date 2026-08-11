@@ -9,7 +9,6 @@ namespace SteelConveyorWar.Core;
 public sealed class EnergyStatsHistory
 {
     public const int MaxWindowSeconds = 10 * 60;
-    public static int Capacity { get; } = MaxWindowSeconds * GameSimulation.TicksPerSecond;
 
     private static readonly EntityKind[] ProducerKinds =
         MvpDefinitions.PowerProduction.Keys.OrderBy(kind => (int)kind).ToArray();
@@ -17,6 +16,10 @@ public sealed class EnergyStatsHistory
     private static readonly EntityKind[] ConsumerKinds =
         MvpDefinitions.PowerDemand.Keys.OrderBy(kind => (int)kind).ToArray();
 
+    // R32: history window/ring capacity is derived from the per-match tick rate, not a fixed literal,
+    // so a 10-minute window stays 10 minutes of wall-clock at any configured TPS.
+    private readonly int _ticksPerSecond;
+    private readonly int _capacity;
     private readonly long[] _sampleTick;
     private readonly int[] _totalProduced;
     private readonly int[] _totalDemand;
@@ -25,14 +28,24 @@ public sealed class EnergyStatsHistory
     private int _count;
     private int _next;
 
-    public EnergyStatsHistory()
+    public EnergyStatsHistory(int ticksPerSecond = GameSimulation.DefaultTicksPerSecond)
     {
-        _sampleTick = new long[Capacity];
-        _totalProduced = new int[Capacity];
-        _totalDemand = new int[Capacity];
-        _producedByKind = new int[ProducerKinds.Length, Capacity];
-        _demandByKind = new int[ConsumerKinds.Length, Capacity];
+        if (ticksPerSecond <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ticksPerSecond), ticksPerSecond, "Ticks per second must be positive.");
+        }
+
+        _ticksPerSecond = ticksPerSecond;
+        _capacity = MaxWindowSeconds * ticksPerSecond;
+        _sampleTick = new long[_capacity];
+        _totalProduced = new int[_capacity];
+        _totalDemand = new int[_capacity];
+        _producedByKind = new int[ProducerKinds.Length, _capacity];
+        _demandByKind = new int[ConsumerKinds.Length, _capacity];
     }
+
+    /// <summary>Ring capacity in samples (<see cref="MaxWindowSeconds"/> × match TPS).</summary>
+    public int Capacity => _capacity;
 
     public static IReadOnlyList<EntityKind> AllProducerKinds => ProducerKinds;
 
@@ -96,7 +109,7 @@ public sealed class EnergyStatsHistory
 
         var window = Math.Clamp(windowSeconds, 1, MaxWindowSeconds);
         var bucketSeconds = DisplayBucketSeconds(window);
-        var bucketTicks = bucketSeconds * GameSimulation.TicksPerSecond;
+        var bucketTicks = bucketSeconds * _ticksPerSecond;
         var maxBuckets = Math.Max(1, window / bucketSeconds);
 
         var newestIndex = (_next - 1 + Capacity) % Capacity;

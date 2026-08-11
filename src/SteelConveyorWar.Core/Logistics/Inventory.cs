@@ -4,6 +4,12 @@ public sealed class Inventory
 {
     private readonly Dictionary<ItemId, int> _items = new();
 
+    /// <summary>
+    /// Monotonic counter bumped on every mutating add/remove/clear. Used by factory idle-skip
+    /// (R17) to detect input changes without scanning item contents each tick.
+    /// </summary>
+    public int MutationVersion { get; private set; }
+
     public IReadOnlyDictionary<ItemId, int> Items => _items.AsReadOnly();
 
     public int TotalStacks
@@ -32,6 +38,7 @@ public sealed class Inventory
         }
 
         _items[item] = Count(item) + amount;
+        MutationVersion++;
     }
 
     public bool Has(ItemId item, int amount)
@@ -68,6 +75,13 @@ public sealed class Inventory
 
     internal bool TryRemove(ItemId item, int amount)
     {
+        // R28: reject negative amounts. Otherwise Has() returns true and
+        // remaining = Count - (negative) would *increase* the stored quantity.
+        if (amount < 0)
+        {
+            return false;
+        }
+
         if (!Has(item, amount))
         {
             return false;
@@ -83,6 +97,7 @@ public sealed class Inventory
             _items[item] = remaining;
         }
 
+        MutationVersion++;
         return true;
     }
 
@@ -149,7 +164,13 @@ public sealed class Inventory
 
     internal void Clear()
     {
+        if (_items.Count == 0)
+        {
+            return;
+        }
+
         _items.Clear();
+        MutationVersion++;
     }
 
     private static int GetStackCount(ItemId item, int amount)

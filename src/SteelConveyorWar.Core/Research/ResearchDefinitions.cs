@@ -79,7 +79,11 @@ public sealed record GameCreationOptions(
     TileCatalog Tiles,
     EntityCatalog Entities,
     MapSettings? Map = null,
-    BuildCostCatalog? BuildCosts = null)
+    BuildCostCatalog? BuildCosts = null,
+    GameplayTablesCatalog? GameplayTables = null,
+    // R32: per-match tick rate that drives all Core duration-in-ticks conversions.
+    // Defaults to GameSimulation.DefaultTicksPerSecond; hosts thread GameSettings.TicksPerSecond here.
+    int TicksPerSecond = GameSimulation.DefaultTicksPerSecond)
 {
     public GameCreationOptions(int randomSeed, string profileId, ResearchCatalog catalog)
         : this(randomSeed, profileId, catalog, TileCatalog.Empty, EntityCatalog.Empty, null, null)
@@ -90,6 +94,9 @@ public sealed record GameCreationOptions(
 
     public BuildCostCatalog ResolvedBuildCosts => BuildCosts ?? MvpBuildCostCatalog.Embedded;
 
+    public GameplayTablesCatalog ResolvedGameplayTables =>
+        GameplayTables ?? GameplayTablesCatalog.Embedded;
+
     public static GameCreationOptions Default => new(
         RandomSeed: 1,
         ProfileId: ResearchProfileIds.MvpB,
@@ -97,5 +104,6 @@ public sealed record GameCreationOptions(
         Tiles: TileCatalog.Empty,
         Entities: EntityCatalog.Empty,
         Map: MapSettings.Default1v1,
-        BuildCosts: MvpBuildCostCatalog.Embedded);
+        BuildCosts: MvpBuildCostCatalog.Embedded,
+        GameplayTables: GameplayTablesCatalog.Embedded);
 }

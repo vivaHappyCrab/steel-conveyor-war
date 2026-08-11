@@ -18,6 +18,7 @@ public sealed partial class GameSimulation
 
     private void ProcessCommanderBuildOrders()
     {
+        _spatialQueryIndex.Rebuild(World.Entities);
         foreach (var commander in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Commander && entity.QueuedBuildOrder is not null).ToList())
         {
             var order = commander.QueuedBuildOrder!;
@@ -39,12 +40,13 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            MoveMobileEntityTowardTile(commander, order.TargetPosition);
+            MoveMobileEntityTowardTile(commander, order.TargetPosition, _spatialQueryIndex);
         }
     }
 
     private void ProcessCommanderDemolishOrders()
     {
+        _spatialQueryIndex.Rebuild(World.Entities);
         foreach (var commander in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Commander && entity.QueuedDemolishOrder is not null).ToList())
         {
             var order = commander.QueuedDemolishOrder!;
@@ -61,12 +63,13 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            MoveMobileEntityTowardTile(commander, target.Position);
+            MoveMobileEntityTowardTile(commander, target.Position, _spatialQueryIndex);
         }
     }
 
     private void ProcessCommanderMoveCommands()
     {
+        _spatialQueryIndex.Rebuild(World.Entities);
         foreach (var commander in World.Entities.Where(entity =>
                      entity.IsAlive
                      && entity.Kind == EntityKind.Commander
@@ -80,7 +83,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            if (MoveMobileEntityTowardTile(commander, commander.MoveTarget!.Value))
+            if (MoveMobileEntityTowardTile(commander, commander.MoveTarget!.Value, _spatialQueryIndex))
             {
                 commander.MoveTarget = null;
             }

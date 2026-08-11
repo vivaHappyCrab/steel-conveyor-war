@@ -1,45 +1,53 @@
 namespace SteelConveyorWar.Core;
 
-public sealed partial class GameSimulation
+public sealed partial class GameSimulation : ISimulationSystemContext
 {
     /// <summary>
-    /// Default fixed tick rate used by Core for duration-in-ticks conversions
-    /// (build timing fallbacks, energy history windows, tests). Host loops must
-    /// drive wall-clock pacing from <see cref="GameSettings.TicksPerSecond"/>
-    /// (loaded from <c>game.json</c>); keep that value aligned with this default
-    /// unless intentionally retiming the match.
+    /// Fallback fixed tick rate used when a match does not specify one via
+    /// <see cref="GameCreationOptions.TicksPerSecond"/>. The per-match rate is
+    /// exposed as the instance <see cref="TicksPerSecond"/> property, which drives
+    /// all Core duration-in-ticks conversions (build timing fallbacks, energy
+    /// history windows). Host loops derive wall-clock pacing from the same
+    /// configured value (see <see cref="GameSettings.TicksPerSecond"/>, loaded
+    /// from <c>game.json</c>).
     /// </summary>
-    public const int TicksPerSecond = 30;
+    public const int DefaultTicksPerSecond = 30;
+
+    /// <summary>
+    /// R32: the effective tick rate for THIS match, sourced from
+    /// <see cref="GameCreationOptions.TicksPerSecond"/>. All time-dependent Core
+    /// quantities derive from this value, so changing TPS retimes the match
+    /// consistently. Equals <see cref="DefaultTicksPerSecond"/> unless overridden.
+    /// </summary>
+    public int TicksPerSecond { get; }
 
     private readonly List<PlayerState> _players;
     private readonly ResearchSystem _researchSystem;
     private readonly SimulationPresentationSink _presentation = new();
     private readonly List<PlayerState> _fogAlliedScratch = new();
-    private readonly Dictionary<PlayerId, int> _tickPowerProduced = new();
-    private readonly Dictionary<PlayerId, int> _tickPowerConsumed = new();
-    private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickProducedByKind = new();
-    private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickConsumedByKind = new();
+    // R06: Power/Combat are standalone systems now; each owns its own per-tick state and scratch buffers.
+    private readonly PowerSystem _powerSystem;
+    private readonly CombatSystem _combatSystem;
     // Reused across ticks to avoid LINQ/ToList allocations on hot simulation paths.
     private readonly List<WorldEntity> _scratchEntities = new();
-    private readonly List<WorldEntity> _scratchEntitiesSecondary = new();
     private readonly List<WorldEntity> _scratchDeadBastions = new();
     private readonly List<WorldEntity> _scratchCascadeUnits = new();
     private readonly List<ConveyorItem> _scratchConveyorItems = new();
     private readonly List<(int SourceId, WorldEntity Inserter, WorldEntity Source)> _scratchInserterExtracts = new();
+    // R17: factory/bastion accounting scratch (sorted by Id; updated live on mid-tick spawn).
+    private readonly List<WorldEntity> _scratchFactories = new();
+    private readonly List<WorldEntity> _scratchBastions = new();
+    private readonly List<WorldEntity> _scratchUnits = new();
+    private readonly List<WorldEntity> _scratchBastionUnits = new();
+    private readonly Dictionary<int, int> _scratchRemainingDeficit = new();
+    private readonly List<EntityKind> _scratchTemplateKinds = new();
+    private readonly List<TilePosition> _scratchSpawnCandidates = new();
+    private int _armyAccountingEpoch;
+    private int _armyAccountingAliveUnits = -1;
+    // R07: shared spatial queries (movement collision / defend threat) + pooled A* scratch.
+    private readonly SpatialQueryIndex _spatialQueryIndex = new();
+    private readonly PathfindingWorkspace _pathfindingWorkspace = new();
     private int _nextEntityId = 1;
-
-    /// <summary>
-    /// Orders fill candidates by fill fraction ascending (<c>buffer/capacity</c> via cross-multiply), then entity id.
-    /// </summary>
-    private static readonly Comparer<(int Buffer, int Capacity, int Id)> EnergyFillPriorityComparer =
-        Comparer<(int Buffer, int Capacity, int Id)>.Create(static (left, right) =>
-            EnergyFillRatioComparer.CompareRatios(
-                left.Buffer,
-                left.Capacity,
-                left.Id,
-                right.Buffer,
-                right.Capacity,
-                right.Id));
 
     private GameSimulation(
         GameWorld world,
@@ -49,17 +57,23 @@ public sealed partial class GameSimulation
         ResearchProfileDefinition profile,
         TileCatalog tiles,
         EntityCatalog entities,
-        BuildCostCatalog buildCosts)
+        BuildCostCatalog buildCosts,
+        GameplayTablesCatalog gameplayTables,
+        int ticksPerSecond)
     {
         World = world;
         _players = players.ToList();
         RandomSeed = randomSeed;
+        TicksPerSecond = ticksPerSecond;
         ResearchCatalog = catalog;
         ResearchProfile = profile;
         TileCatalog = tiles;
         EntityCatalog = entities;
         BuildCostCatalog = buildCosts;
+        GameplayTables = gameplayTables;
         _researchSystem = new ResearchSystem(catalog, profile);
+        _powerSystem = new PowerSystem(this);
+        _combatSystem = new CombatSystem(this);
         foreach (var player in _players)
         {
             _researchSystem.InitializePlayer(player.Research);
@@ -80,9 +94,16 @@ public sealed partial class GameSimulation
 
     public BuildCostCatalog BuildCostCatalog { get; }
 
+    /// <summary>
+    /// R18: match gameplay tables (power/stacks/footprints/recipes/combat). Prefer this over
+    /// <see cref="MvpDefinitions"/> static accessors when a loaded catalog is available.
+    /// </summary>
+    public GameplayTablesCatalog GameplayTables { get; }
+
     public long Tick { get; private set; }
 
-    public IReadOnlyList<PlayerState> Players => _players;
+    // R05: ReadOnlyCollection wrapper prevents external downcast-and-mutate of the roster.
+    public IReadOnlyList<PlayerState> Players => _players.AsReadOnly();
 
     /// <summary>
     /// Presentation side-channels (combat tracers, etc.). Not hashed; see
@@ -100,9 +121,23 @@ public sealed partial class GameSimulation
 
     public PlayerId? WinnerId { get; private set; }
 
+    /// <summary>
+    /// R31: winning team/side. Victory is decided per team, not per surviving player. For a 1v1
+    /// (two single-player teams) this equals the sole survivor's team and <see cref="WinnerId"/>
+    /// remains that player, so existing consumers and the deterministic state hash are unchanged.
+    /// </summary>
+    public int? WinnerTeamId { get; private set; }
+
     internal int NextEntityId => _nextEntityId;
 
     public string ComputeStateHash() => SimulationStateHasher.Compute(this);
+
+    /// <summary>
+    /// R13: fingerprint of the pending (not-yet-applied) command queue, ordered canonically by
+    /// <c>(Tick, Actor, Sequence)</c>. Compared alongside <see cref="ComputeStateHash"/> so peers with
+    /// identical present state but divergent future commands are detected before the divergence is applied.
+    /// </summary>
+    public string ComputePendingCommandsHash() => SimulationStateHasher.ComputePendingCommandsHash(this);
 
     public static GameSimulation CreateNewGame(int randomSeed = 1)
     {
@@ -122,11 +157,17 @@ public sealed partial class GameSimulation
             throw new InvalidOperationException("Map config must declare at least two players for MVP.");
         }
 
-        var size = new WorldSize(192, 112);
+        var size = new WorldSize(MapPlayerDefinition.DefaultWorldWidth, MapPlayerDefinition.DefaultWorldHeight);
         var terrain = CreateStartingTerrain(size, options.RandomSeed);
         var players = map.Players
             .OrderBy(player => player.Id)
-            .Select(player => new PlayerState(new PlayerId(player.Id), player.Name, size, player.TeamId))
+            .Select(player => new PlayerState(
+                new PlayerId(player.Id),
+                player.Name,
+                size,
+                player.TeamId,
+                player.Color ?? MapPlayerDefinition.DefaultColorForPlayer(player.Id),
+                options.TicksPerSecond))
             .ToArray();
 
         foreach (var player in players)
@@ -144,10 +185,12 @@ public sealed partial class GameSimulation
             profile,
             options.Tiles,
             options.Entities,
-            options.ResolvedBuildCosts);
-        simulation.CreateStartingEntities();
-        simulation.UpdatePower();
-        simulation.RecordEnergyStatsSample();
+            options.ResolvedBuildCosts,
+            options.ResolvedGameplayTables,
+            options.TicksPerSecond);
+        simulation.CreateStartingEntities(map);
+        simulation._powerSystem.Tick();
+        simulation._powerSystem.RecordStats();
         simulation.UpdateFogOfWar();
         simulation.UpdateTechSignatures();
         return simulation;
@@ -173,11 +216,118 @@ public sealed partial class GameSimulation
         return _players.Single(player => player.Id == playerId);
     }
 
+    /// <summary>
+    /// R09: roster-safe player lookup. Untrusted command paths must not throw on an unknown
+    /// actor id (a DoS vector inside the tick loop); callers reject instead.
+    /// </summary>
+    public bool TryGetPlayer(PlayerId playerId, out PlayerState player)
+    {
+        player = _players.FirstOrDefault(candidate => candidate.Id == playerId)!;
+        return player is not null;
+    }
+
+    // R06/R14: extracted PowerSystem owns the energy buffers; keep a forwarding member so Production/
+    // FactoryBastion/Research (which call this bare on the partial class) still compile unchanged.
+    // R14: internal (not public) — draining a live entity's energy is an authoritative mutation that
+    // must not be reachable from Sfml/Headless/plugin hosts; only in-assembly tick code may call it.
+    internal bool TryConsumeBuildingEnergy(WorldEntity building) => _powerSystem.TryConsumeBuildingEnergy(building);
+
+    /// <summary>
+    /// Fills <paramref name="into"/> with alive entities matching <paramref name="predicate"/>, sorted by
+    /// id for deterministic iteration. Reuses the caller's buffer to avoid per-tick allocations. Shared by
+    /// Combat/Logistics/Movement; lives here (not in a single extracted system) because it is common.
+    /// </summary>
+    internal void CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate)
+    {
+        into.Clear();
+        foreach (var entity in World.Entities)
+        {
+            if (entity.IsAlive && predicate(entity))
+            {
+                into.Add(entity);
+            }
+        }
+
+        into.Sort(static (left, right) => left.Id.CompareTo(right.Id));
+    }
+
+    /// <summary>R17: invalidate idle-factory skip caches when army supply / templates / assignments change.</summary>
+    private void BumpArmyAccountingEpoch() => _armyAccountingEpoch++;
+
+    /// <summary>
+    /// R17: insert <paramref name="entity"/> into a sorted-by-Id scratch list (mid-tick spawn).
+    /// </summary>
+    private static void InsertSortedById(List<WorldEntity> into, WorldEntity entity)
+    {
+        var index = into.BinarySearch(entity, WorldEntityIdComparer.Instance);
+        if (index < 0)
+        {
+            index = ~index;
+        }
+
+        into.Insert(index, entity);
+    }
+
+    private sealed class WorldEntityIdComparer : IComparer<WorldEntity>
+    {
+        public static readonly WorldEntityIdComparer Instance = new();
+
+        public int Compare(WorldEntity? x, WorldEntity? y)
+        {
+            if (ReferenceEquals(x, y))
+            {
+                return 0;
+            }
+
+            if (x is null)
+            {
+                return -1;
+            }
+
+            if (y is null)
+            {
+                return 1;
+            }
+
+            return x.Id.CompareTo(y.Id);
+        }
+    }
+
+    // R06: explicit ISimulationSystemContext members forwarding to existing (differently-visible) surface.
+    IReadOnlyList<PlayerState> ISimulationSystemContext.Players => _players;
+
+    void ISimulationSystemContext.SyncResolvedMaxHealth(WorldEntity entity) => SyncResolvedMaxHealth(entity);
+
+    void ISimulationSystemContext.CascadeBastionDeaths() => CascadeBastionDeaths();
+
+    void ISimulationSystemContext.CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate) =>
+        CollectSortedAliveEntities(into, predicate);
+
+    // R14: explicit implementation so the internal instance method above is not forced back to public.
+    bool ISimulationSystemContext.TryConsumeBuildingEnergy(WorldEntity building) => TryConsumeBuildingEnergy(building);
+
     public bool TryPlaceGhostBuild(PlayerId playerId, EntityKind targetKind, TilePosition position, out int ghostId)
     {
         ghostId = 0;
         var commander = World.Entities.FirstOrDefault(entity => entity.OwnerId == playerId && entity.IsAlive && entity.Kind == EntityKind.Commander);
         return commander is not null && TryPlaceGhostBuildFromCommander(commander.Id, targetKind, position, out ghostId);
+    }
+
+    /// <summary>
+    /// R01 trust-boundary guard. When <paramref name="actor"/> is supplied (untrusted command
+    /// path via <see cref="ApplyCommand"/>), the operated commander must belong to that actor —
+    /// knowing another player's <c>CommanderId</c> must not let you act on their behalf.
+    /// Trusted local/internal callers (SFML input, queued-order execution, tests that already
+    /// resolve an owned commander) pass <c>null</c> to opt out of the actor check.
+    /// </summary>
+    private static bool IsAuthorizedCommander(WorldEntity? commander, PlayerId? actor)
+    {
+        if (actor is null)
+        {
+            return true;
+        }
+
+        return commander is not null && commander.OwnerId == actor.Value;
     }
 
     public bool TryPlaceGhostBuildFromCommander(
@@ -186,11 +336,17 @@ public sealed partial class GameSimulation
         TilePosition position,
         out int ghostId,
         Direction direction = Direction.East,
-        ItemRecipeId? selectedItemRecipe = null)
+        ItemRecipeId? selectedItemRecipe = null,
+        PlayerId? actor = null)
     {
         ghostId = 0;
         var commander = World.GetEntity(commanderId);
         if (commander is null || commander.Kind != EntityKind.Commander || commander.OwnerId is null || !commander.IsAlive)
+        {
+            return false;
+        }
+
+        if (!IsAuthorizedCommander(commander, actor))
         {
             return false;
         }
@@ -246,10 +402,16 @@ public sealed partial class GameSimulation
         EntityKind targetKind,
         TilePosition position,
         Direction direction = Direction.East,
-        ItemRecipeId? selectedItemRecipe = null)
+        ItemRecipeId? selectedItemRecipe = null,
+        PlayerId? actor = null)
     {
         var commander = World.GetEntity(commanderId);
         if (commander is null || commander.Kind != EntityKind.Commander || commander.OwnerId is null || !commander.IsAlive)
+        {
+            return false;
+        }
+
+        if (!IsAuthorizedCommander(commander, actor))
         {
             return false;
         }
@@ -261,7 +423,7 @@ public sealed partial class GameSimulation
 
         if (IsWithinBuildRadius(commander, targetKind, position))
         {
-            return TryPlaceGhostBuildFromCommander(commanderId, targetKind, position, out _, direction, selectedItemRecipe);
+            return TryPlaceGhostBuildFromCommander(commanderId, targetKind, position, out _, direction, selectedItemRecipe, actor);
         }
 
         commander.QueuedBuildOrder = new CommanderBuildOrder(targetKind, position, direction, selectedItemRecipe);
@@ -339,7 +501,7 @@ public sealed partial class GameSimulation
         return TryResolveDemolishCostKind(commander, target, out _);
     }
 
-    public bool TryQueueCommanderDemolish(int commanderId, int targetEntityId)
+    public bool TryQueueCommanderDemolish(int commanderId, int targetEntityId, PlayerId? actor = null)
     {
         var commander = World.GetEntity(commanderId);
         var target = World.GetEntity(targetEntityId);
@@ -348,9 +510,14 @@ public sealed partial class GameSimulation
             return false;
         }
 
+        if (!IsAuthorizedCommander(commander, actor))
+        {
+            return false;
+        }
+
         if (IsWithinBuildRadius(commander!, costKind, target!.Position))
         {
-            return TryDemolishBuilding(commanderId, targetEntityId);
+            return TryDemolishBuilding(commanderId, targetEntityId, actor);
         }
 
         commander!.QueuedDemolishOrder = new CommanderDemolishOrder(targetEntityId);
@@ -361,11 +528,16 @@ public sealed partial class GameSimulation
         return true;
     }
 
-    public bool TryDemolishBuilding(int commanderId, int targetEntityId)
+    public bool TryDemolishBuilding(int commanderId, int targetEntityId, PlayerId? actor = null)
     {
         var commander = World.GetEntity(commanderId);
         var target = World.GetEntity(targetEntityId);
         if (!TryResolveDemolishCostKind(commander, target, out var costKind))
+        {
+            return false;
+        }
+
+        if (!IsAuthorizedCommander(commander, actor))
         {
             return false;
         }
@@ -520,7 +692,7 @@ public sealed partial class GameSimulation
                 && entity.OwnerId == commander.OwnerId
                 && (excludeEntityId is null || entity.Id != excludeEntityId.Value)
                 && DistanceSquaredToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
-                    <= Square(MvpDefinitions.CommanderInteractRadius))
+                    <= Square(MvpDefinitions.CommanderInteractRadius * WorldUnits.MilliPerTile))
             .OrderBy(entity => entity.Id)
             .ToList();
 
@@ -561,33 +733,62 @@ public sealed partial class GameSimulation
         }
     }
 
-    public bool TryStartResearch(PlayerId playerId, TechnologyId technology)
+    public bool TryStartResearch(PlayerId playerId, TechnologyId technology, PlayerId? actor = null)
     {
-        return TrySelectResearch(playerId, technology) == ResearchCommandResult.Ok;
+        return TrySelectResearch(playerId, technology, actor: actor) == ResearchCommandResult.Ok;
     }
 
     public bool TryCancelResearch(PlayerId playerId, TechnologyId technology)
     {
-        return _researchSystem.TryCancelResearch(GetPlayer(playerId).Research, technology) == ResearchCommandResult.Ok;
+        // R09: unknown actor must reject, not throw inside the (possibly untrusted) command path.
+        if (!TryGetPlayer(playerId, out var player))
+        {
+            return false;
+        }
+
+        return _researchSystem.TryCancelResearch(player.Research, technology) == ResearchCommandResult.Ok;
     }
 
     public ResearchCommandResult TrySelectResearch(
         PlayerId playerId,
         TechnologyId technology,
         bool confirmExclusive = false,
-        string? preferredTrackId = null)
+        string? preferredTrackId = null,
+        PlayerId? actor = null)
     {
-        return _researchSystem.TrySelectResearch(GetPlayer(playerId).Research, technology, confirmExclusive, preferredTrackId);
+        // R26: defense-in-depth — research is keyed to its owning player, so an actor may only steer
+        // their own research. Reject cross-player attempts (e.g. selecting a visible enemy laboratory).
+        if (actor.HasValue && actor.Value != playerId)
+        {
+            return ResearchCommandResult.NotAvailable;
+        }
+
+        if (!TryGetPlayer(playerId, out var player))
+        {
+            return ResearchCommandResult.NotAvailable;
+        }
+
+        return _researchSystem.TrySelectResearch(player.Research, technology, confirmExclusive, preferredTrackId);
     }
 
     public ResearchCommandResult TryConfirmExclusive(PlayerId playerId, string exclusiveGroupId)
     {
-        return _researchSystem.TryConfirmExclusive(GetPlayer(playerId).Research, exclusiveGroupId);
+        if (!TryGetPlayer(playerId, out var player))
+        {
+            return ResearchCommandResult.NotAvailable;
+        }
+
+        return _researchSystem.TryConfirmExclusive(player.Research, exclusiveGroupId);
     }
 
     public ResearchCommandResult TrySetTrackAllocation(PlayerId playerId, IReadOnlyDictionary<string, int> allocations)
     {
-        return _researchSystem.TrySetTrackAllocation(GetPlayer(playerId).Research, allocations);
+        if (!TryGetPlayer(playerId, out var player))
+        {
+            return ResearchCommandResult.InvalidAllocation;
+        }
+
+        return _researchSystem.TrySetTrackAllocation(player.Research, allocations);
     }
 
     public ResearchCommandResult TrySetProjectWeight(
@@ -596,7 +797,12 @@ public sealed partial class GameSimulation
         TechnologyId technologyId,
         int weight)
     {
-        return _researchSystem.TrySetProjectWeight(GetPlayer(playerId).Research, trackId, technologyId, weight);
+        if (!TryGetPlayer(playerId, out var player))
+        {
+            return ResearchCommandResult.InvalidTrack;
+        }
+
+        return _researchSystem.TrySetProjectWeight(player.Research, trackId, technologyId, weight);
     }
 
     public ResearchSnapshot GetResearchSnapshot(PlayerId playerId)
@@ -630,6 +836,7 @@ public sealed partial class GameSimulation
         {
             factory.ProductionTargetKind = null;
             factory.IsManualProductionTarget = false;
+            BumpArmyAccountingEpoch();
             return true;
         }
 
@@ -641,6 +848,7 @@ public sealed partial class GameSimulation
 
         factory.ProductionTargetKind = outputKind;
         factory.IsManualProductionTarget = true;
+        BumpArmyAccountingEpoch();
         return true;
     }
 
@@ -706,7 +914,13 @@ public sealed partial class GameSimulation
     internal bool CanOccupyWorldPositionForTests(int entityId, WorldPosition position)
     {
         var entity = World.GetEntity(entityId);
-        return entity is not null && CanOccupyWorldPosition(entity, position);
+        if (entity is null)
+        {
+            return false;
+        }
+
+        _spatialQueryIndex.Rebuild(World.Entities);
+        return CanOccupyWorldPosition(entity, position, _spatialQueryIndex);
     }
 
     /// <summary>
@@ -802,7 +1016,7 @@ public sealed partial class GameSimulation
             return 0;
         }
 
-        return ComputeDamageAgainst(attacker, MvpDefinitions.GetStats(attacker.Kind), target);
+        return _combatSystem.ComputeDamageForTests(attacker, MvpDefinitions.GetStats(attacker.Kind), target);
     }
 
     public bool TrySetBastionTemplate(int bastionId, PlayerId actorPlayerId, EntityKind unitKind, int count)
@@ -842,6 +1056,7 @@ public sealed partial class GameSimulation
             bastion.BastionTemplateMutable[unitKind] = count;
         }
 
+        BumpArmyAccountingEpoch();
         return true;
     }
 
@@ -857,6 +1072,10 @@ public sealed partial class GameSimulation
             return 0;
         }
 
+        // Public query may run outside FactoryBastionSystem.Tick — refresh scratch from live world.
+        CollectSortedAliveEntities(_scratchFactories, static entity => MvpDefinitions.FactoryKinds.Contains(entity.Kind));
+        CollectSortedAliveEntities(_scratchBastions, static entity => entity.Kind == EntityKind.Bastion);
+        CollectSortedAliveEntities(_scratchUnits, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
         return CountBastionUnitSupply(bastionId, unitKind);
     }
 
@@ -1025,7 +1244,9 @@ public sealed partial class GameSimulation
         return true;
     }
 
-    public bool TryAddOutputItemToEntity(int entityId, ItemId item, int amount)
+    // R14: internal (not public) — this is a test/cheat seam that injects items into a live entity with
+    // no game source or actor. Kept accessible to Core.Tests via InternalsVisibleTo, closed to hosts.
+    internal bool TryAddOutputItemToEntity(int entityId, ItemId item, int amount)
     {
         var entity = World.GetEntity(entityId);
         if (entity is null)
@@ -1038,11 +1259,11 @@ public sealed partial class GameSimulation
             : TryAddToBuffer(entity.OutputBuffer, item, amount);
     }
 
-    public bool TryCollectOutputBuffer(int commanderId, int targetEntityId)
+    public bool TryCollectOutputBuffer(int commanderId, int targetEntityId, PlayerId? actor = null)
     {
         var commander = World.GetEntity(commanderId);
         var target = World.GetEntity(targetEntityId);
-        if (!TryValidateCommanderInteract(commander, target))
+        if (!IsAuthorizedCommander(commander, actor) || !TryValidateCommanderInteract(commander, target))
         {
             return false;
         }
@@ -1059,11 +1280,11 @@ public sealed partial class GameSimulation
     /// <summary>
     /// Withdraws from hub inventory or any entity output buffer within commander interact radius.
     /// </summary>
-    public bool TryWithdrawFromHubOrOutput(int commanderId, int targetEntityId)
+    public bool TryWithdrawFromHubOrOutput(int commanderId, int targetEntityId, PlayerId? actor = null)
     {
         var commander = World.GetEntity(commanderId);
         var target = World.GetEntity(targetEntityId);
-        if (!TryValidateCommanderInteract(commander, target))
+        if (!IsAuthorizedCommander(commander, actor) || !TryValidateCommanderInteract(commander, target))
         {
             return false;
         }
@@ -1094,11 +1315,11 @@ public sealed partial class GameSimulation
     /// Transfers as many accepted items as fit; returns true when the target is a valid deposit destination
     /// with a non-empty accepted set (hub always) even if nothing moved due to full buffers.
     /// </summary>
-    public bool TryDepositToHubOrInput(int commanderId, int targetEntityId)
+    public bool TryDepositToHubOrInput(int commanderId, int targetEntityId, PlayerId? actor = null)
     {
         var commander = World.GetEntity(commanderId);
         var target = World.GetEntity(targetEntityId);
-        if (!TryValidateCommanderInteract(commander, target))
+        if (!IsAuthorizedCommander(commander, actor) || !TryValidateCommanderInteract(commander, target))
         {
             return false;
         }
@@ -1127,11 +1348,11 @@ public sealed partial class GameSimulation
     /// <summary>
     /// Moves all of <paramref name="item"/> from commander inventory into hub storage or building input.
     /// </summary>
-    public bool TryDepositItemTypeToHubOrInput(int commanderId, int targetEntityId, ItemId item)
+    public bool TryDepositItemTypeToHubOrInput(int commanderId, int targetEntityId, ItemId item, PlayerId? actor = null)
     {
         var commander = World.GetEntity(commanderId);
         var target = World.GetEntity(targetEntityId);
-        if (!TryValidateCommanderInteract(commander, target))
+        if (!IsAuthorizedCommander(commander, actor) || !TryValidateCommanderInteract(commander, target))
         {
             return false;
         }
@@ -1160,11 +1381,11 @@ public sealed partial class GameSimulation
     /// <summary>
     /// Moves all of <paramref name="item"/> from hub inventory or building output into commander inventory.
     /// </summary>
-    public bool TryWithdrawItemTypeFromHubOrOutput(int commanderId, int targetEntityId, ItemId item)
+    public bool TryWithdrawItemTypeFromHubOrOutput(int commanderId, int targetEntityId, ItemId item, PlayerId? actor = null)
     {
         var commander = World.GetEntity(commanderId);
         var target = World.GetEntity(targetEntityId);
-        if (!TryValidateCommanderInteract(commander, target))
+        if (!IsAuthorizedCommander(commander, actor) || !TryValidateCommanderInteract(commander, target))
         {
             return false;
         }
@@ -1326,7 +1547,7 @@ public sealed partial class GameSimulation
         }
 
         return DistanceSquaredToFootprint(commander.WorldPosition, target.Kind, target.Position)
-            <= Square(MvpDefinitions.CommanderInteractRadius);
+            <= Square(MvpDefinitions.CommanderInteractRadius * WorldUnits.MilliPerTile);
     }
 
     /// <summary>
@@ -1348,6 +1569,16 @@ public sealed partial class GameSimulation
     public VisibilityState GetVisibility(PlayerId playerId, TilePosition position)
     {
         return GetPlayer(playerId).GetVisibility(position);
+    }
+
+    /// <summary>
+    /// R16/R33: tiles whose FoW visibility changed on the most recent fog update for this player.
+    /// Empty when vision sources were unchanged and repaint was skipped. Presentation-oriented
+    /// (minimap dirty regions); not part of the determinism hash.
+    /// </summary>
+    public IReadOnlyList<TilePosition> GetFogDirtyTiles(PlayerId playerId)
+    {
+        return GetPlayer(playerId).FogDirtyTiles;
     }
 
     public IReadOnlyList<TechSignatureHotspot> GetTechSignatureHotspots(PlayerId playerId)
@@ -1377,43 +1608,59 @@ public sealed partial class GameSimulation
         Tick++;
         ApplyQueuedCommandsForCurrentTick();
         CommanderOrdersSystem.Tick(this);
-        PowerSystem.Tick(this);
+        _powerSystem.Tick();
         ProductionSystem.Tick(this);
         LogisticsSystem.Tick(this);
         ResearchTickSystem.Tick(this);
         FactoryBastionSystem.Tick(this);
         MovementSystem.Tick(this);
-        CombatSystem.Tick(this);
-        PowerSystem.RecordStats(this);
+        _combatSystem.Tick();
+        _powerSystem.RecordStats();
         VictorySystem.Tick(this);
         World.RemoveDead();
         FogOfWarSystem.Tick(this);
     }
 
-    private void CreateStartingEntities()
+    private void CreateStartingEntities(MapSettings map)
     {
-        var playerOne = new PlayerId(1);
-        var playerTwo = new PlayerId(2);
-        var midY = World.Size.Height / 2;
+        TilePosition? referenceSolar = null;
+        foreach (var definition in map.Players.OrderBy(player => player.Id))
+        {
+            // Roster-only seats (e.g. ally id 3 in tests) may omit start geometry — skip spawn.
+            if (definition.StartCommander is null
+                && definition.StartBastion is null
+                && definition.StartHub is null
+                && definition.Id is not (1 or 2))
+            {
+                continue;
+            }
 
-        var commanderOne = AddCompletedEntity(EntityKind.Commander, new TilePosition(4, midY), playerOne);
-        AddStartingCommanderInventory(commanderOne);
-        var bastionOne = AddCompletedEntity(EntityKind.Bastion, new TilePosition(1, midY), playerOne);
-        // Hub is 2x2; keep within CommanderInteractRadius of the commander and clear of bastion 3x3 (x=1..3).
-        AddCompletedEntity(EntityKind.Hub, new TilePosition(5, midY + 2), playerOne);
-        var solarOne = ChooseStartingSolarTile(bastionOne);
-        AddCompletedEntity(EntityKind.SolarPanel, solarOne, playerOne);
+            var playerId = new PlayerId(definition.Id);
+            var (commanderTile, bastionTile, hubTile) = definition.ResolveStartPositions(World.Size);
 
-        var commanderTwo = AddCompletedEntity(EntityKind.Commander, new TilePosition(World.Size.Width - 5, midY), playerTwo);
-        AddStartingCommanderInventory(commanderTwo);
-        var bastionTwo = AddCompletedEntity(EntityKind.Bastion, new TilePosition(World.Size.Width - 4, midY), playerTwo);
-        AddCompletedEntity(EntityKind.Hub, new TilePosition(World.Size.Width - 6, midY + 2), playerTwo);
-        // Mirror Blue's solar across the map for PvP fairness (same relative placement).
-        var mirroredSolar = new TilePosition(World.Size.Width - 1 - solarOne.X, solarOne.Y);
-        var solarTwo = IsValidStartingSolarTile(bastionTwo, mirroredSolar)
-            ? mirroredSolar
-            : ChooseStartingSolarTile(bastionTwo);
-        AddCompletedEntity(EntityKind.SolarPanel, solarTwo, playerTwo);
+            var commander = AddCompletedEntity(EntityKind.Commander, commanderTile, playerId);
+            AddStartingCommanderInventory(commander);
+            var bastion = AddCompletedEntity(EntityKind.Bastion, bastionTile, playerId);
+            // Hub is 2x2; keep within CommanderInteractRadius of the commander and clear of bastion 3x3.
+            AddCompletedEntity(EntityKind.Hub, hubTile, playerId);
+
+            TilePosition solarTile;
+            if (referenceSolar is null)
+            {
+                solarTile = ChooseStartingSolarTile(bastion);
+                referenceSolar = solarTile;
+            }
+            else
+            {
+                // Mirror fairness vs the first seat's solar when possible; otherwise pick adjacent grass.
+                var mirroredSolar = new TilePosition(World.Size.Width - 1 - referenceSolar.Value.X, referenceSolar.Value.Y);
+                solarTile = IsValidStartingSolarTile(bastion, mirroredSolar)
+                    ? mirroredSolar
+                    : ChooseStartingSolarTile(bastion);
+            }
+
+            AddCompletedEntity(EntityKind.SolarPanel, solarTile, playerId);
+        }
     }
 
     private TilePosition ChooseStartingSolarTile(WorldEntity bastion)
@@ -1701,7 +1948,7 @@ public sealed partial class GameSimulation
     private static bool IsWithinBuildRadius(WorldEntity commander, EntityKind targetKind, TilePosition anchor)
     {
         return DistanceSquaredToFootprint(commander.WorldPosition, targetKind, anchor)
-            <= Square(MvpDefinitions.CommanderBuildRadius);
+            <= Square(MvpDefinitions.CommanderBuildRadius * WorldUnits.MilliPerTile);
     }
 
     /// <summary>
@@ -1734,7 +1981,7 @@ public sealed partial class GameSimulation
                 && entity.Kind == EntityKind.Hub
                 && entity.OwnerId == commander.OwnerId
                 && DistanceSquaredToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
-                    <= Square(MvpDefinitions.CommanderInteractRadius))
+                    <= Square(MvpDefinitions.CommanderInteractRadius * WorldUnits.MilliPerTile))
             .OrderBy(entity => entity.Id)
             .ToList();
 
@@ -1807,23 +2054,94 @@ public sealed partial class GameSimulation
         return true;
     }
 
+    /// <summary>
+    /// R30: Non-mutating affordability query used by the build UI so the menu count matches what an
+    /// actual ghost-build would pay for. Mirrors <see cref="TryPayBuildCostFromCommanderOrNearbyHubs"/>
+    /// payment sources (commander inventory + owned hubs within
+    /// <see cref="MvpDefinitions.CommanderInteractRadius"/>). Returns how many copies of
+    /// <paramref name="kind"/> the combined stock can afford. Does not mutate state.
+    /// </summary>
+    public int GetAffordableBuildCount(WorldEntity commander, EntityKind kind)
+    {
+        ArgumentNullException.ThrowIfNull(commander);
+        if (!BuildCostCatalog.Costs.TryGetValue(kind, out var cost))
+        {
+            return 0;
+        }
+
+        if (cost.Count == 0)
+        {
+            return int.MaxValue;
+        }
+
+        var available = new Dictionary<ItemId, int>();
+        foreach (var pair in cost)
+        {
+            available[pair.Key] = commander.Inventory.Count(pair.Key);
+        }
+
+        if (commander.OwnerId is not null)
+        {
+            var hubs = World.Entities
+                .Where(entity =>
+                    entity.IsAlive
+                    && entity.Kind == EntityKind.Hub
+                    && entity.OwnerId == commander.OwnerId
+                    && DistanceSquaredToFootprint(commander.WorldPosition, entity.Kind, entity.Position)
+                        <= Square(MvpDefinitions.CommanderInteractRadius * WorldUnits.MilliPerTile));
+            foreach (var hub in hubs)
+            {
+                foreach (var pair in cost)
+                {
+                    available[pair.Key] += hub.Inventory.Count(pair.Key);
+                }
+            }
+        }
+
+        var affordable = int.MaxValue;
+        foreach (var pair in cost)
+        {
+            if (pair.Value <= 0)
+            {
+                continue;
+            }
+
+            affordable = Math.Min(affordable, available[pair.Key] / pair.Value);
+        }
+
+        return affordable == int.MaxValue ? 0 : affordable;
+    }
+
+    /// <summary>
+    /// R30: Public capability gate for the build menu so the UI can compose its buildable set from the
+    /// authoritative catalog without re-implementing research/tier gating.
+    /// </summary>
+    public bool IsBuildKindAvailable(PlayerId playerId, EntityKind kind)
+    {
+        return BuildCostCatalog.Costs.ContainsKey(kind) && IsBuildUnlocked(playerId, kind);
+    }
+
     private static int DistanceToFootprint(TilePosition from, EntityKind targetKind, TilePosition anchor)
     {
         return GameWorld.GetFootprintTiles(targetKind, anchor)
             .Min(tile => from.ManhattanDistance(tile));
     }
 
-    private static double DistanceSquaredToFootprint(WorldPosition from, EntityKind targetKind, TilePosition anchor)
+    private static long DistanceSquaredToFootprint(WorldPosition from, EntityKind targetKind, TilePosition anchor)
     {
         var footprint = MvpDefinitions.GetFootprint(targetKind);
-        var closestX = Math.Clamp(from.X, anchor.X, anchor.X + footprint.Width);
-        var closestY = Math.Clamp(from.Y, anchor.Y, anchor.Y + footprint.Height);
+        var minX = WorldUnits.TileToMilli(anchor.X);
+        var maxX = WorldUnits.TileToMilli(anchor.X + footprint.Width);
+        var minY = WorldUnits.TileToMilli(anchor.Y);
+        var maxY = WorldUnits.TileToMilli(anchor.Y + footprint.Height);
+        var closestX = Math.Clamp(from.X, minX, maxX);
+        var closestY = Math.Clamp(from.Y, minY, maxY);
         var dx = from.X - closestX;
         var dy = from.Y - closestY;
         return dx * dx + dy * dy;
     }
 
-    private static double Square(double value) => value * value;
+    private static long Square(long value) => value * value;
 
     private static Direction Rotate(Direction direction, bool clockwise)
     {

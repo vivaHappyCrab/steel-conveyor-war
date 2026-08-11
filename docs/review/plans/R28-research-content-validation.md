@@ -2,6 +2,22 @@
 
 **Severity:** High (content correctness) · **Домен:** research / validation · **Roadmap:** P0
 **Статус валидации:** ✅ Подтверждено по коду
+**Статус реализации:** ✅ Реализовано 2026-08-11 (`ResearchContentValidator.cs`, `Logistics/Inventory.cs`, `Research/ResearchSystem.cs`; тесты в `ResearchContentValidationTests.cs`). ⚠️ Требуется прогон `dotnet build -c Release` + `dotnet test` (VM недоступна, изменения не скомпилированы).
+
+### Что сделано
+- `ResearchContentValidator`: для каждого science pack требуется `Amount > 0`; дубликаты item-записей в `SciencePacks` отклоняются (`HashSet<ItemId> seenPackItems`).
+- `ResearchContentValidator`: отрицательные значения в `DefaultAllocations` отклоняются (каждое `>= 0`) до проверки суммы == Scale.
+- `ResearchContentValidator`: неизвестный `gate.TargetTierId` (кроме `tier.t3-boundary` / null) теперь бросает `InvalidOperationException`, а не молчит.
+- `Inventory.TryRemove`: guard `if (amount < 0) return false;` перед `Has()` — отрицательный amount больше не «наращивает» инвентарь. (`Add` уже бросал `ArgumentOutOfRangeException` на отрицательном amount.)
+- `ResearchSystem.CanAfford`/`TryConsume`: агрегируют дубликатные packs по `ItemId` (`AggregateCost`) и используют `Inventory.HasAll`/`TryRemoveAll` — списание атомарно, частичного списания при дубликатах нет.
+
+### Тесты
+- `SciencePack_NonPositiveAmount_IsRejected`, `SciencePack_DuplicateItem_IsRejected`, `Profile_NegativeDefaultAllocation_IsRejected`, `Gate_UnknownTargetTier_IsRejected` — мутируют сериализованный embedded-каталог (JsonNode) и проверяют, что `ResearchContentLoader.Parse` бросает.
+- `Baseline_EmbeddedCatalog_Parses` — санити, немутированный каталог валиден.
+- `Inventory_TryRemove_NegativeAmount_DoesNotIncreaseCount`, `Inventory_TryRemoveAll_IsAtomic_NoPartialConsumption`.
+
+### Отклонения от плана
+- «Частичное списание дубликатов» покрыто на уровне `Inventory.TryRemoveAll` (атомарность) + агрегация в `AggregateCost`, а не отдельным тестом на `TechnologyDefinition` (построение definition в тесте избыточно сложное).
 
 ## Проблема
 Валидатор требует наличие science packs, но не проверяет `Amount > 0` и дубликаты item-записей; допускает отрицательные default allocations; не бросает на неизвестном `TargetTierId`. Отрицательная стоимость приводит к тому, что `Inventory.TryRemove(item, negative)` **увеличивает** количество item. Дубликаты packs проходят `CanAfford` по отдельности, но могут частично списаться и завершиться `false`. Неизвестный tier после completion пишется в authoritative state.

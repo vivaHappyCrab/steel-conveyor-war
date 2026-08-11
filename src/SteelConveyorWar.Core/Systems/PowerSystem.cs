@@ -1,20 +1,58 @@
 namespace SteelConveyorWar.Core;
 
-public sealed partial class GameSimulation
+/// <summary>
+/// R06: standalone power/energy system extracted from the <see cref="GameSimulation"/> god-object.
+/// Produces power, fills energy buffers emptiest-first, drains per-building demand, and records
+/// presentation-only energy history. Owns its per-tick accumulators and talks to the rest of the
+/// simulation only through <see cref="ISimulationSystemContext"/>, so it can be unit-tested in isolation.
+/// </summary>
+internal sealed class PowerSystem
 {
-    /// <summary>
-    /// Produces power and fills energy buffers emptiest-first.
-    /// </summary>
-    private static class PowerSystem
-    {
-        public static void Tick(GameSimulation sim)
-        {
-            sim.UpdatePower();
-        }
+    private readonly ISimulationSystemContext _context;
 
-        public static void RecordStats(GameSimulation sim)
+    // Per-tick energy accumulators (presentation-only; not hashed). Owned here now that Power is the
+    // single writer/reader of the produce/record path; TryConsumeBuildingEnergy adds consumption.
+    private readonly Dictionary<PlayerId, int> _tickPowerProduced = new();
+    private readonly Dictionary<PlayerId, int> _tickPowerConsumed = new();
+    private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickProducedByKind = new();
+    private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickConsumedByKind = new();
+
+    /// <summary>
+    /// Orders fill candidates by fill fraction ascending (<c>buffer/capacity</c> via cross-multiply), then entity id.
+    /// </summary>
+    private static readonly Comparer<(int Buffer, int Capacity, int Id)> EnergyFillPriorityComparer =
+        Comparer<(int Buffer, int Capacity, int Id)>.Create(static (left, right) =>
+            EnergyFillRatioComparer.CompareRatios(
+                left.Buffer,
+                left.Capacity,
+                left.Id,
+                right.Buffer,
+                right.Capacity,
+                right.Id));
+
+    public PowerSystem(ISimulationSystemContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        _context = context;
+    }
+
+    /// <summary>Produces power and fills energy buffers emptiest-first.</summary>
+    public void Tick() => UpdatePower();
+
+    /// <summary>
+    /// Records this tick's production and <b>actual</b> buffer drains into presentation-only energy history.
+    /// Must run after all <see cref="TryConsumeBuildingEnergy"/> call sites for the tick.
+    /// </summary>
+    public void RecordStats()
+    {
+        foreach (var player in _context.Players)
         {
-            sim.RecordEnergyStatsSample();
+            player.EnergyStats.Record(
+                _context.Tick,
+                _tickPowerProduced.GetValueOrDefault(player.Id),
+                _tickPowerConsumed.GetValueOrDefault(player.Id),
+                _tickProducedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>(),
+                _tickConsumedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>());
         }
     }
 
@@ -23,7 +61,9 @@ public sealed partial class GameSimulation
     /// Returns false when the buffer is too low (work must pause). No demand configured → success (unpowered-free).
     /// Successful drains accumulate into this tick's energy-stats consumption sample.
     /// </summary>
-    public bool TryConsumeBuildingEnergy(WorldEntity building)
+    // R14: internal — an authoritative energy mutation, callable only from in-assembly tick code
+    // (the class itself is already internal; this makes the intent explicit).
+    internal bool TryConsumeBuildingEnergy(WorldEntity building)
     {
         var demand = MvpDefinitions.GetPowerDemand(building.Kind);
         if (demand <= 0)
@@ -57,15 +97,15 @@ public sealed partial class GameSimulation
     {
         ResetEnergyTickAccumulators();
 
-        foreach (var player in _players)
+        foreach (var player in _context.Players)
         {
             player.PowerProduced = 0;
             player.PowerDemand = 0;
         }
 
-        foreach (var entity in World.Entities.Where(entity => entity.IsAlive && entity.OwnerId is not null))
+        foreach (var entity in _context.World.Entities.Where(entity => entity.IsAlive && entity.OwnerId is not null))
         {
-            var player = GetPlayer(entity.OwnerId!.Value);
+            var player = _context.GetPlayer(entity.OwnerId!.Value);
             var produced = entity.Kind switch
             {
                 EntityKind.SolarPanel => MvpDefinitions.PowerProduction.GetValueOrDefault(EntityKind.SolarPanel),
@@ -84,7 +124,7 @@ public sealed partial class GameSimulation
             player.PowerDemand += MvpDefinitions.GetPowerDemand(entity.Kind);
         }
 
-        foreach (var player in _players)
+        foreach (var player in _context.Players)
         {
             FillEnergyBuffersEmptiestFirst(player);
         }
@@ -96,7 +136,7 @@ public sealed partial class GameSimulation
         _tickPowerConsumed.Clear();
         _tickProducedByKind.Clear();
         _tickConsumedByKind.Clear();
-        foreach (var player in _players)
+        foreach (var player in _context.Players)
         {
             _tickProducedByKind[player.Id] = new Dictionary<EntityKind, int>();
             _tickConsumedByKind[player.Id] = new Dictionary<EntityKind, int>();
@@ -106,26 +146,11 @@ public sealed partial class GameSimulation
     }
 
     /// <summary>
-    /// Records this tick's production and <b>actual</b> buffer drains into presentation-only energy history.
-    /// Must run after all <see cref="TryConsumeBuildingEnergy"/> call sites for the tick.
-    /// </summary>
-    private void RecordEnergyStatsSample()
-    {
-        foreach (var player in _players)
-        {
-            player.EnergyStats.Record(
-                Tick,
-                _tickPowerProduced.GetValueOrDefault(player.Id),
-                _tickPowerConsumed.GetValueOrDefault(player.Id),
-                _tickProducedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>(),
-                _tickConsumedByKind.GetValueOrDefault(player.Id) ?? new Dictionary<EntityKind, int>());
-        }
-    }
-
-    /// <summary>
     /// Distributes this tick's <see cref="PlayerState.PowerProduced"/> into owned consumer buffers
     /// emptiest-first: lowest <c>EnergyBuffer/Capacity</c> (exact rational order via cross-multiply),
-    /// then lowest entity id. Uses a min-heap so each unit is O(log N) instead of re-sorting all consumers.
+    /// then lowest entity id. Batched water-filling: each heap pop grants every consecutive unit that
+    /// would still prefer the same entity under <see cref="EnergyFillRatioComparer"/> (same result as
+    /// per-unit dequeue/enqueue, fewer heap ops when production is large).
     /// </summary>
     private void FillEnergyBuffersEmptiestFirst(PlayerState player)
     {
@@ -136,7 +161,7 @@ public sealed partial class GameSimulation
         }
 
         var heap = new PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)>(EnergyFillPriorityComparer);
-        foreach (var entity in World.Entities)
+        foreach (var entity in _context.World.Entities)
         {
             if (!entity.IsAlive
                 || entity.OwnerId != player.Id
@@ -149,6 +174,43 @@ public sealed partial class GameSimulation
             heap.Enqueue(entity, (entity.EnergyBuffer, entity.EnergyBufferCapacity, entity.Id));
         }
 
+        DistributeEnergyEmptiestFirstBatched(heap, remaining);
+    }
+
+    /// <summary>
+    /// R15 test seam: batched emptiest-first fill into the given consumers (non-full, capacity &gt; 0).
+    /// Mutates <see cref="WorldEntity.EnergyBuffer"/>. Same selection order as the per-unit reference.
+    /// </summary>
+    internal static void DistributeEnergyEmptiestFirstBatchedForTests(
+        IReadOnlyList<WorldEntity> consumers,
+        int energy)
+    {
+        ArgumentNullException.ThrowIfNull(consumers);
+        if (energy <= 0)
+        {
+            return;
+        }
+
+        var heap = BuildFillHeap(consumers);
+        DistributeEnergyEmptiestFirstBatched(heap, energy);
+    }
+
+    /// <summary>
+    /// R15 equivalence reference: classic per-unit emptiest-first (dequeue, +1, re-enqueue).
+    /// Must stay behavior-identical to <see cref="DistributeEnergyEmptiestFirstBatchedForTests"/>.
+    /// </summary>
+    internal static void DistributeEnergyEmptiestFirstPerUnitForTests(
+        IReadOnlyList<WorldEntity> consumers,
+        int energy)
+    {
+        ArgumentNullException.ThrowIfNull(consumers);
+        if (energy <= 0)
+        {
+            return;
+        }
+
+        var heap = BuildFillHeap(consumers);
+        var remaining = energy;
         while (remaining > 0 && heap.Count > 0)
         {
             var target = heap.Dequeue();
@@ -159,5 +221,109 @@ public sealed partial class GameSimulation
                 heap.Enqueue(target, (target.EnergyBuffer, target.EnergyBufferCapacity, target.Id));
             }
         }
+    }
+
+    private static PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)> BuildFillHeap(
+        IReadOnlyList<WorldEntity> consumers)
+    {
+        var heap = new PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)>(EnergyFillPriorityComparer);
+        foreach (var entity in consumers)
+        {
+            if (entity.EnergyBufferCapacity <= 0 || entity.EnergyBuffer >= entity.EnergyBufferCapacity)
+            {
+                continue;
+            }
+
+            heap.Enqueue(entity, (entity.EnergyBuffer, entity.EnergyBufferCapacity, entity.Id));
+        }
+
+        return heap;
+    }
+
+    private static void DistributeEnergyEmptiestFirstBatched(
+        PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)> heap,
+        int remaining)
+    {
+        while (remaining > 0 && heap.Count > 0)
+        {
+            var target = heap.Dequeue();
+            var space = target.EnergyBufferCapacity - target.EnergyBuffer;
+            int batch;
+            if (heap.Count == 0)
+            {
+                batch = Math.Min(remaining, space);
+            }
+            else
+            {
+                heap.TryPeek(out _, out var next);
+                batch = CountConsecutivePreferredUnits(
+                    target.EnergyBuffer,
+                    target.EnergyBufferCapacity,
+                    target.Id,
+                    next.Buffer,
+                    next.Capacity,
+                    next.Id,
+                    Math.Min(remaining, space));
+            }
+
+            // Target was heap-min, so at least one unit is always preferred over the next competitor.
+            if (batch <= 0)
+            {
+                batch = Math.Min(1, Math.Min(remaining, space));
+            }
+
+            target.EnergyBuffer += batch;
+            remaining -= batch;
+            if (target.EnergyBuffer < target.EnergyBufferCapacity)
+            {
+                heap.Enqueue(target, (target.EnergyBuffer, target.EnergyBufferCapacity, target.Id));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Largest <c>m</c> in <c>1..maxUnits</c> such that entity A remains preferred for each decision
+    /// at buffers <c>bufA .. bufA+m-1</c> versus fixed competitor B under
+    /// <see cref="EnergyFillRatioComparer.CompareRatios"/> (including id tie-break).
+    /// </summary>
+    private static int CountConsecutivePreferredUnits(
+        int bufA,
+        int capA,
+        int idA,
+        int bufB,
+        int capB,
+        int idB,
+        int maxUnits)
+    {
+        if (maxUnits <= 0 || capB <= 0)
+        {
+            return 0;
+        }
+
+        // A preferred at decision buffer t iff CompareRatios(t, capA, idA, bufB, capB, idB) <= 0:
+        //   t*capB < bufB*capA, or equal ratios and idA <= idB.
+        var product = (long)bufB * capA;
+        long maxPreferredT;
+        if (idA <= idB)
+        {
+            maxPreferredT = product / capB;
+        }
+        else if (product <= 0)
+        {
+            maxPreferredT = -1;
+        }
+        else
+        {
+            maxPreferredT = (product - 1) / capB;
+        }
+
+        var lastDecision = Math.Min(maxPreferredT, (long)capA - 1);
+        if (lastDecision < bufA)
+        {
+            return 0;
+        }
+
+        var units = lastDecision - bufA + 1;
+        return units > maxUnits ? maxUnits : (int)units;
     }
 }

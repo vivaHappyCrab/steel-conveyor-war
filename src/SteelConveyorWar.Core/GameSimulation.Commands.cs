@@ -11,8 +11,20 @@ public sealed partial class GameSimulation
 {
     private readonly List<ISimulationCommand> _commandBuffer = new();
 
+    // R11: diagnostics of commands rejected during the most recent AdvanceTick. Presentation-only
+    // (not hashed): lets hosts/tests observe *why* an intent did not apply instead of a silent drop.
+    private readonly List<CommandRejection> _commandRejections = new();
+
     /// <summary>Commands waiting for a future tick (FIFO within a tick).</summary>
-    public IReadOnlyList<ISimulationCommand> PendingCommands => _commandBuffer;
+    // R05: ReadOnlyCollection wrapper so external code cannot mutate the pending buffer via downcast.
+    public IReadOnlyList<ISimulationCommand> PendingCommands => _commandBuffer.AsReadOnly();
+
+    /// <summary>
+    /// R11: commands the simulation refused to apply during the most recent tick (handler rejected,
+    /// threw, or unknown kind), with a reason each. Cleared at the start of every
+    /// <see cref="ApplyQueuedCommandsForCurrentTick"/>. Not part of the determinism hash.
+    /// </summary>
+    public IReadOnlyList<CommandRejection> LastTickCommandRejections => _commandRejections.AsReadOnly();
 
     /// <summary>
     /// Enqueues a command for application at the start of <see cref="AdvanceTick"/> when
@@ -54,13 +66,16 @@ public sealed partial class GameSimulation
             IssueMoveCommand c => TryIssueMoveCommand(c.EntityId, c.Actor, c.Target),
             StopCommanderCommand c => TryStopCommander(c.CommanderId, c.Actor),
             QueueCommanderBuildCommand c => TryQueueCommanderBuild(
-                c.CommanderId, c.TargetKind, c.Position, c.Direction, c.SelectedItemRecipe),
-            QueueCommanderDemolishCommand c => TryQueueCommanderDemolish(c.CommanderId, c.TargetEntityId),
+                c.CommanderId, c.TargetKind, c.Position, c.Direction, c.SelectedItemRecipe, c.Actor),
+            QueueCommanderDemolishCommand c => TryQueueCommanderDemolish(c.CommanderId, c.TargetEntityId, c.Actor),
             PlaceGhostBuildFromCommanderCommand c => TryPlaceGhostBuildFromCommander(
-                c.CommanderId, c.TargetKind, c.Position, out _, c.Direction, c.SelectedItemRecipe),
+                c.CommanderId, c.TargetKind, c.Position, out _, c.Direction, c.SelectedItemRecipe, c.Actor),
             RotateEntityCommand c => TryRotateEntity(c.EntityId, c.Actor, c.Clockwise),
-            StartResearchCommand c => TryStartResearch(c.Actor, c.Technology),
+            StartResearchCommand c => TryStartResearch(c.Actor, c.Technology, c.Actor),
             CancelResearchCommand c => TryCancelResearch(c.Actor, c.Technology),
+            // R02/R26: actor == owning player (research is keyed per-player); pass actor for defense-in-depth.
+            SelectResearchCommand c => TrySelectResearch(
+                c.Actor, c.Technology, c.ConfirmExclusive, c.PreferredTrackId, c.Actor) == ResearchCommandResult.Ok,
             SetTrackAllocationCommand c => TrySetTrackAllocation(c.Actor, c.Allocations) == ResearchCommandResult.Ok,
             SetFactoryProductionCommand c => TrySetFactoryProduction(
                 c.FactoryId, c.Actor, c.OutputKind, c.BastionId),
@@ -68,25 +83,29 @@ public sealed partial class GameSimulation
             SetBastionTemplateCommand c => TrySetBastionTemplate(c.BastionId, c.Actor, c.UnitKind, c.Count),
             IssueBastionOrderCommand c => TryIssueBastionOrder(c.BastionId, c.Actor, c.Order),
             SetAssemblerRecipeCommand c => TrySetAssemblerRecipe(c.AssemblerId, c.Actor, c.RecipeId),
-            CollectOutputBufferCommand c => TryCollectOutputBuffer(c.CommanderId, c.TargetEntityId),
-            WithdrawFromHubOrOutputCommand c => TryWithdrawFromHubOrOutput(c.CommanderId, c.TargetEntityId),
-            DepositToHubOrInputCommand c => TryDepositToHubOrInput(c.CommanderId, c.TargetEntityId),
+            CollectOutputBufferCommand c => TryCollectOutputBuffer(c.CommanderId, c.TargetEntityId, c.Actor),
+            WithdrawFromHubOrOutputCommand c => TryWithdrawFromHubOrOutput(c.CommanderId, c.TargetEntityId, c.Actor),
+            DepositToHubOrInputCommand c => TryDepositToHubOrInput(c.CommanderId, c.TargetEntityId, c.Actor),
             DepositItemTypeToHubOrInputCommand c => TryDepositItemTypeToHubOrInput(
-                c.CommanderId, c.TargetEntityId, c.Item),
+                c.CommanderId, c.TargetEntityId, c.Item, c.Actor),
             WithdrawItemTypeFromHubOrOutputCommand c => TryWithdrawItemTypeFromHubOrOutput(
-                c.CommanderId, c.TargetEntityId, c.Item),
-            _ => throw new NotSupportedException($"Unsupported command kind '{command.Kind}'."),
+                c.CommanderId, c.TargetEntityId, c.Item, c.Actor),
+            // R09: unknown/unsupported kinds are rejected (untrusted input must not throw out of the tick loop).
+            _ => false,
         };
     }
 
     private void ApplyQueuedCommandsForCurrentTick()
     {
+        // R11: reset per-tick rejection diagnostics even when nothing is queued this tick.
+        _commandRejections.Clear();
         if (_commandBuffer.Count == 0)
         {
             return;
         }
 
         List<ISimulationCommand>? deferred = null;
+        List<ISimulationCommand>? currentTick = null;
         foreach (var command in _commandBuffer)
         {
             if (command.Tick > Tick)
@@ -98,9 +117,55 @@ public sealed partial class GameSimulation
 
             if (command.Tick == Tick)
             {
-                ApplyCommand(command);
+                currentTick ??= new List<ISimulationCommand>();
+                currentTick.Add(command);
             }
             // Tick < current: stale (should not happen with EnqueueCommand guards); drop.
+        }
+
+        if (currentTick is { Count: > 0 })
+        {
+            // R03: apply in a canonical (Actor, Sequence) order so the result does not depend on
+            // network arrival / enqueue order. OrderBy is a stable sort, so unsequenced (Sequence == 0)
+            // commands retain their insertion order as a last-resort tiebreaker.
+            currentTick.Sort(CompareCanonical);
+
+            HashSet<(int Actor, long Sequence)>? appliedKeys = null;
+            foreach (var command in currentTick)
+            {
+                // R03: duplicate suppression. A sequenced command replayed with the same
+                // (Actor, Sequence) is applied at most once. Sequence 0 is exempt (legacy/local).
+                if (command.Sequence != 0)
+                {
+                    appliedKeys ??= new HashSet<(int, long)>();
+                    if (!appliedKeys.Add((command.Actor.Value, command.Sequence)))
+                    {
+                        continue;
+                    }
+                }
+
+                // R09: a single malformed/hostile command must never abort the whole tick.
+                // Isolate any handler exception; the command is dropped as rejected.
+                // R11: record the outcome so rejections are logged with a reason instead of silently dropped.
+                CommandResult result;
+                try
+                {
+                    result = ApplyCommand(command)
+                        ? CommandResult.Ok
+                        : CommandResult.Rejected("handler rejected (ownership/validation/unknown kind)");
+                }
+                catch (Exception ex)
+                {
+                    // Rejected: swallow so untrusted input cannot deny service to the tick loop.
+                    result = CommandResult.Rejected($"handler threw {ex.GetType().Name}");
+                }
+
+                if (!result.Accepted)
+                {
+                    _commandRejections.Add(new CommandRejection(
+                        command.Kind, command.Actor, command.Sequence, result.RejectionReason ?? "rejected"));
+                }
+            }
         }
 
         _commandBuffer.Clear();
@@ -108,5 +173,20 @@ public sealed partial class GameSimulation
         {
             _commandBuffer.AddRange(deferred);
         }
+    }
+
+    /// <summary>
+    /// R03: canonical cross-peer command comparison for a single tick: order by author, then by the
+    /// author-assigned monotonic <see cref="ISimulationCommand.Sequence"/>.
+    /// </summary>
+    private static int CompareCanonical(ISimulationCommand left, ISimulationCommand right)
+    {
+        var byActor = left.Actor.Value.CompareTo(right.Actor.Value);
+        if (byActor != 0)
+        {
+            return byActor;
+        }
+
+        return left.Sequence.CompareTo(right.Sequence);
     }
 }
