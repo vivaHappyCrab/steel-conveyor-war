@@ -67,11 +67,14 @@ public sealed class GameWorld
         return top;
     }
 
-    public IEnumerable<WorldEntity> GetEntitiesAt(TilePosition position)
+    /// <summary>
+    /// Alive, non-garrisoned occupants at <paramref name="position"/> in ascending Id order.
+    /// </summary>
+    public IReadOnlyList<WorldEntity> GetEntitiesAt(TilePosition position)
     {
         if (!_occupancy.TryGetValue(position, out var bucket) || bucket.Count == 0)
         {
-            return [];
+            return Array.Empty<WorldEntity>();
         }
 
         // Match prior list-scan order: entities stay in ascending Id / insertion order after RemoveDead.
@@ -83,13 +86,13 @@ public sealed class GameWorld
                 continue;
             }
 
-            matches ??= new List<WorldEntity>();
+            matches ??= new List<WorldEntity>(bucket.Count);
             matches.Add(entity);
         }
 
-        if (matches is null)
+        if (matches is null || matches.Count == 0)
         {
-            return [];
+            return Array.Empty<WorldEntity>();
         }
 
         if (matches.Count > 1)
@@ -98,6 +101,32 @@ public sealed class GameWorld
         }
 
         return matches;
+    }
+
+    /// <summary>
+    /// Hot-path occupancy probe without allocating or sorting (order undefined).
+    /// </summary>
+    internal bool AnyAliveAt(TilePosition position, Func<WorldEntity, bool> predicate)
+    {
+        if (!_occupancy.TryGetValue(position, out var bucket))
+        {
+            return false;
+        }
+
+        foreach (var entity in bucket)
+        {
+            if (!entity.IsAlive || entity.IsGarrisoned)
+            {
+                continue;
+            }
+
+            if (predicate(entity))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static bool ContainsTile(WorldEntity entity, TilePosition position)

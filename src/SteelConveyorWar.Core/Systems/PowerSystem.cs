@@ -148,7 +148,9 @@ internal sealed class PowerSystem
     /// <summary>
     /// Distributes this tick's <see cref="PlayerState.PowerProduced"/> into owned consumer buffers
     /// emptiest-first: lowest <c>EnergyBuffer/Capacity</c> (exact rational order via cross-multiply),
-    /// then lowest entity id. Uses a min-heap so each unit is O(log N) instead of re-sorting all consumers.
+    /// then lowest entity id. Batched water-filling: each heap pop grants every consecutive unit that
+    /// would still prefer the same entity under <see cref="EnergyFillRatioComparer"/> (same result as
+    /// per-unit dequeue/enqueue, fewer heap ops when production is large).
     /// </summary>
     private void FillEnergyBuffersEmptiestFirst(PlayerState player)
     {
@@ -172,6 +174,43 @@ internal sealed class PowerSystem
             heap.Enqueue(entity, (entity.EnergyBuffer, entity.EnergyBufferCapacity, entity.Id));
         }
 
+        DistributeEnergyEmptiestFirstBatched(heap, remaining);
+    }
+
+    /// <summary>
+    /// R15 test seam: batched emptiest-first fill into the given consumers (non-full, capacity &gt; 0).
+    /// Mutates <see cref="WorldEntity.EnergyBuffer"/>. Same selection order as the per-unit reference.
+    /// </summary>
+    internal static void DistributeEnergyEmptiestFirstBatchedForTests(
+        IReadOnlyList<WorldEntity> consumers,
+        int energy)
+    {
+        ArgumentNullException.ThrowIfNull(consumers);
+        if (energy <= 0)
+        {
+            return;
+        }
+
+        var heap = BuildFillHeap(consumers);
+        DistributeEnergyEmptiestFirstBatched(heap, energy);
+    }
+
+    /// <summary>
+    /// R15 equivalence reference: classic per-unit emptiest-first (dequeue, +1, re-enqueue).
+    /// Must stay behavior-identical to <see cref="DistributeEnergyEmptiestFirstBatchedForTests"/>.
+    /// </summary>
+    internal static void DistributeEnergyEmptiestFirstPerUnitForTests(
+        IReadOnlyList<WorldEntity> consumers,
+        int energy)
+    {
+        ArgumentNullException.ThrowIfNull(consumers);
+        if (energy <= 0)
+        {
+            return;
+        }
+
+        var heap = BuildFillHeap(consumers);
+        var remaining = energy;
         while (remaining > 0 && heap.Count > 0)
         {
             var target = heap.Dequeue();
@@ -182,5 +221,109 @@ internal sealed class PowerSystem
                 heap.Enqueue(target, (target.EnergyBuffer, target.EnergyBufferCapacity, target.Id));
             }
         }
+    }
+
+    private static PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)> BuildFillHeap(
+        IReadOnlyList<WorldEntity> consumers)
+    {
+        var heap = new PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)>(EnergyFillPriorityComparer);
+        foreach (var entity in consumers)
+        {
+            if (entity.EnergyBufferCapacity <= 0 || entity.EnergyBuffer >= entity.EnergyBufferCapacity)
+            {
+                continue;
+            }
+
+            heap.Enqueue(entity, (entity.EnergyBuffer, entity.EnergyBufferCapacity, entity.Id));
+        }
+
+        return heap;
+    }
+
+    private static void DistributeEnergyEmptiestFirstBatched(
+        PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)> heap,
+        int remaining)
+    {
+        while (remaining > 0 && heap.Count > 0)
+        {
+            var target = heap.Dequeue();
+            var space = target.EnergyBufferCapacity - target.EnergyBuffer;
+            int batch;
+            if (heap.Count == 0)
+            {
+                batch = Math.Min(remaining, space);
+            }
+            else
+            {
+                heap.TryPeek(out _, out var next);
+                batch = CountConsecutivePreferredUnits(
+                    target.EnergyBuffer,
+                    target.EnergyBufferCapacity,
+                    target.Id,
+                    next.Buffer,
+                    next.Capacity,
+                    next.Id,
+                    Math.Min(remaining, space));
+            }
+
+            // Target was heap-min, so at least one unit is always preferred over the next competitor.
+            if (batch <= 0)
+            {
+                batch = Math.Min(1, Math.Min(remaining, space));
+            }
+
+            target.EnergyBuffer += batch;
+            remaining -= batch;
+            if (target.EnergyBuffer < target.EnergyBufferCapacity)
+            {
+                heap.Enqueue(target, (target.EnergyBuffer, target.EnergyBufferCapacity, target.Id));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Largest <c>m</c> in <c>1..maxUnits</c> such that entity A remains preferred for each decision
+    /// at buffers <c>bufA .. bufA+m-1</c> versus fixed competitor B under
+    /// <see cref="EnergyFillRatioComparer.CompareRatios"/> (including id tie-break).
+    /// </summary>
+    private static int CountConsecutivePreferredUnits(
+        int bufA,
+        int capA,
+        int idA,
+        int bufB,
+        int capB,
+        int idB,
+        int maxUnits)
+    {
+        if (maxUnits <= 0 || capB <= 0)
+        {
+            return 0;
+        }
+
+        // A preferred at decision buffer t iff CompareRatios(t, capA, idA, bufB, capB, idB) <= 0:
+        //   t*capB < bufB*capA, or equal ratios and idA <= idB.
+        var product = (long)bufB * capA;
+        long maxPreferredT;
+        if (idA <= idB)
+        {
+            maxPreferredT = product / capB;
+        }
+        else if (product <= 0)
+        {
+            maxPreferredT = -1;
+        }
+        else
+        {
+            maxPreferredT = (product - 1) / capB;
+        }
+
+        var lastDecision = Math.Min(maxPreferredT, (long)capA - 1);
+        if (lastDecision < bufA)
+        {
+            return 0;
+        }
+
+        var units = lastDecision - bufA + 1;
+        return units > maxUnits ? maxUnits : (int)units;
     }
 }

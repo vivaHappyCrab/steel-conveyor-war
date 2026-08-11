@@ -4,6 +4,8 @@ public sealed partial class GameSimulation
 {
     /// <summary>
     /// Factory unit production, bastion garrison/orders, and bastion-death cascade.
+    /// R17: accounting uses reusable sorted scratch buffers (live mid-tick updates on spawn)
+    /// instead of repeated LINQ scans of <see cref="GameWorld.Entities"/>.
     /// </summary>
     private static class FactoryBastionSystem
     {
@@ -16,8 +18,14 @@ public sealed partial class GameSimulation
 
     private void ProcessFactoryProduction()
     {
-        foreach (var factory in World.Entities.Where(entity => entity.IsAlive && MvpDefinitions.FactoryKinds.Contains(entity.Kind)).OrderBy(entity => entity.Id))
+        RefreshArmyAccountingEpochForDeaths();
+        CollectSortedAliveEntities(_scratchFactories, static entity => MvpDefinitions.FactoryKinds.Contains(entity.Kind));
+        CollectSortedAliveEntities(_scratchBastions, static entity => entity.Kind == EntityKind.Bastion);
+        CollectSortedAliveEntities(_scratchUnits, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
+
+        for (var factoryIndex = 0; factoryIndex < _scratchFactories.Count; factoryIndex++)
         {
+            var factory = _scratchFactories[factoryIndex];
             if (factory.WorkTicksRemaining > 0 && factory.ProductionTargetKind is not null)
             {
                 if (!TryConsumeBuildingEnergy(factory))
@@ -45,6 +53,15 @@ public sealed partial class GameSimulation
                 continue;
             }
 
+            // Idle skip (manual only): autofill must re-resolve deficits every tick.
+            // Same inputs + army accounting epoch ⇒ capacity/start outcome unchanged.
+            if (factory.IsManualProductionTarget
+                && factory.IdleFactorySupplyEpoch == _armyAccountingEpoch
+                && factory.IdleFactoryInputVersion == factory.InputBuffer.MutationVersion)
+            {
+                continue;
+            }
+
             // Autofill re-resolves every idle tick across all owned bastion deficits.
             if (!factory.IsManualProductionTarget)
             {
@@ -53,22 +70,26 @@ public sealed partial class GameSimulation
 
             if (factory.ProductionTargetKind is null || !MvpDefinitions.ProductionRecipes.TryGetValue(factory.ProductionTargetKind.Value, out var recipe))
             {
+                RememberIdleFactorySkip(factory);
                 continue;
             }
 
             if (!IsRecipeUnlockedForOwner(factory.OwnerId, recipe))
             {
+                RememberIdleFactorySkip(factory);
                 continue;
             }
 
             // Manual and autofill both wait when template demand or army capacity is full.
             if (factory.OwnerId is null || !CanStartUnitProduction(factory.OwnerId.Value, recipe.OutputKind))
             {
+                RememberIdleFactorySkip(factory);
                 continue;
             }
 
             if (!CanFactoryProduce(factory.Kind, recipe.OutputKind) || !factory.InputBuffer.TryRemoveAll(recipe.Inputs))
             {
+                RememberIdleFactorySkip(factory);
                 continue;
             }
 
@@ -80,7 +101,36 @@ public sealed partial class GameSimulation
 
             factory.WorkTicksTotal = workTicks;
             factory.WorkTicksRemaining = workTicks;
+            // In-flight supply changed for later factories in this same tick.
+            BumpArmyAccountingEpoch();
         }
+    }
+
+    private void RememberIdleFactorySkip(WorldEntity factory)
+    {
+        factory.IdleFactorySupplyEpoch = _armyAccountingEpoch;
+        factory.IdleFactoryInputVersion = factory.InputBuffer.MutationVersion;
+    }
+
+    private void RefreshArmyAccountingEpochForDeaths()
+    {
+        var aliveUnits = 0;
+        var entities = World.Entities;
+        for (var i = 0; i < entities.Count; i++)
+        {
+            var entity = entities[i];
+            if (entity.IsAlive && MvpDefinitions.UnitKinds.Contains(entity.Kind))
+            {
+                aliveUnits++;
+            }
+        }
+
+        if (_armyAccountingAliveUnits >= 0 && aliveUnits != _armyAccountingAliveUnits)
+        {
+            BumpArmyAccountingEpoch();
+        }
+
+        _armyAccountingAliveUnits = aliveUnits;
     }
 
     private EntityKind? ChooseBastionDeficit(WorldEntity factory)
@@ -90,30 +140,34 @@ public sealed partial class GameSimulation
             return null;
         }
 
-        foreach (var bastion in World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && entity.OwnerId == factory.OwnerId
-                && entity.Kind == EntityKind.Bastion)
-            .OrderBy(entity => entity.Id))
+        for (var bastionIndex = 0; bastionIndex < _scratchBastions.Count; bastionIndex++)
         {
-            foreach (var desired in bastion.BastionTemplate.OrderBy(pair => pair.Key))
+            var bastion = _scratchBastions[bastionIndex];
+            if (!bastion.IsAlive || bastion.OwnerId != factory.OwnerId)
             {
-                if (desired.Value <= 0 || !CanFactoryProduce(factory.Kind, desired.Key))
+                continue;
+            }
+
+            CollectSortedTemplateKinds(bastion);
+            for (var kindIndex = 0; kindIndex < _scratchTemplateKinds.Count; kindIndex++)
+            {
+                var desiredKind = _scratchTemplateKinds[kindIndex];
+                var desiredCount = bastion.BastionTemplate.GetValueOrDefault(desiredKind);
+                if (desiredCount <= 0 || !CanFactoryProduce(factory.Kind, desiredKind))
                 {
                     continue;
                 }
 
-                if (!MvpDefinitions.ProductionRecipes.TryGetValue(desired.Key, out var recipe)
+                if (!MvpDefinitions.ProductionRecipes.TryGetValue(desiredKind, out var recipe)
                     || !IsRecipeUnlockedForOwner(factory.OwnerId, recipe))
                 {
                     continue;
                 }
 
-                var current = CountBastionUnitSupply(bastion.Id, desired.Key);
-                if (current < desired.Value)
+                var current = CountBastionUnitSupply(bastion.Id, desiredKind);
+                if (current < desiredCount)
                 {
-                    return desired.Key;
+                    return desiredKind;
                 }
             }
         }
@@ -121,12 +175,20 @@ public sealed partial class GameSimulation
         return null;
     }
 
+    private void CollectSortedTemplateKinds(WorldEntity bastion)
+    {
+        _scratchTemplateKinds.Clear();
+        foreach (var pair in bastion.BastionTemplate)
+        {
+            _scratchTemplateKinds.Add(pair.Key);
+        }
+
+        _scratchTemplateKinds.Sort();
+    }
+
     private int CountBastionUnitSupply(int bastionId, EntityKind unitKind)
     {
-        var living = World.Entities.Count(entity =>
-            entity.IsAlive
-            && entity.AssignedBastionId == bastionId
-            && entity.Kind == unitKind);
+        var living = CountLivingAssignedToBastion(bastionId, unitKind);
 
         var bastion = World.GetEntity(bastionId);
         if (bastion?.OwnerId is null)
@@ -137,15 +199,39 @@ public sealed partial class GameSimulation
         return living + CountInFlightAttributedToBastion(bastion.OwnerId.Value, bastionId, unitKind);
     }
 
+    private int CountLivingAssignedToBastion(int bastionId, EntityKind unitKind)
+    {
+        var living = 0;
+        for (var i = 0; i < _scratchUnits.Count; i++)
+        {
+            var entity = _scratchUnits[i];
+            if (entity.IsAlive
+                && entity.AssignedBastionId == bastionId
+                && entity.Kind == unitKind)
+            {
+                living++;
+            }
+        }
+
+        return living;
+    }
+
     /// <summary>
     /// True when player-wide living+in-flight supply of <paramref name="unitKind"/> is below
     /// summed bastion templates for that kind, and total army supply is below template capacity.
     /// </summary>
     private bool CanStartUnitProduction(PlayerId ownerId, EntityKind unitKind)
     {
-        var kindDemand = World.Entities
-            .Where(entity => entity.IsAlive && entity.OwnerId == ownerId && entity.Kind == EntityKind.Bastion)
-            .Sum(bastion => bastion.BastionTemplate.GetValueOrDefault(unitKind));
+        var kindDemand = 0;
+        for (var i = 0; i < _scratchBastions.Count; i++)
+        {
+            var bastion = _scratchBastions[i];
+            if (bastion.IsAlive && bastion.OwnerId == ownerId)
+            {
+                kindDemand += bastion.BastionTemplate.GetValueOrDefault(unitKind);
+            }
+        }
+
         if (kindDemand <= 0)
         {
             return false;
@@ -161,36 +247,65 @@ public sealed partial class GameSimulation
 
     private int CountPlayerUnitKindSupply(PlayerId ownerId, EntityKind unitKind)
     {
-        var living = World.Entities.Count(entity =>
-            entity.IsAlive
-            && entity.OwnerId == ownerId
-            && entity.Kind == unitKind);
+        var living = 0;
+        for (var i = 0; i < _scratchUnits.Count; i++)
+        {
+            var entity = _scratchUnits[i];
+            if (entity.IsAlive && entity.OwnerId == ownerId && entity.Kind == unitKind)
+            {
+                living++;
+            }
+        }
+
         return living + CountInFlightOfKind(ownerId, unitKind);
     }
 
     private int CountPlayerArmySupply(PlayerId ownerId)
     {
-        var living = World.Entities.Count(entity =>
-            entity.IsAlive
-            && entity.OwnerId == ownerId
-            && MvpDefinitions.UnitKinds.Contains(entity.Kind));
-        var inFlight = World.Entities.Count(entity =>
-            entity.IsAlive
-            && entity.OwnerId == ownerId
-            && MvpDefinitions.FactoryKinds.Contains(entity.Kind)
-            && entity.ProductionTargetKind is not null
-            && entity.WorkTicksRemaining > 0
-            && MvpDefinitions.UnitKinds.Contains(entity.ProductionTargetKind.Value));
+        var living = 0;
+        for (var i = 0; i < _scratchUnits.Count; i++)
+        {
+            var entity = _scratchUnits[i];
+            if (entity.IsAlive && entity.OwnerId == ownerId)
+            {
+                living++;
+            }
+        }
+
+        var inFlight = 0;
+        for (var i = 0; i < _scratchFactories.Count; i++)
+        {
+            var entity = _scratchFactories[i];
+            if (entity.IsAlive
+                && entity.OwnerId == ownerId
+                && entity.ProductionTargetKind is not null
+                && entity.WorkTicksRemaining > 0
+                && MvpDefinitions.UnitKinds.Contains(entity.ProductionTargetKind.Value))
+            {
+                inFlight++;
+            }
+        }
+
         return living + inFlight;
     }
 
-    private int CountInFlightOfKind(PlayerId ownerId, EntityKind unitKind) =>
-        World.Entities.Count(entity =>
-            entity.IsAlive
-            && entity.OwnerId == ownerId
-            && MvpDefinitions.FactoryKinds.Contains(entity.Kind)
-            && entity.ProductionTargetKind == unitKind
-            && entity.WorkTicksRemaining > 0);
+    private int CountInFlightOfKind(PlayerId ownerId, EntityKind unitKind)
+    {
+        var count = 0;
+        for (var i = 0; i < _scratchFactories.Count; i++)
+        {
+            var entity = _scratchFactories[i];
+            if (entity.IsAlive
+                && entity.OwnerId == ownerId
+                && entity.ProductionTargetKind == unitKind
+                && entity.WorkTicksRemaining > 0)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
 
     /// <summary>
     /// Attributes in-flight factory crafts of <paramref name="unitKind"/> to bastions greedily:
@@ -198,44 +313,50 @@ public sealed partial class GameSimulation
     /// </summary>
     private int CountInFlightAttributedToBastion(PlayerId ownerId, int bastionId, EntityKind unitKind)
     {
-        var bastions = World.Entities
-            .Where(entity => entity.IsAlive && entity.OwnerId == ownerId && entity.Kind == EntityKind.Bastion)
-            .OrderBy(entity => entity.Id)
-            .ToList();
-
-        var remainingDeficit = new Dictionary<int, int>();
-        foreach (var bastion in bastions)
+        _scratchRemainingDeficit.Clear();
+        for (var i = 0; i < _scratchBastions.Count; i++)
         {
+            var bastion = _scratchBastions[i];
+            if (!bastion.IsAlive || bastion.OwnerId != ownerId)
+            {
+                continue;
+            }
+
             var desired = bastion.BastionTemplate.GetValueOrDefault(unitKind);
-            var living = World.Entities.Count(entity =>
-                entity.IsAlive
-                && entity.AssignedBastionId == bastion.Id
-                && entity.Kind == unitKind);
-            remainingDeficit[bastion.Id] = Math.Max(0, desired - living);
+            var living = CountLivingAssignedToBastion(bastion.Id, unitKind);
+            _scratchRemainingDeficit[bastion.Id] = Math.Max(0, desired - living);
         }
 
         var attributed = 0;
-        foreach (var factory in World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && entity.OwnerId == ownerId
-                && MvpDefinitions.FactoryKinds.Contains(entity.Kind)
-                && entity.ProductionTargetKind == unitKind
-                && entity.WorkTicksRemaining > 0)
-            .OrderBy(entity => entity.Id))
+        for (var factoryIndex = 0; factoryIndex < _scratchFactories.Count; factoryIndex++)
         {
-            _ = factory;
-            var assignee = remainingDeficit
-                .Where(pair => pair.Value > 0)
-                .OrderBy(pair => pair.Key)
-                .Select(pair => (int?)pair.Key)
-                .FirstOrDefault();
+            var factory = _scratchFactories[factoryIndex];
+            if (!factory.IsAlive
+                || factory.OwnerId != ownerId
+                || factory.ProductionTargetKind != unitKind
+                || factory.WorkTicksRemaining <= 0)
+            {
+                continue;
+            }
+
+            // Lowest bastion Id with remaining deficit (scratch bastions are Id-sorted).
+            int? assignee = null;
+            for (var bastionIndex = 0; bastionIndex < _scratchBastions.Count; bastionIndex++)
+            {
+                var candidateId = _scratchBastions[bastionIndex].Id;
+                if (_scratchRemainingDeficit.TryGetValue(candidateId, out var remaining) && remaining > 0)
+                {
+                    assignee = candidateId;
+                    break;
+                }
+            }
+
             if (assignee is null)
             {
                 continue;
             }
 
-            remainingDeficit[assignee.Value]--;
+            _scratchRemainingDeficit[assignee.Value]--;
             if (assignee.Value == bastionId)
             {
                 attributed++;
@@ -288,6 +409,10 @@ public sealed partial class GameSimulation
         }
 
         World.AddEntity(unit);
+        // Live mid-tick accounting: later factories in this tick must see the new living unit.
+        InsertSortedById(_scratchUnits, unit);
+        _armyAccountingAliveUnits++;
+        BumpArmyAccountingEpoch();
         return true;
     }
 
@@ -297,20 +422,21 @@ public sealed partial class GameSimulation
     /// </summary>
     private int? ChooseSpawnBastionId(PlayerId ownerId, EntityKind unitKind)
     {
-        foreach (var bastion in World.Entities
-            .Where(entity => entity.IsAlive && entity.OwnerId == ownerId && entity.Kind == EntityKind.Bastion)
-            .OrderBy(entity => entity.Id))
+        for (var i = 0; i < _scratchBastions.Count; i++)
         {
+            var bastion = _scratchBastions[i];
+            if (!bastion.IsAlive || bastion.OwnerId != ownerId)
+            {
+                continue;
+            }
+
             var desired = bastion.BastionTemplate.GetValueOrDefault(unitKind);
             if (desired <= 0)
             {
                 continue;
             }
 
-            var living = World.Entities.Count(entity =>
-                entity.IsAlive
-                && entity.AssignedBastionId == bastion.Id
-                && entity.Kind == unitKind);
+            var living = CountLivingAssignedToBastion(bastion.Id, unitKind);
             if (living < desired)
             {
                 return bastion.Id;
@@ -322,34 +448,51 @@ public sealed partial class GameSimulation
 
     private bool TryFindSpawnTileNear(WorldEntity factory, EntityKind unitKind, out TilePosition spawnTile)
     {
+        _spatialQueryIndex.Rebuild(World.Entities);
         var footprint = MvpDefinitions.GetFootprint(factory.Kind);
         for (var ring = 1; ring <= 6; ring++)
         {
-            var candidates = new List<TilePosition>();
+            _scratchSpawnCandidates.Clear();
             var minX = factory.Position.X - ring;
             var maxX = factory.Position.X + footprint.Width - 1 + ring;
             var minY = factory.Position.Y - ring;
             var maxY = factory.Position.Y + footprint.Height - 1 + ring;
             for (var x = minX; x <= maxX; x++)
             {
-                candidates.Add(new TilePosition(x, minY));
-                candidates.Add(new TilePosition(x, maxY));
+                _scratchSpawnCandidates.Add(new TilePosition(x, minY));
+                _scratchSpawnCandidates.Add(new TilePosition(x, maxY));
             }
 
             for (var y = minY + 1; y <= maxY - 1; y++)
             {
-                candidates.Add(new TilePosition(minX, y));
-                candidates.Add(new TilePosition(maxX, y));
+                _scratchSpawnCandidates.Add(new TilePosition(minX, y));
+                _scratchSpawnCandidates.Add(new TilePosition(maxX, y));
             }
 
-            foreach (var tile in candidates
-                         .Where(tile => World.IsInside(tile))
-                         .OrderBy(tile => tile.ManhattanDistance(factory.Position))
-                         .ThenBy(tile => tile.X)
-                         .ThenBy(tile => tile.Y))
+            // Deterministic order: Manhattan(factory) then X then Y (same as previous LINQ).
+            _scratchSpawnCandidates.Sort((left, right) =>
             {
+                var distCmp = left.ManhattanDistance(factory.Position).CompareTo(right.ManhattanDistance(factory.Position));
+                if (distCmp != 0)
+                {
+                    return distCmp;
+                }
+
+                var xCmp = left.X.CompareTo(right.X);
+                return xCmp != 0 ? xCmp : left.Y.CompareTo(right.Y);
+            });
+
+            for (var i = 0; i < _scratchSpawnCandidates.Count; i++)
+            {
+                var tile = _scratchSpawnCandidates[i];
+                if (!World.IsInside(tile))
+                {
+                    continue;
+                }
+
                 var probe = new WorldEntity(-1, unitKind, tile, factory.OwnerId);
-                if (IsGroundPassable(probe, tile) && CanOccupyWorldPosition(probe, probe.WorldPosition))
+                if (IsGroundPassable(probe, tile)
+                    && CanOccupyWorldPosition(probe, probe.WorldPosition, _spatialQueryIndex))
                 {
                     spawnTile = tile;
                     return true;
@@ -363,24 +506,27 @@ public sealed partial class GameSimulation
 
     private void ProcessBastions()
     {
-        foreach (var bastion in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Bastion).OrderBy(entity => entity.Id))
+        CollectSortedAliveEntities(_scratchBastions, static entity => entity.Kind == EntityKind.Bastion);
+        CollectSortedAliveEntities(_scratchUnits, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
+        _spatialQueryIndex.Rebuild(World.Entities);
+
+        for (var bastionIndex = 0; bastionIndex < _scratchBastions.Count; bastionIndex++)
         {
+            var bastion = _scratchBastions[bastionIndex];
             TryCompleteBastionOrder(bastion);
 
-            var units = World.Entities
-                .Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && MvpDefinitions.UnitKinds.Contains(entity.Kind))
-                .OrderBy(entity => entity.Id)
-                .ToList();
+            CollectUnitsAssignedToBastion(bastion.Id);
 
             // Home units keep Defend while bastion is Scout/AttackArea; garrison them,
             // but sortie only during active bastion Defend.
             var allowSortie = bastion.Order.Kind == BastionOrderKind.Defend;
             var threat = allowSortie
-                ? FindNearestEnemyInRange(bastion, GetBastionVisionRadius(bastion))
+                ? FindNearestEnemyInRange(bastion, GetBastionVisionRadius(bastion), _spatialQueryIndex)
                 : null;
 
-            foreach (var unit in units)
+            for (var unitIndex = 0; unitIndex < _scratchBastionUnits.Count; unitIndex++)
             {
+                var unit = _scratchBastionUnits[unitIndex];
                 if (unit.Order.Kind != BastionOrderKind.Defend)
                 {
                     continue;
@@ -401,6 +547,19 @@ public sealed partial class GameSimulation
                     ResetMovementPath(unit);
                     unit.IsGarrisoned = true;
                 }
+            }
+        }
+    }
+
+    private void CollectUnitsAssignedToBastion(int bastionId)
+    {
+        _scratchBastionUnits.Clear();
+        for (var i = 0; i < _scratchUnits.Count; i++)
+        {
+            var entity = _scratchUnits[i];
+            if (entity.IsAlive && entity.AssignedBastionId == bastionId)
+            {
+                _scratchBastionUnits.Add(entity);
             }
         }
     }
@@ -458,15 +617,25 @@ public sealed partial class GameSimulation
         {
             // Scouts join AttackArea for FoW; completion waits for every assigned unit still on
             // AttackArea (combat and scouts), so scout-only pushes and post-wipe leftovers can finish.
-            var attackUnits = World.Entities
-                .Where(entity =>
-                    entity.IsAlive
-                    && entity.AssignedBastionId == bastion.Id
-                    && MvpDefinitions.UnitKinds.Contains(entity.Kind)
-                    && entity.Order.Kind == BastionOrderKind.AttackArea)
-                .ToList();
-            if (attackUnits.Count > 0
-                && attackUnits.All(unit => unit.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1)))
+            CollectUnitsAssignedToBastion(bastion.Id);
+            var attackCount = 0;
+            var allArrived = true;
+            for (var i = 0; i < _scratchBastionUnits.Count; i++)
+            {
+                var entity = _scratchBastionUnits[i];
+                if (entity.Order.Kind != BastionOrderKind.AttackArea)
+                {
+                    continue;
+                }
+
+                attackCount++;
+                if (!entity.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1))
+                {
+                    allArrived = false;
+                }
+            }
+
+            if (attackCount > 0 && allArrived)
             {
                 SwitchBastionToDefend(bastion);
             }
@@ -476,11 +645,25 @@ public sealed partial class GameSimulation
 
         if (bastion.Order.Kind == BastionOrderKind.Scout && bastion.Order.Target is not null)
         {
-            var scouts = World.Entities
-                .Where(entity => entity.IsAlive && entity.AssignedBastionId == bastion.Id && entity.Kind == EntityKind.Scout)
-                .ToList();
-            if (scouts.Count > 0
-                && scouts.All(unit => unit.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1)))
+            CollectUnitsAssignedToBastion(bastion.Id);
+            var scoutCount = 0;
+            var allArrived = true;
+            for (var i = 0; i < _scratchBastionUnits.Count; i++)
+            {
+                var entity = _scratchBastionUnits[i];
+                if (entity.Kind != EntityKind.Scout)
+                {
+                    continue;
+                }
+
+                scoutCount++;
+                if (!entity.Position.IsWithinEuclideanRange(bastion.Order.Target.Value, 1))
+                {
+                    allArrived = false;
+                }
+            }
+
+            if (scoutCount > 0 && allArrived)
             {
                 SwitchBastionToDefend(bastion);
             }
@@ -491,11 +674,10 @@ public sealed partial class GameSimulation
     {
         var defend = new BastionOrder(BastionOrderKind.Defend);
         bastion.Order = defend;
-        foreach (var unit in World.Entities.Where(entity =>
-                     entity.IsAlive
-                     && entity.AssignedBastionId == bastion.Id
-                     && MvpDefinitions.UnitKinds.Contains(entity.Kind)))
+        CollectUnitsAssignedToBastion(bastion.Id);
+        for (var i = 0; i < _scratchBastionUnits.Count; i++)
         {
+            var unit = _scratchBastionUnits[i];
             unit.Order = defend;
             ResetMovementPath(unit);
         }
@@ -512,7 +694,7 @@ public sealed partial class GameSimulation
         return radius;
     }
 
-    private WorldEntity? FindNearestEnemyInRange(WorldEntity origin, int radius)
+    private WorldEntity? FindNearestEnemyInRange(WorldEntity origin, int radius, SpatialQueryIndex spatial)
     {
         if (origin.OwnerId is null)
         {
@@ -521,15 +703,12 @@ public sealed partial class GameSimulation
 
         WorldEntity? best = null;
         var bestDistanceSquared = 0;
-        var entities = World.Entities;
-        for (var i = 0; i < entities.Count; i++)
+        foreach (var entity in spatial.QueryByPositionInEuclideanRange(origin.Position, radius))
         {
-            var entity = entities[i];
             if (!entity.IsAlive
                 || entity.IsGarrisoned
                 || entity.OwnerId is null
-                || AreAllied(origin.OwnerId, entity.OwnerId)
-                || !origin.Position.IsWithinEuclideanRange(entity.Position, radius))
+                || AreAllied(origin.OwnerId, entity.OwnerId))
             {
                 continue;
             }

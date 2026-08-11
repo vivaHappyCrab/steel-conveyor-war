@@ -61,9 +61,14 @@ public static class ContentBootstrap
         var entities = LoadRequiredJson(configDirectory, "entities.json", EntityContentLoader.Parse, "entity catalog");
         var map = LoadRequiredJson(configDirectory, gameSettings.MapContentFile, MapSettingsLoader.Parse, "map settings");
         var buildCosts = LoadRequiredJson(configDirectory, gameSettings.BuildCostsContentFile, BuildCostContentLoader.Parse, "build-cost catalog");
+        var gameplayTables = LoadRequiredJson(
+            configDirectory,
+            gameSettings.GameplayTablesContentFile,
+            GameplayTablesLoader.Parse,
+            "gameplay-tables catalog");
 
         // R34: reject dangling inter-catalog references before creating the match (fail-fast, all-or-nothing).
-        ContentCrossValidator.Validate(catalog, buildCosts, entities, tiles);
+        ContentCrossValidator.Validate(catalog, buildCosts, entities, tiles, gameplayTables);
 
         var creation = new GameCreationOptions(
             gameSettings.DefaultRandomSeed,
@@ -73,6 +78,7 @@ public static class ContentBootstrap
             entities,
             map,
             buildCosts,
+            gameplayTables,
             gameSettings.TicksPerSecond);
 
         return new LoadedGameContent(gameJson, gameSettings, creation);

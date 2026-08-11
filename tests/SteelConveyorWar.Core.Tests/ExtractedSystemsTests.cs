@@ -124,10 +124,52 @@ public sealed class ExtractedSystemsTests
         Assert.Equal(64, hashA.Length);
     }
 
+    // R17: factory production + bastion orders must stay dual-run stable after accounting scratch refactor.
+    [Fact]
+    public void FactoryBastionAccounting_PreserveDeterministicHashAcrossRuns()
+    {
+        var hashA = RunFactoryBastionScenario(seed: 77);
+        var hashB = RunFactoryBastionScenario(seed: 77);
+        Assert.Equal(hashA, hashB);
+        Assert.Equal(64, hashA.Length);
+    }
+
     private static string RunTicks(int seed, int ticks)
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: seed);
         for (var i = 0; i < ticks; i++)
+        {
+            simulation.AdvanceTick();
+        }
+
+        return simulation.ComputeStateHash();
+    }
+
+    private static string RunFactoryBastionScenario(int seed)
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: seed);
+        var playerId = new PlayerId(1);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, new TilePosition(bastion.Position.X + 2, bastion.Position.Y + 6), out var factoryId));
+        for (var i = 0; i < 30; i++)
+        {
+            simulation.AdvanceTick();
+        }
+
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
+        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
+        simulation.AddItemToEntity(factoryId, ItemId.CopperPlate, 10);
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, playerId, EntityKind.BasicTank, 1));
+        Assert.True(simulation.TrySetFactoryProduction(factoryId, playerId, EntityKind.BasicTank));
+        var workTicks = MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 5;
+        for (var i = 0; i < workTicks; i++)
+        {
+            simulation.AdvanceTick();
+        }
+
+        var target = new TilePosition(bastion.Position.X + 10, bastion.Position.Y);
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, playerId, new BastionOrder(BastionOrderKind.AttackArea, target)));
+        for (var i = 0; i < 90; i++)
         {
             simulation.AdvanceTick();
         }

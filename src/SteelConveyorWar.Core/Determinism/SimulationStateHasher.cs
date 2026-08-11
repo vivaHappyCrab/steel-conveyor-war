@@ -8,7 +8,7 @@ namespace SteelConveyorWar.Core;
 /// Versioned deterministic fingerprint of authoritative simulation state.
 /// Dual-run equality is the primary gate. Checked-in goldens remain deferred (#80) while the hash surface churns;
 /// when added, refresh after intentional surface changes and bump <see cref="AlgorithmVersion"/> if needed.
-/// Authoritative doubles are hashed as IEEE bits; numeric policy for remaining FP is ADR 0001.
+/// Authoritative millitile positions are hashed as raw int64; numeric policy is ADR 0001.
 /// </summary>
 /// <remarks>
 /// Presentation exclusion gate (must stay out of the hash surface):
@@ -22,7 +22,7 @@ namespace SteelConveyorWar.Core;
 /// </remarks>
 public static class SimulationStateHasher
 {
-    public const int AlgorithmVersion = 7;
+    public const int AlgorithmVersion = 8;
 
     public static string Compute(GameSimulation simulation)
     {
@@ -139,8 +139,8 @@ public static class SimulationStateHasher
         writer.Write(entity.OwnerId?.Value ?? 0);
         writer.Write(entity.Position.X);
         writer.Write(entity.Position.Y);
-        writer.Write(BitConverter.DoubleToInt64Bits(entity.WorldPosition.X));
-        writer.Write(BitConverter.DoubleToInt64Bits(entity.WorldPosition.Y));
+        writer.Write(entity.WorldPosition.X);
+        writer.Write(entity.WorldPosition.Y);
         writer.Write((int)entity.Direction);
         writer.Write(entity.MaxHealth);
         writer.Write(entity.Health);

@@ -17,7 +17,8 @@ public sealed class ContentCrossValidationTests
             Research(),
             MvpBuildCostCatalog.Embedded,
             EntityCatalog.Empty,
-            TileCatalog.Empty);
+            TileCatalog.Empty,
+            GameplayTablesCatalog.Embedded);
     }
 
     [Fact]
@@ -27,7 +28,8 @@ public sealed class ContentCrossValidationTests
             Research(),
             BuildCostCatalog.Empty,
             EntityCatalog.Empty,
-            TileCatalog.Empty);
+            TileCatalog.Empty,
+            GameplayTablesCatalog.Empty);
     }
 
     [Fact]
@@ -46,7 +48,37 @@ public sealed class ContentCrossValidationTests
             });
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            ContentCrossValidator.Validate(Research(), buildCosts, EntityCatalog.Empty, TileCatalog.Empty));
+            ContentCrossValidator.Validate(
+                Research(),
+                buildCosts,
+                EntityCatalog.Empty,
+                TileCatalog.Empty,
+                GameplayTablesCatalog.Empty));
+        Assert.Contains("technology.does-not-exist", ex.Message);
+    }
+
+    [Fact]
+    public void ProductionRecipe_ReferencingUnknownTechnology_IsRejected()
+    {
+        var tables = GameplayTablesCatalog.Embedded with
+        {
+            ProductionRecipes = new Dictionary<EntityKind, ProductionRecipe>
+            {
+                [EntityKind.LightBot] = new(
+                    new Dictionary<ItemId, int> { [ItemId.IronPlate] = 5 },
+                    EntityKind.LightBot,
+                    60,
+                    new TechnologyId("technology.does-not-exist"))
+            }
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ContentCrossValidator.Validate(
+                Research(),
+                BuildCostCatalog.Empty,
+                EntityCatalog.Empty,
+                TileCatalog.Empty,
+                tables));
         Assert.Contains("technology.does-not-exist", ex.Message);
     }
 
@@ -61,7 +93,12 @@ public sealed class ContentCrossValidationTests
             });
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            ContentCrossValidator.Validate(Research(), BuildCostCatalog.Empty, entities, TileCatalog.Empty));
+            ContentCrossValidator.Validate(
+                Research(),
+                BuildCostCatalog.Empty,
+                entities,
+                TileCatalog.Empty,
+                GameplayTablesCatalog.Empty));
         Assert.Contains("NotARealEntityKind", ex.Message);
     }
 

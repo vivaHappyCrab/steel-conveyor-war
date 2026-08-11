@@ -38,37 +38,42 @@ public readonly record struct TilePosition(int X, int Y)
 
 public readonly record struct WorldSize(int Width, int Height);
 
-public readonly record struct WorldPosition(double X, double Y)
+public readonly record struct WorldPosition(long X, long Y)
 {
     public static WorldPosition FromTileCenter(TilePosition tile)
     {
-        return new WorldPosition(tile.X + 0.5, tile.Y + 0.5);
+        return new WorldPosition(WorldUnits.TileCenterMilli(tile.X), WorldUnits.TileCenterMilli(tile.Y));
     }
 
     public TilePosition ToTilePosition()
     {
-        return new TilePosition((int)Math.Floor(X), (int)Math.Floor(Y));
+        return new TilePosition(WorldUnits.MilliToTile(X), WorldUnits.MilliToTile(Y));
     }
 
     /// <summary>
-    /// Euclidean length. Prefer <see cref="DistanceSquaredTo"/> for ordering / radius checks
-    /// (ADR 0001). Remaining uses are movement step normalization under the MVP single-runtime
-    /// floating-point guarantee.
+    /// Euclidean length in millitiles via integer sqrt. Prefer <see cref="DistanceSquaredTo"/> for
+    /// ordering / radius checks (ADR 0001).
     /// </summary>
-    public double DistanceTo(WorldPosition other)
+    public long DistanceTo(WorldPosition other)
     {
-        return Math.Sqrt(DistanceSquaredTo(other));
+        return WorldUnits.IntegerSqrt(DistanceSquaredTo(other));
     }
 
-    public double DistanceSquaredTo(WorldPosition other)
+    public long DistanceSquaredTo(WorldPosition other)
     {
         var dx = X - other.X;
         var dy = Y - other.Y;
         return dx * dx + dy * dy;
     }
+
+    /// <summary>Presentation helper: millitiles → tile-space float.</summary>
+    public double ToTileSpaceX() => X / (double)WorldUnits.MilliPerTile;
+
+    /// <summary>Presentation helper: millitiles → tile-space float.</summary>
+    public double ToTileSpaceY() => Y / (double)WorldUnits.MilliPerTile;
 }
 
-public readonly record struct CollisionSize(double Radius);
+public readonly record struct CollisionSize(long RadiusMilli);
 
 public sealed record BastionOrder
 {

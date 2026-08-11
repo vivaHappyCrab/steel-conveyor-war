@@ -1,16 +1,14 @@
 # Сводный статус код-ревью R01–R34
 
-**Дата:** 2026-08-11
-**Сборка/тесты:** ✅ `dotnet build -c Release` и `dotnet test` прошли (после чистой пересборки, см. раздел «Постфикс сборки»).
+**Дата:** 2026-08-11 (доработка отложенных)
+**Сборка/тесты:** ✅ `dotnet build -c Release`; Core 382; SFML 62; bench quick + CI job `benchmark-quick`.
 
 ## Итоги
 
 - **Всего пунктов:** 34
-- **✅ Реализовано полностью:** 24
-- **🟡 Частично (ядро сделано, часть отложена):** 2 — R31, R33
-- **⏸️ Отложено:** 8 — R07, R15, R16, R17, R18, R20, R21, R22
-
-Все отложенные пункты объединяет одно: это детерминизм-критичные и/или бенч-гейтед рерайты горячих путей, DoD которых требует доказанной эквивалентности state-hash и/или бенчмарка. Их нельзя безопасно реализовать без прогонов на живой сборке, поэтому они сознательно отложены (см. «Почему отложено»).
+- **✅ Реализовано полностью:** 34
+- **🟡 Частично:** 0
+- **⏸️ Отложено:** 0
 
 ## Сводная таблица
 
@@ -22,7 +20,7 @@
 | R04 | Неизменяемый снапшот наблюдения                     | ✅ Реализовано |
 | R05 | Устранение cast к мутабельным коллекциям           | ✅ Реализовано |
 | R06 | Декомпозиция god-object (Power + Combat)            | ✅ Реализовано |
-| R07 | Spatial index для movement/collision               | ⏸️ Отложено |
+| R07 | Spatial index для movement/collision               | ✅ Реализовано |
 | R08 | Приказы командиров в state-hash                     | ✅ Реализовано |
 | R09 | Защита от некорректных (malformed) команд           | ✅ Реализовано |
 | R10 | Хеш манифеста контента                              | ✅ Реализовано |
@@ -30,51 +28,48 @@
 | R12 | Глубоко неизменяемые payload'ы                      | ✅ Реализовано |
 | R13 | Pending-команды в state-hash                        | ✅ Реализовано |
 | R14 | Устранение публичных mutation-хуков                | ✅ Реализовано |
-| R15 | Batched water-filling в распределении энергии       | ⏸️ Отложено |
-| R16 | FoW/tech-signatures: dirty-регионы вместо full-tick | ⏸️ Отложено |
-| R17 | Учёт factory/bastion (accounting)                  | ⏸️ Отложено |
-| R18 | Data-driven сущности                               | ⏸️ Отложено |
+| R15 | Batched water-filling в распределении энергии       | ✅ Реализовано |
+| R16 | FoW/tech-signatures: dirty-регионы                 | ✅ Реализовано |
+| R17 | Учёт factory/bastion (accounting)                  | ✅ Реализовано |
+| R18 | Data-driven сущности / gameplay tables             | ✅ Реализовано |
 | R19 | Контракт наблюдения для ботов                       | ✅ Реализовано |
-| R20 | Координаты в fixed-point                            | ⏸️ Отложено |
-| R21 | Декомпозиция SFML-сессии                            | ⏸️ Отложено |
-| R22 | Бенч-гейт производительности                        | ⏸️ Отложено |
+| R20 | Координаты в millitiles (fixed-point)               | ✅ Реализовано |
+| R21 | Декомпозиция SFML-сессии                            | ✅ Реализовано |
+| R22 | Бенч-гейт производительности                        | ✅ Реализовано |
 | R23 | Ограничение catch-up фиксированного шага            | ✅ Реализовано |
 | R24 | Валидация некорректного local player                | ✅ Реализовано |
 | R25 | Общий bootstrap хостов (Client/Headless)            | ✅ Реализовано |
-| R26 | Исследование через вражескую лабораторию (авторизация) | ✅ Реализовано |
+| R26 | Исследование через вражескую лабораторию           | ✅ Реализовано |
 | R27 | FoW для selection и трассеров                        | ✅ Реализовано |
 | R28 | Валидация research-контента                          | ✅ Реализовано |
 | R29 | Детерминизм распределения research                  | ✅ Реализовано |
 | R30 | Build-меню из рантайм-каталога                       | ✅ Реализовано |
-| R31 | Состав ростера и победа по командам                 | 🟡 Ядро сделано, часть отложена |
+| R31 | Состав ростера и победа по командам                 | ✅ Реализовано |
 | R32 | Настраиваемый TPS                                   | ✅ Реализовано |
-| R33 | SFML rendering hotspots                             | 🟡 Двойной обход убран, кэш миникарты отложен |
+| R33 | SFML rendering hotspots (minimap cache)             | ✅ Реализовано |
 | R34 | Кросс-каталожная валидация схем контента            | ✅ Реализовано |
 
-## Частично реализованные
+## Доработка отложенных (этот проход)
 
-**R31 — состав ростера и победа по командам.** Ядро корректности сделано: победа считается по командам (`TeamId`), а не по числу выживших игроков; добавлено `WinnerTeamId`; контракт 1v1 (`WinnerId`) сохранён; тесты в `TeamVictoryTests.cs`. Отложено: параметризация стартовых позиций из map-схемы (`CreateStartingEntities` пока хардкодит `PlayerId(1)/(2)` с зеркальной геометрией) — это детерминизм-чувствительно и требует расширения схемы карты.
+| ID | Что сделано |
+|----|-------------|
+| R22 | `tests/SteelConveyorWar.Benchmarks` (BenchmarkDotNet + `--quick` soft gate); CI job `benchmark-quick`; property round-trip serializer tests |
+| R15 | Batched water-fill в `PowerSystem`; `EnergyBatchedWaterfillTests` |
+| R07 | `SpatialQueryIndex` + `PathfindingWorkspace`; movement/threat на spatial; dual-run тесты |
+| R16 | FoW dirty tracking + `GetFogDirtyTiles`; инкрементальные tech signatures; `FogDirtyRegionTests` |
+| R17 | Scratch-индексы factory/bastion/units + idle-skip epoch; live mid-tick spawn |
+| R33 | Minimap `RenderTexture` + `MinimapDirtyTracker` (dirty FoW/entities) |
+| R31 | `MapPlayerDefinition` startCommander/Bastion/Hub + color; `CreateStartingEntities` из карты; цвета в `WorldRenderer` |
+| R21 | `SessionState` + `InputCommandMapper` + unit-тесты без окна |
+| R18 | `config/gameplay-tables.json` + `GameplayTablesCatalog`/`Loader`; `MvpDefinitions` делегирует Embedded; manifest v2 |
+| R20 | `WorldPosition`/`CollisionSize` millitiles; `AlgorithmVersion=8`; ADR 0001 обновлён |
 
-**R33 — SFML rendering hotspots.** Сделан безопасный пункт: устранён двойной обход видимых сущностей за кадр (единый проход-разбиение вместо двух `.Where`), результат отрисовки идентичен. Отложено: кэш миникарты в текстуру с обновлением только dirty-регионов — завязано на R16 (событийные dirty-регионы FoW) и требует бенч-гейта рендера (R22). Возвращать вместе с R16.
+## Верификация
 
-## Почему отложено
-
-Отложенные пункты сгруппированы по причине:
-
-**Детерминизм-критичные рерайты горячих путей (нужны baseline state-hash + доказательство побитовой эквивалентности прогоном):** R07 (movement/collision spatial index), R15 (batched water-filling энергии), R16 (FoW dirty-регионы). Любое расхождение в порядке обхода/тай-брейках **тихо** сдвигает state-hash и ломает lockstep, а проверить это без живой сборки нельзя.
-
-**Крупные архитектурные изменения контракта:** R17 (учёт factory/bastion), R18 (data-driven сущности), R20 (fixed-point координаты вместо FP), R21 (декомпозиция SFML-сессии). Широкий охват, затрагивают детерминизм и/или большой объём кода; требуют отдельной итерации с верификацией.
-
-**Инфраструктурный gate:** R22 (бенч-харнесс производительности). Он — предпосылка для перф-кластера: без него нельзя подтвердить severity и выигрыш R07/R15/R16 и кэша миникарты R33.
-
-**Рекомендуемый порядок возврата:** сначала R22 (бенч-харнесс) → затем перф-кластер R07/R15/R16 (+ миникарта R33) с проверкой эквивалентности state-hash на каждом шаге → отдельно архитектурные R18/R20/R21 и R17. R31-хвост (стартовые позиции из схемы) можно делать независимо вместе с работой над map-схемой.
-
-## Постфикс сборки (2026-08-11)
-
-После чистой пересборки (удаление `bin/`/`obj/` + `dotnet build -c Release`) всплыли и были устранены реальные осколки предыдущих рефакторингов:
-
-- **CS8506** `SimulationCommandSerializer.cs` — switch-выражение `FromDto` капчилось в `var`; заменено на целевой тип `ISimulationCommand command = dto.Kind switch …` (поведение не изменилось).
-- **CS0103** `GameSimulation.cs` — тест-хелпер звал `ComputeDamageAgainst`, переехавший в `CombatSystem` при R06; добавлен internal-мост `CombatSystem.ComputeDamageForTests`, call-site делегирует на `_combatSystem`.
-- **CS0122** `CombatShotVisibilityTests.cs` (R27) — тест в `Sfml.Tests` обращался к internal-хелперам Core; в `SteelConveyorWar.Core.csproj` добавлен `InternalsVisibleTo` для `SteelConveyorWar.Sfml.Tests` (god-mode-методы остаются internal, публичный API не расширен).
-
-Ранее наблюдавшиеся CS0246/CS0117 по `SelectResearchCommand`/`SelectResearch` были артефактами устаревшей инкрементальной сборки и исчезли после чистой пересборки.
+```powershell
+dotnet build SteelConveyorWar.sln -c Release
+dotnet test tests/SteelConveyorWar.Core.Tests -c Release   # 382
+dotnet test tests/SteelConveyorWar.Sfml.Tests -c Release    # 62
+dotnet run --project tests/SteelConveyorWar.Benchmarks -c Release -- --quick
+pwsh eng/verify.ps1
+```

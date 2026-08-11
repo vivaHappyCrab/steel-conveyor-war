@@ -34,7 +34,10 @@ public static class GameSettingsLoader
             string.IsNullOrWhiteSpace(dto.Research?.Content) ? GameSettings.Default.ResearchContentFile : dto.Research.Content,
             string.IsNullOrWhiteSpace(dto.Research?.Profile) ? GameSettings.Default.ResearchProfileId : dto.Research.Profile,
             string.IsNullOrWhiteSpace(dto.Map?.Content) ? GameSettings.Default.MapContentFile : dto.Map.Content,
-            string.IsNullOrWhiteSpace(dto.BuildCosts?.Content) ? GameSettings.Default.BuildCostsContentFile : dto.BuildCosts.Content);
+            string.IsNullOrWhiteSpace(dto.BuildCosts?.Content) ? GameSettings.Default.BuildCostsContentFile : dto.BuildCosts.Content,
+            string.IsNullOrWhiteSpace(dto.GameplayTables?.Content)
+                ? GameSettings.Default.GameplayTablesContentFile
+                : dto.GameplayTables.Content);
     }
 
     private static int ResolveTicksPerSecond(int? configured)
@@ -62,6 +65,7 @@ public static class GameSettingsLoader
         public ResearchConfigDto? Research { get; set; }
         public MapConfigRefDto? Map { get; set; }
         public BuildCostsConfigRefDto? BuildCosts { get; set; }
+        public GameplayTablesConfigRefDto? GameplayTables { get; set; }
     }
 
     private sealed class SimulationConfigDto
@@ -84,5 +88,10 @@ public static class GameSettingsLoader
     private sealed class BuildCostsConfigRefDto
     {
         public string Content { get; set; } = "build-costs.json";
+    }
+
+    private sealed class GameplayTablesConfigRefDto
+    {
+        public string Content { get; set; } = "gameplay-tables.json";
     }
 }

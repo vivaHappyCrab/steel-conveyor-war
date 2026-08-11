@@ -8,6 +8,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="SteelConveyorWar.Core.Tests" />
     <InternalsVisibleTo Include="SteelConveyorWar.Sfml.Tests" />
+    <InternalsVisibleTo Include="SteelConveyorWar.Benchmarks" />
   </ItemGroup>
 
 </Project>

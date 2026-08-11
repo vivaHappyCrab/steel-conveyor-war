@@ -92,4 +92,28 @@ public sealed class ContentManifestHashTests
         var b = GameWithBuildCosts(WithMineCost(21));
         Assert.NotEqual(SimulationStateHasher.Compute(a), SimulationStateHasher.Compute(b));
     }
+
+    [Fact]
+    public void GameplayTablesIdentity_DiffersWhenStatsChange()
+    {
+        var a = SimulationContentManifest.ComputeGameplayTablesIdentity(GameplayTablesCatalog.Embedded);
+        var changedStats = GameplayTablesCatalog.Embedded.EntityStats.ToDictionary(pair => pair.Key, pair => pair.Value);
+        changedStats[EntityKind.Commander] = GameplayTablesCatalog.Embedded.GetStats(EntityKind.Commander) with { MaxHealth = 301 };
+        var b = SimulationContentManifest.ComputeGameplayTablesIdentity(
+            GameplayTablesCatalog.Embedded with { EntityStats = changedStats });
+        Assert.NotEqual(a, b);
+    }
+
+    [Fact]
+    public void Manifest_DiffersForDivergentGameplayTables()
+    {
+        var changedStats = GameplayTablesCatalog.Embedded.EntityStats.ToDictionary(pair => pair.Key, pair => pair.Value);
+        changedStats[EntityKind.Commander] = GameplayTablesCatalog.Embedded.GetStats(EntityKind.Commander) with { MaxHealth = 301 };
+        var overridden = GameplayTablesCatalog.Embedded with { EntityStats = changedStats };
+
+        var a = GameSimulation.CreateNewGame(GameCreationOptions.Default with { RandomSeed = 42 });
+        var b = GameSimulation.CreateNewGame(
+            GameCreationOptions.Default with { RandomSeed = 42, GameplayTables = overridden });
+        Assert.NotEqual(SimulationContentManifest.Compute(a), SimulationContentManifest.Compute(b));
+    }
 }

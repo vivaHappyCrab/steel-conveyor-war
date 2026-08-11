@@ -15,22 +15,23 @@ public sealed partial class GameSimulation
 
     private void ProcessMovement()
     {
+        _spatialQueryIndex.Rebuild(World.Entities);
         CollectSortedAliveEntities(_scratchEntities, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
         for (var i = 0; i < _scratchEntities.Count; i++)
         {
             var unit = _scratchEntities[i];
-            var target = GetMovementTarget(unit);
+            var target = GetMovementTarget(unit, _spatialQueryIndex);
             if (target is null || unit.Position == target.Value)
             {
                 continue;
             }
 
             unit.IsGarrisoned = false;
-            MoveMobileEntityTowardTile(unit, target.Value);
+            MoveMobileEntityTowardTile(unit, target.Value, _spatialQueryIndex);
         }
     }
 
-    private TilePosition? GetMovementTarget(WorldEntity unit)
+    private TilePosition? GetMovementTarget(WorldEntity unit, SpatialQueryIndex spatial)
     {
         if (unit.IsGarrisoned)
         {
@@ -69,7 +70,7 @@ public sealed partial class GameSimulation
             if (bastion.Order.Kind == BastionOrderKind.Defend)
             {
                 var visionRadius = GetBastionVisionRadius(bastion);
-                var threat = FindNearestEnemyInRange(bastion, visionRadius);
+                var threat = FindNearestEnemyInRange(bastion, visionRadius, spatial);
                 if (threat is not null)
                 {
                     return threat.Position;
@@ -87,7 +88,7 @@ public sealed partial class GameSimulation
         return null;
     }
 
-    private bool MoveMobileEntityTowardTile(WorldEntity entity, TilePosition target)
+    private bool MoveMobileEntityTowardTile(WorldEntity entity, TilePosition target, SpatialQueryIndex spatial)
     {
         if (!World.IsInside(target))
         {
@@ -119,35 +120,49 @@ public sealed partial class GameSimulation
         }
 
         var waypointPosition = WorldPosition.FromTileCenter(entity.CurrentWaypoint.Value);
-        var distance = entity.WorldPosition.DistanceTo(waypointPosition);
-        if (distance <= MvpDefinitions.MobileMoveWorldUnitsPerTick)
+        var distanceSq = entity.WorldPosition.DistanceSquaredTo(waypointPosition);
+        var step = MvpDefinitions.MobileMoveWorldUnitsPerTick;
+        if (distanceSq <= step * step)
         {
-            if (!CanOccupyWorldPosition(entity, waypointPosition))
+            if (!CanOccupyWorldPosition(entity, waypointPosition, spatial))
             {
                 ResetMovementPath(entity);
                 return false;
             }
 
             entity.WorldPosition = waypointPosition;
-            World.RelocateEntity(entity, entity.CurrentWaypoint.Value);
+            RelocateMobileEntity(entity, entity.CurrentWaypoint.Value, spatial);
             entity.CurrentWaypoint = null;
             return entity.MovementPath.Count == 0 && (entity.Position == target || !IsGroundPassable(entity, target));
         }
 
         var dx = waypointPosition.X - entity.WorldPosition.X;
         var dy = waypointPosition.Y - entity.WorldPosition.Y;
+        var distance = WorldUnits.IntegerSqrt(distanceSq);
+        if (distance <= 0)
+        {
+            return false;
+        }
+
         var nextPosition = new WorldPosition(
-            entity.WorldPosition.X + dx / distance * MvpDefinitions.MobileMoveWorldUnitsPerTick,
-            entity.WorldPosition.Y + dy / distance * MvpDefinitions.MobileMoveWorldUnitsPerTick);
-        if (!CanOccupyWorldPosition(entity, nextPosition))
+            entity.WorldPosition.X + dx * step / distance,
+            entity.WorldPosition.Y + dy * step / distance);
+        if (!CanOccupyWorldPosition(entity, nextPosition, spatial))
         {
             ResetMovementPath(entity);
             return false;
         }
 
         entity.WorldPosition = nextPosition;
-        World.RelocateEntity(entity, nextPosition.ToTilePosition());
+        RelocateMobileEntity(entity, nextPosition.ToTilePosition(), spatial);
         return false;
+    }
+
+    private void RelocateMobileEntity(WorldEntity entity, TilePosition to, SpatialQueryIndex spatial)
+    {
+        var from = entity.Position;
+        World.RelocateEntity(entity, to);
+        spatial.Relocate(entity, from, entity.Position);
     }
 
     private List<TilePosition> FindGroundPath(WorldEntity entity, TilePosition start, TilePosition target)
@@ -171,9 +186,11 @@ public sealed partial class GameSimulation
             return [];
         }
 
-        var open = new PriorityQueue<TilePosition, (int F, int H, int Y, int X)>();
-        var previous = new Dictionary<TilePosition, TilePosition?>();
-        var costSoFar = new Dictionary<TilePosition, int>();
+        var workspace = _pathfindingWorkspace;
+        workspace.Clear();
+        var open = workspace.Open;
+        var previous = workspace.Previous;
+        var costSoFar = workspace.CostSoFar;
         previous[start] = null;
         costSoFar[start] = 0;
         open.Enqueue(start, (OctileDistance(start, target), OctileDistance(start, target), start.Y, start.X));
@@ -317,24 +334,34 @@ public sealed partial class GameSimulation
 
     private bool IsGroundPassable(WorldEntity mover, TilePosition tile)
     {
-        return World.IsInside(tile) && !World.GetEntitiesAt(tile)
-            .Any(entity => entity.Id != mover.Id && entity.IsAlive && MvpDefinitions.BlocksGroundMovement(entity.Kind));
+        if (!World.IsInside(tile))
+        {
+            return false;
+        }
+
+        var moverId = mover.Id;
+        return !World.AnyAliveAt(
+            tile,
+            entity => entity.Id != moverId && MvpDefinitions.BlocksGroundMovement(entity.Kind));
     }
 
-    private bool CanOccupyWorldPosition(WorldEntity mover, WorldPosition position)
+    private bool CanOccupyWorldPosition(WorldEntity mover, WorldPosition position, SpatialQueryIndex spatial)
     {
         if (!World.IsInside(position.ToTilePosition()))
         {
             return false;
         }
 
-        var radius = MvpDefinitions.GetCollisionSize(mover.Kind).Radius;
+        var radius = MvpDefinitions.GetCollisionSize(mover.Kind).RadiusMilli;
         if (radius <= 0)
         {
             return true;
         }
 
-        foreach (var entity in World.Entities)
+        var moverTile = position.ToTilePosition();
+        foreach (var entity in spatial.QueryByPositionInEuclideanRange(
+                     moverTile,
+                     SpatialQueryIndex.CollisionNeighborhoodRadiusTiles))
         {
             if (entity.Id == mover.Id || !entity.IsAlive || entity.IsGarrisoned)
             {
@@ -358,7 +385,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            var otherRadius = MvpDefinitions.GetCollisionSize(entity.Kind).Radius;
+            var otherRadius = MvpDefinitions.GetCollisionSize(entity.Kind).RadiusMilli;
             if (otherRadius <= 0)
             {
                 continue;
@@ -403,15 +430,15 @@ public sealed partial class GameSimulation
         return entity.MoveTarget is not null && entity.MoveTarget.Value != entity.Position;
     }
 
-    private static bool CircleIntersectsEntityFootprint(WorldPosition position, double radius, WorldEntity obstacle)
+    private static bool CircleIntersectsEntityFootprint(WorldPosition position, long radiusMilli, WorldEntity obstacle)
     {
-        return DistanceSquaredToEntityFootprint(position, obstacle) < radius * radius;
+        return DistanceSquaredToEntityFootprint(position, obstacle) < radiusMilli * radiusMilli;
     }
 
-    private static bool MovesOutOfExistingOverlap(WorldEntity mover, WorldPosition nextPosition, double radius, WorldEntity obstacle)
+    private static bool MovesOutOfExistingOverlap(WorldEntity mover, WorldPosition nextPosition, long radiusMilli, WorldEntity obstacle)
     {
         var currentDistanceSq = DistanceSquaredToEntityFootprint(mover.WorldPosition, obstacle);
-        var radiusSq = radius * radius;
+        var radiusSq = radiusMilli * radiusMilli;
         if (currentDistanceSq >= radiusSq)
         {
             return false;
@@ -420,14 +447,18 @@ public sealed partial class GameSimulation
         return DistanceSquaredToEntityFootprint(nextPosition, obstacle) > currentDistanceSq;
     }
 
-    private static double DistanceSquaredToEntityFootprint(WorldPosition position, WorldEntity obstacle)
+    private static long DistanceSquaredToEntityFootprint(WorldPosition position, WorldEntity obstacle)
     {
         var footprintKind = obstacle.Kind == EntityKind.GhostBuild && obstacle.BuildTargetKind is not null
             ? obstacle.BuildTargetKind.Value
             : obstacle.Kind;
         var footprint = MvpDefinitions.GetFootprint(footprintKind);
-        var closestX = Math.Clamp(position.X, obstacle.Position.X, obstacle.Position.X + footprint.Width);
-        var closestY = Math.Clamp(position.Y, obstacle.Position.Y, obstacle.Position.Y + footprint.Height);
+        var minX = WorldUnits.TileToMilli(obstacle.Position.X);
+        var maxX = WorldUnits.TileToMilli(obstacle.Position.X + footprint.Width);
+        var minY = WorldUnits.TileToMilli(obstacle.Position.Y);
+        var maxY = WorldUnits.TileToMilli(obstacle.Position.Y + footprint.Height);
+        var closestX = Math.Clamp(position.X, minX, maxX);
+        var closestY = Math.Clamp(position.Y, minY, maxY);
         var dx = position.X - closestX;
         var dy = position.Y - closestY;
         return dx * dx + dy * dy;

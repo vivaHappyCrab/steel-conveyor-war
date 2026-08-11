@@ -100,6 +100,41 @@ jobs:
         run: |
           xvfb-run -a dotnet run --project src/SteelConveyorWar.Client -c Release --no-build -- --smoke-test
 
+  # R22: performance soft-gate (quick alloc/tick smoke). Hard thresholds via SCW_BENCH_HARD_GATE=1 after calibration.
+  benchmark:
+    name: benchmark-quick
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore and build benchmarks
+        run: |
+          dotnet restore tests/SteelConveyorWar.Benchmarks/SteelConveyorWar.Benchmarks.csproj --locked-mode
+          dotnet build tests/SteelConveyorWar.Benchmarks/SteelConveyorWar.Benchmarks.csproj -c Release --no-restore /p:ContinuousIntegrationBuild=true
+
+      - name: Quick tick/alloc matrix
+        run: >
+          dotnet run --project tests/SteelConveyorWar.Benchmarks
+          -c Release
+          --no-build
+          -- --quick --json-out artifacts/benchmarks/results.json
+
+      - name: Upload benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: benchmark-quick
+          path: artifacts/benchmarks/**
+          if-no-files-found: warn
+          retention-days: 14
+
   pr-metadata:
     name: pr-metadata
     if: github.event_name == 'pull_request'

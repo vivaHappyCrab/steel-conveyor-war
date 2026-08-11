@@ -18,13 +18,15 @@ public static class ContentCrossValidator
         ResearchCatalog research,
         BuildCostCatalog buildCosts,
         EntityCatalog entities,
-        TileCatalog tiles)
+        TileCatalog tiles,
+        GameplayTablesCatalog? gameplayTables = null)
     {
         ArgumentNullException.ThrowIfNull(research);
         ArgumentNullException.ThrowIfNull(buildCosts);
         ArgumentNullException.ThrowIfNull(entities);
         ArgumentNullException.ThrowIfNull(tiles);
 
+        var tables = gameplayTables ?? GameplayTablesCatalog.Empty;
         var errors = new List<string>();
 
         // build-costs → research: every tech gate must resolve to a known technology, otherwise the
@@ -35,6 +37,18 @@ public static class ContentCrossValidator
             {
                 errors.Add(
                     $"build-costs entry '{kind}' requires technology '{requiredTech.Value}', " +
+                    "which is not present in the research catalog.");
+            }
+        }
+
+        // gameplay-tables → research: production recipe tech gates must resolve.
+        foreach (var (kind, recipe) in tables.ProductionRecipes)
+        {
+            if (recipe.RequiredTechnology is { } requiredTech
+                && !research.Technologies.ContainsKey(requiredTech))
+            {
+                errors.Add(
+                    $"gameplay-tables productionRecipes '{kind}' requires technology '{requiredTech.Value}', " +
                     "which is not present in the research catalog.");
             }
         }

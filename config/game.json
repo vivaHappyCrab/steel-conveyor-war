@@ -16,6 +16,9 @@
   "buildCosts": {
     "content": "build-costs.json"
   },
+  "gameplayTables": {
+    "content": "gameplay-tables.json"
+  },
   "window": {
     "width": 1280,
     "height": 720,

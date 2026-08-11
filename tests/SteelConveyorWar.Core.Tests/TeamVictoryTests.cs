@@ -19,24 +19,19 @@ public sealed class TeamVictoryTests
     [Fact]
     public void TwoVsTwo_DoesNotEndAtFirstCasualty_EndsWhenOneSideFullyDefeated()
     {
-        // Teams: players 1 & 2 -> team 1; players 3 & 4 -> team 2.
+        // Teams: players 1 & 2 -> team 1; players 3 & 4 -> team 2. Starts are explicit so all four seats spawn.
         var map = new MapSettings(
             1,
             "2v2",
             [
-                new MapPlayerDefinition(1, "Blue", 1),
-                new MapPlayerDefinition(2, "BlueAlly", 1),
-                new MapPlayerDefinition(3, "Red", 2),
-                new MapPlayerDefinition(4, "RedAlly", 2)
+                new MapPlayerDefinition(1, "Blue", 1, new(4, 56), new(1, 56), new(5, 58)),
+                new MapPlayerDefinition(2, "BlueAlly", 1, new(4, 20), new(1, 20), new(5, 22)),
+                new MapPlayerDefinition(3, "Red", 2, new(187, 56), new(188, 56), new(186, 58)),
+                new MapPlayerDefinition(4, "RedAlly", 2, new(187, 100), new(188, 100), new(186, 102))
             ]);
         var simulation = GameSimulation.CreateNewGame(GameCreationOptions.Default with { RandomSeed = 42, Map = map });
         Assert.Equal(4, simulation.Players.Count);
-
-        // The starting roster geometry only seats players 1 & 2; give the other seats a critical
-        // entity so all four sides are "alive" at the outset. Positions are far from every enemy so
-        // no combat resolves during the ticks below.
-        Assert.True(simulation.TrySpawnEntityForTests(EntityKind.Commander, new TilePosition(10, 10), new PlayerId(3), out _));
-        Assert.True(simulation.TrySpawnEntityForTests(EntityKind.Commander, new TilePosition(10, 100), new PlayerId(4), out _));
+        Assert.Equal(4, simulation.World.Entities.Count(entity => entity.Kind == EntityKind.Commander && entity.IsAlive));
 
         simulation.AdvanceTick();
         Assert.Equal(GameStatus.InProgress, simulation.Status);

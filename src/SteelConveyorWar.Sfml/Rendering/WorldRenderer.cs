@@ -58,12 +58,12 @@ internal static class WorldRenderer
 
         foreach (var entity in structureDraws)
         {
-            DrawEntity(target, simulation, entity, selectedEntityId == entity.Id);
+            DrawEntity(target, simulation, localPlayer, entity, selectedEntityId == entity.Id);
         }
 
         foreach (var entity in unitDraws)
         {
-            DrawEntity(target, simulation, entity, selectedEntityId == entity.Id);
+            DrawEntity(target, simulation, localPlayer, entity, selectedEntityId == entity.Id);
         }
 
         DrawCombatShots(target, combatShots);
@@ -173,7 +173,12 @@ internal static class WorldRenderer
             || simulation.GetVisibility(localPlayer, shot.To.ToTilePosition()) == VisibilityState.Visible;
     }
 
-    internal static void DrawEntity(IRenderTarget target, GameSimulation simulation, WorldEntity entity, bool isSelected)
+    internal static void DrawEntity(
+        IRenderTarget target,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        WorldEntity entity,
+        bool isSelected)
     {
         var drawKind = entity.Kind == EntityKind.GhostBuild && entity.BuildTargetKind is not null
             ? entity.BuildTargetKind.Value
@@ -185,12 +190,12 @@ internal static class WorldRenderer
             : new Vector2f(
                 entity.Position.X * SfmlUiLayout.TileSize + footprint.Width * SfmlUiLayout.TileSize / 2f,
                 entity.Position.Y * SfmlUiLayout.TileSize + footprint.Height * SfmlUiLayout.TileSize / 2f);
-        var color = GetEntityColor(entity);
+        var color = GetEntityColor(simulation, entity);
         var ink = new Color(245, 245, 245, 220);
 
         if (isMobile)
         {
-            DrawMobileUnit(target, entity, center, color, ink);
+            DrawMobileUnit(target, entity, localPlayer, center, color, ink);
             if (isSelected)
             {
                 DrawMobileSelection(target, entity);
@@ -238,20 +243,27 @@ internal static class WorldRenderer
         }
     }
 
-    internal static void DrawMobileUnit(IRenderTarget target, WorldEntity entity, Vector2f center, Color color, Color ink)
+    internal static void DrawMobileUnit(
+        IRenderTarget target,
+        WorldEntity entity,
+        PlayerId localPlayer,
+        Vector2f center,
+        Color color,
+        Color ink)
     {
-        var radius = (float)(MvpDefinitions.GetCollisionSize(entity.Kind).Radius * SfmlUiLayout.TileSize);
+        var radius = (float)(MvpDefinitions.GetCollisionSize(entity.Kind).RadiusMilli / (double)WorldUnits.MilliPerTile * SfmlUiLayout.TileSize);
         if (radius < SfmlUiLayout.TileSize * 0.2f)
         {
             radius = SfmlUiLayout.TileSize * 0.2f;
         }
 
+        var outline = entity.OwnerId == localPlayer ? Color.White : new Color(230, 140, 140);
         if (entity.Kind == EntityKind.Commander)
         {
             using var unit = new CircleShape(radius)
             {
                 FillColor = color,
-                OutlineColor = entity.OwnerId == new PlayerId(1) ? Color.White : new Color(230, 140, 140),
+                OutlineColor = outline,
                 OutlineThickness = 2f,
                 Origin = new Vector2f(radius, radius),
                 Position = center
@@ -263,7 +275,7 @@ internal static class WorldRenderer
             using var unit = new ConvexShape(3)
             {
                 FillColor = color,
-                OutlineColor = entity.OwnerId == new PlayerId(1) ? Color.White : new Color(230, 140, 140),
+                OutlineColor = outline,
                 OutlineThickness = 2f,
                 Position = center
             };
@@ -278,7 +290,7 @@ internal static class WorldRenderer
             using var unit = new RectangleShape(new Vector2f(side, side))
             {
                 FillColor = color,
-                OutlineColor = entity.OwnerId == new PlayerId(1) ? Color.White : new Color(230, 140, 140),
+                OutlineColor = outline,
                 OutlineThickness = 2f,
                 Origin = new Vector2f(side / 2f, side / 2f),
                 Position = center
@@ -322,7 +334,7 @@ internal static class WorldRenderer
     internal static void DrawMobileSelection(IRenderTarget target, WorldEntity entity)
     {
         var center = ToScreen(entity.WorldPosition);
-        var radius = (float)(MvpDefinitions.GetCollisionSize(entity.Kind).Radius * SfmlUiLayout.TileSize) + SfmlUiLayout.TileSize * 0.1f;
+        var radius = (float)(MvpDefinitions.GetCollisionSize(entity.Kind).RadiusMilli / (double)WorldUnits.MilliPerTile * SfmlUiLayout.TileSize) + SfmlUiLayout.TileSize * 0.1f;
         if (radius < SfmlUiLayout.TileSize * 0.3f)
         {
             radius = SfmlUiLayout.TileSize * 0.3f;
@@ -371,7 +383,9 @@ internal static class WorldRenderer
 
     internal static Vector2f ToScreen(WorldPosition position)
     {
-        return new Vector2f((float)(position.X * SfmlUiLayout.TileSize), (float)(position.Y * SfmlUiLayout.TileSize));
+        return new Vector2f(
+            (float)(position.ToTileSpaceX() * SfmlUiLayout.TileSize),
+            (float)(position.ToTileSpaceY() * SfmlUiLayout.TileSize));
     }
 
     internal static void DrawDirectionArrow(IRenderTarget target, TilePosition position, Direction direction, Color color)
@@ -446,11 +460,17 @@ internal static class WorldRenderer
         target.Draw(marker);
     }
 
-    internal static Color GetEntityColor(WorldEntity entity)
+    internal static Color GetEntityColor(GameSimulation simulation, WorldEntity entity)
     {
+        if (entity.Kind == EntityKind.Commander && entity.OwnerId is { } ownerId
+            && simulation.TryGetPlayer(ownerId, out var owner))
+        {
+            return ParseHexColor(owner.Color);
+        }
+
         return entity.Kind switch
         {
-            EntityKind.Commander => entity.OwnerId == new PlayerId(1) ? new Color(70, 186, 255) : new Color(220, 70, 70),
+            EntityKind.Commander => new Color(70, 186, 255),
             EntityKind.GhostBuild => new Color(70, 120, 180, 150),
             EntityKind.Bastion => new Color(95, 95, 190),
             EntityKind.Hub => new Color(180, 160, 90),
@@ -471,6 +491,19 @@ internal static class WorldRenderer
             EntityKind.AntiAirBot or EntityKind.RocketLauncher => new Color(90, 180, 170),
             _ => Color.Magenta
         };
+    }
+
+    internal static Color ParseHexColor(string hex)
+    {
+        if (hex.Length == 7 && hex[0] == '#')
+        {
+            var r = Convert.ToByte(hex.Substring(1, 2), 16);
+            var g = Convert.ToByte(hex.Substring(3, 2), 16);
+            var b = Convert.ToByte(hex.Substring(5, 2), 16);
+            return new Color(r, g, b);
+        }
+
+        return new Color(70, 186, 255);
     }
 
     internal static Color GetItemColor(ItemId item)

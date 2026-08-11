@@ -9,6 +9,19 @@ internal readonly record struct SidebarStorageHit(FloatRect Bounds, ItemId Item,
 
 internal static class HudOverlay
 {
+    private static readonly Color MinimapClearColor = new(8, 10, 12, 220);
+    private static readonly RectangleShape MinimapPixel = new();
+    private static readonly List<MinimapEntitySnapshot> MinimapEntityScratch = new();
+    private static readonly List<MinimapEntitySnapshot> MinimapPreviousEntities = new();
+
+    private static RenderTexture? _minimapTexture;
+    private static Sprite? _minimapSprite;
+    private static PlayerId? _minimapCachedPlayer;
+    private static int _minimapCachedMapW;
+    private static int _minimapCachedMapH;
+    private static uint _minimapCachedSize;
+    private static int _minimapFramesSinceFull;
+
     internal static void DrawTopBar(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer, Font? font, float playfieldWidth)
     {
         using var bar = new RectangleShape(new Vector2f(playfieldWidth, SfmlUiLayout.TopBarHeight))
@@ -67,11 +80,12 @@ internal static class HudOverlay
 
         var left = windowWidth - SfmlUiLayout.MinimapSize;
         var top = 0f;
+        var minimapSize = (uint)SfmlUiLayout.MinimapSize;
 
         using var frame = new RectangleShape(new Vector2f(SfmlUiLayout.MinimapSize, SfmlUiLayout.MinimapSize))
         {
             Position = new Vector2f(left, top),
-            FillColor = new Color(8, 10, 12, 220),
+            FillColor = MinimapClearColor,
             OutlineColor = new Color(90, 105, 130),
             OutlineThickness = 1f
         };
@@ -82,29 +96,125 @@ internal static class HudOverlay
         var pixelW = Math.Max(1f, scaleX);
         var pixelH = Math.Max(1f, scaleY);
 
-        using var pixel = new RectangleShape();
-        for (var y = 0; y < mapH; y++)
-        {
-            for (var x = 0; x < mapW; x++)
-            {
-                var position = new TilePosition(x, y);
-                var visibility = simulation.GetVisibility(localPlayer, position);
-                if (visibility == VisibilityState.Unknown)
-                {
-                    continue;
-                }
+        CollectMinimapEntitySnapshots(simulation, localPlayer, MinimapEntityScratch);
 
-                var color = GetMinimapTerrainColor(world.GetTerrain(position), visibility);
-                pixel.Size = new Vector2f(pixelW, pixelH);
-                pixel.Position = new Vector2f(left + x * scaleX, top + y * scaleY);
-                pixel.FillColor = color;
-                target.Draw(pixel);
-            }
+        var needsFull = MinimapDirtyTracker.NeedsFullRebuild(
+            hasCache: _minimapTexture is not null,
+            cacheSize: _minimapCachedSize,
+            currentSize: minimapSize,
+            cacheMapWidth: _minimapCachedMapW,
+            cacheMapHeight: _minimapCachedMapH,
+            mapWidth: mapW,
+            mapHeight: mapH,
+            cachePlayer: _minimapCachedPlayer,
+            currentPlayer: localPlayer,
+            framesSinceFullRebuild: _minimapFramesSinceFull);
+
+        var fogDirty = simulation.GetFogDirtyTiles(localPlayer);
+        var plan = MinimapDirtyTracker.Plan(
+            needsFull,
+            fogDirty,
+            MinimapPreviousEntities,
+            MinimapEntityScratch);
+
+        EnsureMinimapTexture(minimapSize, mapW, mapH, localPlayer);
+
+        var texture = _minimapTexture!;
+        switch (plan.Kind)
+        {
+            case MinimapRedrawKind.FullRebuild:
+                texture.Clear(MinimapClearColor);
+                DrawMinimapTerrainFull(texture, simulation, localPlayer, mapW, mapH, scaleX, scaleY, pixelW, pixelH);
+                DrawMinimapEntities(texture, simulation, localPlayer, scaleX, scaleY, pixelW, pixelH);
+                texture.Display();
+                _minimapFramesSinceFull = 0;
+                break;
+
+            case MinimapRedrawKind.PatchTiles:
+                DrawMinimapTerrainTiles(
+                    texture,
+                    simulation,
+                    localPlayer,
+                    plan.TilesToRedraw,
+                    mapW,
+                    mapH,
+                    scaleX,
+                    scaleY,
+                    pixelW,
+                    pixelH);
+                // Terrain patches overwrite markers on those tiles; refresh the full entity layer.
+                DrawMinimapEntities(texture, simulation, localPlayer, scaleX, scaleY, pixelW, pixelH);
+                texture.Display();
+                _minimapFramesSinceFull++;
+                break;
+
+            default:
+                _minimapFramesSinceFull++;
+                break;
         }
 
-        var localTeam = simulation.GetPlayer(localPlayer).TeamId;
-        foreach (var entity in world.Entities.Where(entity => entity.IsAlive && !entity.IsGarrisoned && entity.OwnerId is not null))
+        MinimapPreviousEntities.Clear();
+        MinimapPreviousEntities.AddRange(MinimapEntityScratch);
+
+        _minimapSprite!.Position = new Vector2f(left, top);
+        target.Draw(_minimapSprite);
+
+        var viewLeft = cameraX / SfmlUiLayout.TileSize;
+        var viewTop = cameraY / SfmlUiLayout.TileSize;
+        var viewWidth = playfieldWidth / SfmlUiLayout.TileSize;
+        var viewHeight = playfieldHeight / SfmlUiLayout.TileSize;
+        using var viewport = new RectangleShape(new Vector2f(
+            Math.Max(2f, viewWidth * scaleX),
+            Math.Max(2f, viewHeight * scaleY)))
         {
+            Position = new Vector2f(left + viewLeft * scaleX, top + viewTop * scaleY),
+            FillColor = Color.Transparent,
+            OutlineColor = new Color(255, 245, 180),
+            OutlineThickness = 1f
+        };
+        target.Draw(viewport);
+    }
+
+    private static void EnsureMinimapTexture(uint size, int mapW, int mapH, PlayerId localPlayer)
+    {
+        if (_minimapTexture is not null
+            && _minimapCachedSize == size
+            && _minimapCachedMapW == mapW
+            && _minimapCachedMapH == mapH
+            && _minimapCachedPlayer == localPlayer)
+        {
+            return;
+        }
+
+        _minimapSprite?.Dispose();
+        _minimapSprite = null;
+        _minimapTexture?.Dispose();
+        _minimapTexture = new RenderTexture(new Vector2u(size, size));
+        _minimapSprite = new Sprite(_minimapTexture.Texture);
+        _minimapCachedSize = size;
+        _minimapCachedMapW = mapW;
+        _minimapCachedMapH = mapH;
+        _minimapCachedPlayer = localPlayer;
+        _minimapFramesSinceFull = MinimapDirtyTracker.DefaultFullRebuildInterval;
+        MinimapPreviousEntities.Clear();
+    }
+
+    private static void CollectMinimapEntitySnapshots(
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        List<MinimapEntitySnapshot> into)
+    {
+        into.Clear();
+        var localTeam = simulation.GetPlayer(localPlayer).TeamId;
+        var entities = simulation.World.Entities;
+        for (var i = 0; i < entities.Count; i++)
+        {
+            var entity = entities[i];
+            if (!entity.IsAlive || entity.IsGarrisoned || entity.OwnerId is null)
+            {
+                continue;
+            }
+
             // Match main playfield FoW: explored tiles keep terrain, but live enemy/ally
             // positions only render while Visible (GDD §13).
             if (!WorldRenderer.IsVisibleToLocalPlayer(simulation, localPlayer, entity))
@@ -112,7 +222,138 @@ internal static class HudOverlay
                 continue;
             }
 
-            var owner = entity.OwnerId!.Value;
+            var owner = entity.OwnerId.Value;
+            byte markerKind;
+            if (owner == localPlayer)
+            {
+                markerKind = 0;
+            }
+            else if (simulation.GetPlayer(owner).TeamId == localTeam)
+            {
+                markerKind = 1;
+            }
+            else
+            {
+                markerKind = 2;
+            }
+
+            var footprint = MvpDefinitions.GetFootprint(entity.Kind);
+            into.Add(new MinimapEntitySnapshot(
+                entity.Id,
+                entity.Position.X,
+                entity.Position.Y,
+                Math.Max(1, footprint.Width),
+                Math.Max(1, footprint.Height),
+                markerKind));
+        }
+
+        into.Sort(static (a, b) => a.EntityId.CompareTo(b.EntityId));
+    }
+
+    private static void DrawMinimapTerrainFull(
+        RenderTexture texture,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        int mapW,
+        int mapH,
+        float scaleX,
+        float scaleY,
+        float pixelW,
+        float pixelH)
+    {
+        for (var y = 0; y < mapH; y++)
+        {
+            for (var x = 0; x < mapW; x++)
+            {
+                DrawMinimapTerrainTile(
+                    texture,
+                    simulation,
+                    localPlayer,
+                    new TilePosition(x, y),
+                    scaleX,
+                    scaleY,
+                    pixelW,
+                    pixelH);
+            }
+        }
+    }
+
+    private static void DrawMinimapTerrainTiles(
+        RenderTexture texture,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        IReadOnlyList<TilePosition> tiles,
+        int mapW,
+        int mapH,
+        float scaleX,
+        float scaleY,
+        float pixelW,
+        float pixelH)
+    {
+        for (var i = 0; i < tiles.Count; i++)
+        {
+            var position = tiles[i];
+            if (position.X < 0 || position.Y < 0 || position.X >= mapW || position.Y >= mapH)
+            {
+                continue;
+            }
+
+            DrawMinimapTerrainTile(
+                texture,
+                simulation,
+                localPlayer,
+                position,
+                scaleX,
+                scaleY,
+                pixelW,
+                pixelH);
+        }
+    }
+
+    private static void DrawMinimapTerrainTile(
+        RenderTexture texture,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        TilePosition position,
+        float scaleX,
+        float scaleY,
+        float pixelW,
+        float pixelH)
+    {
+        var visibility = simulation.GetVisibility(localPlayer, position);
+        MinimapPixel.Size = new Vector2f(pixelW, pixelH);
+        MinimapPixel.Position = new Vector2f(position.X * scaleX, position.Y * scaleY);
+        MinimapPixel.FillColor = visibility == VisibilityState.Unknown
+            ? MinimapClearColor
+            : GetMinimapTerrainColor(simulation.World.GetTerrain(position), visibility);
+        texture.Draw(MinimapPixel);
+    }
+
+    private static void DrawMinimapEntities(
+        RenderTexture texture,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        float scaleX,
+        float scaleY,
+        float pixelW,
+        float pixelH)
+    {
+        var localTeam = simulation.GetPlayer(localPlayer).TeamId;
+        var entities = simulation.World.Entities;
+        for (var i = 0; i < entities.Count; i++)
+        {
+            var entity = entities[i];
+            if (!entity.IsAlive || entity.IsGarrisoned || entity.OwnerId is null)
+            {
+                continue;
+            }
+
+            if (!WorldRenderer.IsVisibleToLocalPlayer(simulation, localPlayer, entity))
+            {
+                continue;
+            }
+
+            var owner = entity.OwnerId.Value;
             Color buildingColor;
             if (owner == localPlayer)
             {
@@ -130,26 +371,11 @@ internal static class HudOverlay
             var footprint = MvpDefinitions.GetFootprint(entity.Kind);
             var w = Math.Max(pixelW, footprint.Width * scaleX);
             var h = Math.Max(pixelH, footprint.Height * scaleY);
-            pixel.Size = new Vector2f(w, h);
-            pixel.Position = new Vector2f(left + entity.Position.X * scaleX, top + entity.Position.Y * scaleY);
-            pixel.FillColor = buildingColor;
-            target.Draw(pixel);
+            MinimapPixel.Size = new Vector2f(w, h);
+            MinimapPixel.Position = new Vector2f(entity.Position.X * scaleX, entity.Position.Y * scaleY);
+            MinimapPixel.FillColor = buildingColor;
+            texture.Draw(MinimapPixel);
         }
-
-        var viewLeft = cameraX / SfmlUiLayout.TileSize;
-        var viewTop = cameraY / SfmlUiLayout.TileSize;
-        var viewWidth = playfieldWidth / SfmlUiLayout.TileSize;
-        var viewHeight = playfieldHeight / SfmlUiLayout.TileSize;
-        using var viewport = new RectangleShape(new Vector2f(
-            Math.Max(2f, viewWidth * scaleX),
-            Math.Max(2f, viewHeight * scaleY)))
-        {
-            Position = new Vector2f(left + viewLeft * scaleX, top + viewTop * scaleY),
-            FillColor = Color.Transparent,
-            OutlineColor = new Color(255, 245, 180),
-            OutlineThickness = 1f
-        };
-        target.Draw(viewport);
     }
 
     internal static Color GetMinimapTerrainColor(TerrainType terrain, VisibilityState visibility)
@@ -288,7 +514,7 @@ internal static class HudOverlay
             if (selected.Kind == EntityKind.Commander)
             {
                 lines.Add($"Build radius: {MvpDefinitions.CommanderBuildRadius}");
-                lines.Add($"World: {selected.WorldPosition.X:0.00},{selected.WorldPosition.Y:0.00}");
+                lines.Add($"World: {selected.WorldPosition.ToTileSpaceX():0.00},{selected.WorldPosition.ToTileSpaceY():0.00}");
                 lines.Add($"Move target: {(selected.MoveTarget is null ? "-" : $"{selected.MoveTarget.Value.X},{selected.MoveTarget.Value.Y}")}");
                 lines.Add($"Queued: {(selected.QueuedBuildOrder is null ? "-" : $"{selected.QueuedBuildOrder.TargetKind}@{selected.QueuedBuildOrder.TargetPosition.X},{selected.QueuedBuildOrder.TargetPosition.Y}")}");
                 lines.Add($"DemolishQ: {(selected.QueuedDemolishOrder is null ? "-" : $"#{selected.QueuedDemolishOrder.TargetEntityId}")}");

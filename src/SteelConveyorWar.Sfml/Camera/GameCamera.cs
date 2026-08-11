@@ -18,8 +18,8 @@ internal sealed class GameCamera
     public void PanBy(float dx, float dy) { X += dx; Y += dy; }
     public void CenterOnWorldPosition(WorldPosition worldPosition, float playfieldWidth, float playfieldHeight)
     {
-        X = (float)(worldPosition.X * SfmlUiLayout.TileSize) - playfieldWidth / 2f;
-        Y = (float)(worldPosition.Y * SfmlUiLayout.TileSize) - playfieldHeight / 2f;
+        X = (float)(worldPosition.ToTileSpaceX() * SfmlUiLayout.TileSize) - playfieldWidth / 2f;
+        Y = (float)(worldPosition.ToTileSpaceY() * SfmlUiLayout.TileSize) - playfieldHeight / 2f;
     }
     public void CenterOnTile(TilePosition tile, float playfieldWidth, float playfieldHeight)
         => CenterOnWorldPosition(WorldPosition.FromTileCenter(tile), playfieldWidth, playfieldHeight);

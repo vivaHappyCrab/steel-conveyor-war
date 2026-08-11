@@ -1,51 +1,44 @@
-# ADR 0001: Authoritative numeric policy (doubles / Sqrt)
+# ADR 0001: Authoritative numeric policy (millitiles)
 
 ## Status
 
-Accepted
+Accepted (supersedes double/`Sqrt` MVP caveat for world positions)
 
 ## Context
 
-Authoritative Core uses `WorldPosition` (`double`) and `Math.Sqrt` in movement, pathfinding, collision, and historically energy fill-ratio sorting. Cross-platform / cross-CPU floating-point divergence is a lockstep desync risk even when `SimulationStateHasher` records IEEE bit patterns — matching hashes only prove agreement **after** divergent math has already produced the same bits on one machine.
-
-Issue #68 (review H5 / N4) requires a documented policy and a concrete mitigation path before multiplayer lockstep work.
+Authoritative Core previously used `WorldPosition` (`double`) and `Math.Sqrt` in movement step normalization. Cross-platform floating-point divergence is a lockstep desync risk. Issue #68 / review R20 requires fixed-point (or equivalent) migration before heterogeneous lockstep.
 
 ## Decision
 
-### MVP policy (current)
+### Current policy
 
-1. **Single-runtime guarantee for remaining authoritative FP.** Until fixed-point (or equivalent) migration completes, lockstep / dual-client claims are valid only when peers share the **same .NET runtime family and OS/CPU ABI** (same published build targeting the same RID class). Cross-OS or mixed-JIT lockstep is **out of MVP**.
-2. **Gameplay decisions prefer integer / squared comparisons** wherever order or threshold checks do not require a true Euclidean length:
-   - Energy emptiest-first sort uses integer cross-multiply ratios (no `double` division).
-   - Ground A* step / heuristic costs use integer octile weights (`10` / `14`), not `Math.Sqrt(2)`.
-   - Collision and range threshold checks use **distance-squared** against `radius²` (no `Sqrt` on the compare path).
-3. **Deferred migration target:** fixed-point or integer world coordinates for authoritative movement / collision / continuous range. Tile-space gameplay that already uses integer Euclidean (`dx*dx+dy*dy`) stays integer.
-4. **Presentation-only floats** may remain unconstrained (SFML draw, camera, belt item lerp, HUD bars, combat tracer endpoints, energy history graphs). They must not feed back into Core decisions.
+1. **Authoritative continuous positions use integer millitiles.** `WorldPosition` stores `long` millitiles where **1 tile = 1000 millitiles**. Tile centers are `tile*1000+500`. Mobile step is **125** millitiles/tick (was 0.125 tile).
+2. **Collision radii** are millitiles (`CollisionSize.RadiusMilli`).
+3. **Distances** prefer squared compares; movement normalization uses deterministic integer sqrt (`WorldUnits.IntegerSqrt`), not IEEE `Math.Sqrt`.
+4. **Hasher** fingerprints raw `int64` millitile coordinates (`AlgorithmVersion` 8+).
+5. **Presentation-only floats** remain unconstrained at the SFML boundary (`ToTileSpaceX/Y`, camera, draw). They must not feed back into Core decisions.
+6. Tile-space gameplay that already uses integer Euclidean (`dx*dx+dy*dy` on tiles) stays integer.
 
-### Remaining authoritative FP (explicit)
+### Heterogeneous lockstep
 
-- `WorldPosition` storage and **movement step normalization** still use `double` + `Math.Sqrt` (`DistanceTo` / step along the unit vector). Covered by the single-runtime guarantee until migration.
-- `CollisionSize.Radius` and related constant multiplies remain `double` under the same guarantee.
-- Hasher continues to fingerprint world doubles via `DoubleToInt64Bits`.
+Peers may share lockstep across OS/CPU ABIs for position/collision math under this millitile policy, provided they share the same `AlgorithmVersion`, content manifest, and command protocol.
 
 ## Consequences
 
 Positive:
 
-- Clear lockstep boundary for MVP hosts and bots.
-- Removes unchecked FP from energy ordering and A* cost/heuristic ranking.
-- Collision / interact / build radius gates no longer call `Sqrt` for decisions.
+- Removes authoritative FP from world positions and movement step length.
+- Enables cross-runtime dual-run hash equality for movement scenarios.
 
 Negative / follow-up:
 
-- Full fixed-point `WorldPosition` migration is still required before heterogeneous-runtime lockstep.
-- Integer A* (`10`/`14`) can change path tie-breaks vs prior `Sqrt(2)` costs (same-seed dual-run still matches).
-- Movement step `Sqrt` remains a desync hazard across divergent FP environments.
+- Integer division in step normalization can quantize paths slightly vs prior double steps (dual-run still matches).
+- Content collision radii in `gameplay-tables.json` are authored in millitiles.
 
 ## Alternatives considered
 
-| Option | Why not (for this ADR) |
-|--------|-------------------------|
-| Immediate full fixed-point world coords | High blast radius across movement/collision/SFML adapters; deferred as incremental follow-up |
-| Soft-float / software IEEE everywhere | Heavy; unnecessary if single-runtime is accepted for MVP |
-| Leave energy/path on doubles with docs only | Fails AC mitigation expectation; cheap integer fixes available now |
+| Option | Why not |
+|--------|---------|
+| Q32.32 fixed-point | Heavier; millitiles match authored 0.125 step and radii cleanly |
+| Soft-float everywhere | Unnecessary once millitiles cover authoritative continuous space |
+| Keep doubles with docs only | Fails R20 DoD for heterogeneous lockstep |

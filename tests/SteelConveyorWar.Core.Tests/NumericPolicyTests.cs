@@ -5,12 +5,12 @@ public sealed class NumericPolicyTests
     [Fact]
     public void WorldPosition_DistanceSquared_MatchesDistanceSquared()
     {
-        var a = new WorldPosition(1.25, 4.5);
-        var b = new WorldPosition(-2.75, 0.5);
+        var a = new WorldPosition(1250, 4500);
+        var b = new WorldPosition(-2750, 500);
         var dx = a.X - b.X;
         var dy = a.Y - b.Y;
         Assert.Equal(dx * dx + dy * dy, a.DistanceSquaredTo(b));
-        Assert.Equal(Math.Sqrt(a.DistanceSquaredTo(b)), a.DistanceTo(b));
+        Assert.Equal(WorldUnits.IntegerSqrt(a.DistanceSquaredTo(b)), a.DistanceTo(b));
     }
 
     [Fact]

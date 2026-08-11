@@ -1,0 +1,387 @@
+namespace SteelConveyorWar.Core;
+
+public sealed partial record GameplayTablesCatalog
+{
+    /// <summary>Byte-for-byte parity with <c>config/gameplay-tables.json</c> (LF newlines).</summary>
+    public const string EmbeddedJson =
+""""
+{
+  "schemaVersion": 1,
+  "powerDemand": {
+    "Mine": 2,
+    "CoalMine": 2,
+    "OilWell": 3,
+    "Smelter": 3,
+    "Refinery": 5,
+    "Assembler": 4,
+    "TankFactory": 5,
+    "DroneCenter": 4,
+    "Laboratory": 4,
+    "MachineGunTurret": 1,
+    "CannonTurret": 2,
+    "AntiAirTurret": 2
+  },
+  "powerProduction": {
+    "SolarPanel": 5,
+    "CoalPlant": 20
+  },
+  "itemStackSizes": {
+    "IronOre": 50,
+    "CopperOre": 50,
+    "Coal": 50,
+    "CrudeOil": 50,
+    "IronPlate": 100,
+    "CopperPlate": 100,
+    "Steel": 50,
+    "Fuel": 50,
+    "IronGear": 100,
+    "Composite": 100,
+    "SciencePackT1": 50,
+    "SciencePackT2": 50,
+    "Ammo": 100,
+    "Shell": 50,
+    "AntiAirShell": 50
+  },
+  "footprints": {
+    "Mine": { "width": 2, "height": 2 },
+    "CoalMine": { "width": 2, "height": 2 },
+    "OilWell": { "width": 2, "height": 2 },
+    "Smelter": { "width": 2, "height": 2 },
+    "Assembler": { "width": 2, "height": 2 },
+    "Laboratory": { "width": 2, "height": 2 },
+    "Hub": { "width": 2, "height": 2 },
+    "Bastion": { "width": 3, "height": 3 },
+    "TankFactory": { "width": 3, "height": 3 },
+    "DroneCenter": { "width": 3, "height": 3 }
+  },
+  "collisionRadius": {
+    "Commander": 350,
+    "Scout": 250,
+    "LightBot": 300,
+    "MediumBot": 300,
+    "AntiAirBot": 300,
+    "RocketLauncher": 300,
+    "BasicTank": 400,
+    "MediumTank": 400
+  },
+  "techSignatureIntensity": {
+    "Smelter": 2,
+    "TankFactory": 4,
+    "DroneCenter": 3,
+    "Refinery": 4,
+    "Assembler": 3,
+    "Laboratory": 3,
+    "CoalPlant": 2
+  },
+  "productionRecipes": {
+    "LightBot": {
+      "inputs": [{ "item": "IronPlate", "amount": 5 }],
+      "outputKind": "LightBot",
+      "workTicks": 60,
+      "requiredTechnology": "technology.t1.light-bot"
+    },
+    "BasicTank": {
+      "inputs": [
+        { "item": "IronPlate", "amount": 12 },
+        { "item": "CopperPlate", "amount": 4 }
+      ],
+      "outputKind": "BasicTank",
+      "workTicks": 105
+    },
+    "Scout": {
+      "inputs": [{ "item": "Composite", "amount": 4 }],
+      "outputKind": "Scout",
+      "workTicks": 60,
+      "requiredTechnology": "technology.t1.scout"
+    },
+    "MediumBot": {
+      "inputs": [{ "item": "Steel", "amount": 5 }],
+      "outputKind": "MediumBot",
+      "workTicks": 105,
+      "requiredTechnology": "technology.t2.medium-bot"
+    },
+    "MediumTank": {
+      "inputs": [
+        { "item": "Steel", "amount": 10 },
+        { "item": "Fuel", "amount": 3 }
+      ],
+      "outputKind": "MediumTank",
+      "workTicks": 150,
+      "requiredTechnology": "technology.t2.medium-tank"
+    },
+    "AntiAirBot": {
+      "inputs": [
+        { "item": "Steel", "amount": 6 },
+        { "item": "CopperPlate", "amount": 8 }
+      ],
+      "outputKind": "AntiAirBot",
+      "workTicks": 120,
+      "requiredTechnology": "technology.t2.anti-air-turret"
+    },
+    "RocketLauncher": {
+      "inputs": [
+        { "item": "Steel", "amount": 8 },
+        { "item": "Fuel", "amount": 5 }
+      ],
+      "outputKind": "RocketLauncher",
+      "workTicks": 165,
+      "requiredTechnology": "technology.t2.rocket-launcher"
+    }
+  },
+  "itemRecipes": {
+    "IronGear": {
+      "inputs": [{ "item": "IronPlate", "amount": 2 }],
+      "outputItem": "IronGear",
+      "outputAmount": 1,
+      "workTicks": 40
+    },
+    "Composite": {
+      "inputs": [
+        { "item": "IronPlate", "amount": 1 },
+        { "item": "CopperPlate", "amount": 1 }
+      ],
+      "outputItem": "Composite",
+      "outputAmount": 1,
+      "workTicks": 60
+    },
+    "SciencePackT1": {
+      "inputs": [
+        { "item": "IronGear", "amount": 1 },
+        { "item": "CopperPlate", "amount": 1 }
+      ],
+      "outputItem": "SciencePackT1",
+      "outputAmount": 1,
+      "workTicks": 35
+    },
+    "SciencePackT2": {
+      "inputs": [
+        { "item": "Composite", "amount": 1 },
+        { "item": "Steel", "amount": 1 },
+        { "item": "Fuel", "amount": 1 }
+      ],
+      "outputItem": "SciencePackT2",
+      "outputAmount": 1,
+      "workTicks": 45
+    }
+  },
+  "entityStats": {
+    "Commander": {
+      "maxHealth": 300,
+      "attackDamage": 10,
+      "attackRange": 3,
+      "attackCooldownTicks": 25,
+      "moveEveryTicks": 8,
+      "visionRadius": 7,
+      "armor": 2,
+      "projectileKind": "GroundToGround"
+    },
+    "Bastion": {
+      "maxHealth": 450,
+      "visionRadius": 12,
+      "armor": 4
+    },
+    "Hub": {
+      "maxHealth": 150,
+      "visionRadius": 4,
+      "armor": 1
+    },
+    "Mine": {
+      "maxHealth": 120,
+      "visionRadius": 3,
+      "armor": 1
+    },
+    "CoalMine": {
+      "maxHealth": 120,
+      "visionRadius": 3,
+      "armor": 1
+    },
+    "OilWell": {
+      "maxHealth": 120,
+      "visionRadius": 3,
+      "armor": 1
+    },
+    "Smelter": {
+      "maxHealth": 120,
+      "visionRadius": 3,
+      "armor": 1
+    },
+    "Refinery": {
+      "maxHealth": 120,
+      "visionRadius": 3,
+      "armor": 1
+    },
+    "Assembler": {
+      "maxHealth": 130,
+      "visionRadius": 3,
+      "armor": 1
+    },
+    "SolarPanel": {
+      "maxHealth": 90,
+      "visionRadius": 3,
+      "armor": 1
+    },
+    "CoalPlant": {
+      "maxHealth": 90,
+      "visionRadius": 3,
+      "armor": 1
+    },
+    "TankFactory": {
+      "maxHealth": 160,
+      "visionRadius": 4,
+      "armor": 2
+    },
+    "DroneCenter": {
+      "maxHealth": 160,
+      "visionRadius": 4,
+      "armor": 2
+    },
+    "Laboratory": {
+      "maxHealth": 160,
+      "visionRadius": 4,
+      "armor": 2
+    },
+    "Wall": {
+      "maxHealth": 180,
+      "visionRadius": 1,
+      "armor": 8
+    },
+    "SteelWall": {
+      "maxHealth": 320,
+      "visionRadius": 1,
+      "armor": 14
+    },
+    "MachineGunTurret": {
+      "maxHealth": 130,
+      "attackDamage": 8,
+      "attackRange": 5,
+      "attackCooldownTicks": 10,
+      "visionRadius": 6,
+      "armor": 2,
+      "projectileKind": "GroundToGround"
+    },
+    "CannonTurret": {
+      "maxHealth": 170,
+      "attackDamage": 24,
+      "attackRange": 6,
+      "attackCooldownTicks": 25,
+      "visionRadius": 7,
+      "armor": 4,
+      "projectileKind": "Ballistic",
+      "splashRadius": 1
+    },
+    "AntiAirTurret": {
+      "maxHealth": 140,
+      "attackDamage": 14,
+      "attackRange": 6,
+      "attackCooldownTicks": 15,
+      "visionRadius": 7,
+      "armor": 2,
+      "projectileKind": "AirToGround"
+    },
+    "LightBot": {
+      "maxHealth": 35,
+      "attackDamage": 5,
+      "attackRange": 1,
+      "attackCooldownTicks": 18,
+      "moveEveryTicks": 5,
+      "visionRadius": 4,
+      "armor": 0,
+      "projectileKind": "GroundToGround"
+    },
+    "BasicTank": {
+      "maxHealth": 90,
+      "attackDamage": 14,
+      "attackRange": 3,
+      "attackCooldownTicks": 24,
+      "moveEveryTicks": 9,
+      "visionRadius": 5,
+      "armor": 3,
+      "projectileKind": "GroundToGround"
+    },
+    "Scout": {
+      "maxHealth": 25,
+      "attackDamage": 0,
+      "attackRange": 0,
+      "attackCooldownTicks": 30,
+      "moveEveryTicks": 3,
+      "visionRadius": 10,
+      "armor": 0
+    },
+    "MediumBot": {
+      "maxHealth": 60,
+      "attackDamage": 10,
+      "attackRange": 1,
+      "attackCooldownTicks": 16,
+      "moveEveryTicks": 4,
+      "visionRadius": 5,
+      "armor": 1,
+      "projectileKind": "GroundToGround"
+    },
+    "MediumTank": {
+      "maxHealth": 150,
+      "attackDamage": 24,
+      "attackRange": 4,
+      "attackCooldownTicks": 28,
+      "moveEveryTicks": 10,
+      "visionRadius": 6,
+      "armor": 5,
+      "projectileKind": "Ballistic",
+      "splashRadius": 1
+    },
+    "AntiAirBot": {
+      "maxHealth": 70,
+      "attackDamage": 10,
+      "attackRange": 4,
+      "attackCooldownTicks": 16,
+      "moveEveryTicks": 6,
+      "visionRadius": 6,
+      "armor": 1,
+      "projectileKind": "AirToGround"
+    },
+    "RocketLauncher": {
+      "maxHealth": 75,
+      "attackDamage": 32,
+      "attackRange": 7,
+      "attackCooldownTicks": 36,
+      "moveEveryTicks": 12,
+      "visionRadius": 6,
+      "armor": 0,
+      "projectileKind": "Ballistic",
+      "splashRadius": 2
+    },
+    "GhostBuild": {
+      "maxHealth": 20,
+      "visionRadius": 0
+    },
+    "Conveyor": {
+      "maxHealth": 40,
+      "visionRadius": 1,
+      "armor": 0
+    },
+    "UndergroundConveyor": {
+      "maxHealth": 40,
+      "visionRadius": 1,
+      "armor": 0
+    },
+    "Inserter": {
+      "maxHealth": 40,
+      "visionRadius": 1,
+      "armor": 0
+    }
+  },
+  "resistances": [
+    { "projectile": "GroundToGround", "category": "Unit", "basisPoints": 10000 },
+    { "projectile": "GroundToGround", "category": "Building", "basisPoints": 9000 },
+    { "projectile": "GroundToGround", "category": "Wall", "basisPoints": 7000 },
+    { "projectile": "Ballistic", "category": "Unit", "basisPoints": 10000 },
+    { "projectile": "Ballistic", "category": "Building", "basisPoints": 11000 },
+    { "projectile": "Ballistic", "category": "Wall", "basisPoints": 13000 },
+    { "projectile": "AirToGround", "category": "Unit", "basisPoints": 11000 },
+    { "projectile": "AirToGround", "category": "Building", "basisPoints": 5000 },
+    { "projectile": "AirToGround", "category": "Wall", "basisPoints": 4000 }
+  ]
+}
+"""";
+
+    public static GameplayTablesCatalog Embedded { get; } = GameplayTablesLoader.Parse(EmbeddedJson);
+}

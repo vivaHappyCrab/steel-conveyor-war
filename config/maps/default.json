@@ -2,7 +2,23 @@
   "schemaVersion": 1,
   "mapId": "default",
   "players": [
-    { "id": 1, "name": "Blue", "teamId": 1 },
-    { "id": 2, "name": "Red", "teamId": 2 }
+    {
+      "id": 1,
+      "name": "Blue",
+      "teamId": 1,
+      "startCommander": { "x": 4, "y": 56 },
+      "startBastion": { "x": 1, "y": 56 },
+      "startHub": { "x": 5, "y": 58 },
+      "color": "#46BAFF"
+    },
+    {
+      "id": 2,
+      "name": "Red",
+      "teamId": 2,
+      "startCommander": { "x": 187, "y": 56 },
+      "startBastion": { "x": 188, "y": 56 },
+      "startHub": { "x": 186, "y": 58 },
+      "color": "#DC4646"
+    }
   ]
 }

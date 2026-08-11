@@ -13,6 +13,8 @@ internal sealed class CombatSystem
     // Reused across ticks to avoid LINQ/ToList allocations on the hot combat path.
     private readonly List<WorldEntity> _scratchEntities = new();
     private readonly List<WorldEntity> _scratchEntitiesSecondary = new();
+    private readonly List<PlayerState> _scratchPlayers = new();
+    private readonly SpatialQueryIndex _spatialQueryIndex = new();
 
     public CombatSystem(ISimulationSystemContext context)
     {
@@ -101,7 +103,7 @@ internal sealed class CombatSystem
         WorldEntity attacker,
         WorldEntity target,
         ProjectileKind projectileKind,
-        CombatSpatialIndex spatial)
+        SpatialQueryIndex spatial)
     {
         if (projectileKind != ProjectileKind.GroundToGround)
         {
@@ -190,27 +192,50 @@ internal sealed class CombatSystem
             return;
         }
 
-        foreach (var player in _context.Players.OrderBy(player => player.Id.Value))
+        _context.CollectSortedAliveEntities(
+            _scratchEntities,
+            static entity => entity.Kind == EntityKind.Bastion);
+        _context.CollectSortedAliveEntities(
+            _scratchEntitiesSecondary,
+            static entity =>
+                MvpDefinitions.UnitKinds.Contains(entity.Kind)
+                && entity.Health < entity.MaxHealth
+                && entity.AttackCooldownRemaining <= 0);
+
+        _scratchPlayers.Clear();
+        for (var i = 0; i < _context.Players.Count; i++)
         {
+            _scratchPlayers.Add(_context.Players[i]);
+        }
+
+        _scratchPlayers.Sort(static (left, right) => left.Id.Value.CompareTo(right.Id.Value));
+
+        for (var playerIndex = 0; playerIndex < _scratchPlayers.Count; playerIndex++)
+        {
+            var player = _scratchPlayers[playerIndex];
             if (!CapabilityResolver.HasCapability(player.Research, ResearchCapabilityIds.RepairOutOfCombat))
             {
                 continue;
             }
 
-            foreach (var bastion in _context.World.Entities
-                .Where(entity => entity.IsAlive && entity.OwnerId == player.Id && entity.Kind == EntityKind.Bastion)
-                .OrderBy(entity => entity.Id))
+            for (var bastionIndex = 0; bastionIndex < _scratchEntities.Count; bastionIndex++)
             {
-                foreach (var unit in _context.World.Entities
-                    .Where(entity =>
-                        entity.IsAlive
-                        && entity.OwnerId == player.Id
-                        && MvpDefinitions.UnitKinds.Contains(entity.Kind)
-                        && entity.Health < entity.MaxHealth
-                        && entity.AttackCooldownRemaining <= 0
-                        && entity.Position.ManhattanDistance(bastion.Position) <= 4)
-                    .OrderBy(entity => entity.Id))
+                var bastion = _scratchEntities[bastionIndex];
+                if (!bastion.IsAlive || bastion.OwnerId != player.Id)
                 {
+                    continue;
+                }
+
+                for (var unitIndex = 0; unitIndex < _scratchEntitiesSecondary.Count; unitIndex++)
+                {
+                    var unit = _scratchEntitiesSecondary[unitIndex];
+                    if (!unit.IsAlive
+                        || unit.OwnerId != player.Id
+                        || unit.Position.ManhattanDistance(bastion.Position) > 4)
+                    {
+                        continue;
+                    }
+
                     unit.Health = Math.Min(unit.MaxHealth, unit.Health + 1);
                 }
             }
@@ -220,9 +245,10 @@ internal sealed class CombatSystem
     private void ProcessCombat()
     {
         _context.Presentation.ClearCombatShots();
-        // Per-pass combat index keeps range/splash queries neighborhood-limited; GameWorld tile
+        // Per-pass spatial index keeps range/splash queries neighborhood-limited; GameWorld tile
         // occupancy (#66) does not replace position-radius combat scans yet.
-        var spatial = CombatSpatialIndex.Build(_context.World.Entities);
+        _spatialQueryIndex.Rebuild(_context.World.Entities);
+        var spatial = _spatialQueryIndex;
         _context.CollectSortedAliveEntities(
             _scratchEntities,
             static entity => !entity.IsGarrisoned
@@ -316,7 +342,7 @@ internal sealed class CombatSystem
     private WorldEntity? FindNearestCombatTarget(
         WorldEntity attacker,
         int attackRange,
-        CombatSpatialIndex spatial)
+        SpatialQueryIndex spatial)
     {
         WorldEntity? best = null;
         var bestDistanceSquared = 0;
