@@ -2,6 +2,19 @@
 
 **Severity:** High (gameplay authority bug) · **Домен:** gameplay / trust · **Roadmap:** P0
 **Статус валидации:** ✅ Подтверждено по коду — это текущий баг, не только будущий сетевой риск
+**Статус реализации:** ✅ Реализовано 2026-08-11 (`SfmlPlaySession.cs`, `GameSimulation.cs`; тесты в `ResearchActorAuthorizationTests.cs`). ⚠️ Требуется прогон `dotnet build -c Release` + `dotnet test` (VM недоступна, изменения не скомпилированы).
+
+### Что сделано
+- `SfmlPlaySession` (number-shortcut лаборатории): ввод игнорируется, если `selectedEntity.OwnerId != localPlayer`; snapshot и `TrySelectResearch` теперь всегда вызываются с `localPlayer` (а не с owner выбранной сущности), плюс явный `actor: localPlayer`.
+- `GameSimulation.TrySelectResearch` — добавлен опциональный `PlayerId? actor`: если `actor` задан и не равен `playerId` (владельцу research), команда отклоняется (`NotAvailable`) — defense-in-depth на Core boundary (R1). `TryStartResearch` пробрасывает `actor`.
+
+### Тесты (`SteelConveyorWar.Core.Tests`)
+- `TrySelectResearch_ForeignActor_IsRejected`, `TryStartResearch_ForeignActor_IsRejected` — actor=P1, target=P2 → отклонено.
+- `OwnerActor_BehavesIdenticallyToLegacyNullActor` — для владельца gate прозрачен (результат совпадает с legacy no-actor вызовом).
+
+### Отклонения от плана
+- Пункт 4 (единый local command controller, R2) не входит в объём R26 — реализуется в R2. Здесь actor-gate добавлен непосредственно в существующие Core-методы research; при переводе на командную шину (R2) actor будет проставляться централизованно.
+- Research в Core keyed по владеющему игроку (нет отдельного lab-entity параметра), поэтому авторизация сведена к `actor == playerId`.
 
 ## Проблема
 Number-shortcut для лаборатории не проверяет, что выбранная лаборатория принадлежит локальному игроку. Вместо этого берётся владелец выбранной лаборатории и research переключается от его имени. Игрок может выбрать видимую enemy laboratory и управлять исследованиями противника.

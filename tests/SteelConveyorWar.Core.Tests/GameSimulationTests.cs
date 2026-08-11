@@ -1253,7 +1253,7 @@ public class GameSimulationTests
         simulation.AdvanceTick(); // start craft
         Assert.True(simulation.World.GetEntity(assemblerId)!.WorkTicksRemaining > 0);
         // Fill a full 1s display bucket with working drains (absolute bucket may include a couple edge ticks).
-        for (var i = 0; i < GameSimulation.TicksPerSecond; i++)
+        for (var i = 0; i < GameSimulation.DefaultTicksPerSecond; i++)
         {
             Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, int.MaxValue));
             simulation.AdvanceTick();
@@ -1266,7 +1266,7 @@ public class GameSimulationTests
         Assert.InRange(assemblerWorking.Series[^1], demand * 0.85f, demand + 0.01f);
 
         Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
-        for (var i = 0; i < GameSimulation.TicksPerSecond * 2; i++)
+        for (var i = 0; i < GameSimulation.DefaultTicksPerSecond * 2; i++)
         {
             Assert.True(simulation.TrySetEnergyBufferForTests(assemblerId, 0));
             simulation.AdvanceTick();
@@ -1287,7 +1287,7 @@ public class GameSimulationTests
 
         var history = new EnergyStatsHistory();
         var empty = new Dictionary<EntityKind, int>();
-        var tps = GameSimulation.TicksPerSecond;
+        var tps = GameSimulation.DefaultTicksPerSecond;
 
         // Ticks 0..29 → bucket 0 avg 1; 30..59 → bucket 1 avg 9. Mid-bucket noise must not rewrite bucket 0.
         for (long tick = 0; tick < tps; tick++)
@@ -1325,7 +1325,7 @@ public class GameSimulationTests
     {
         var history = new EnergyStatsHistory();
         var empty = new Dictionary<EntityKind, int>();
-        var tps = GameSimulation.TicksPerSecond;
+        var tps = GameSimulation.DefaultTicksPerSecond;
 
         // 12 energy every 30 ticks → 0.4/t average (must not round to 0 on the polyline series).
         for (long tick = 0; tick < tps; tick++)
@@ -1345,7 +1345,7 @@ public class GameSimulationTests
     {
         var history = new EnergyStatsHistory();
         var empty = new Dictionary<EntityKind, int>();
-        for (long tick = 0; tick < 10 * GameSimulation.TicksPerSecond; tick++)
+        for (long tick = 0; tick < 10 * GameSimulation.DefaultTicksPerSecond; tick++)
         {
             history.Record(tick, 5, 4, empty, empty);
         }
@@ -1354,7 +1354,7 @@ public class GameSimulationTests
         Assert.Equal(10, shortWindow.SampleCount);
         Assert.All(shortWindow.DemandSeries, value => Assert.Equal(4f, value, 3));
 
-        for (long tick = 10 * GameSimulation.TicksPerSecond; tick < 5 * 60 * GameSimulation.TicksPerSecond; tick++)
+        for (long tick = 10 * GameSimulation.DefaultTicksPerSecond; tick < 5 * 60 * GameSimulation.DefaultTicksPerSecond; tick++)
         {
             history.Record(tick, 5, 4, empty, empty);
         }

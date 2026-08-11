@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace SteelConveyorWar.Core;
 
 public static class MvpDefinitions
@@ -19,8 +21,9 @@ public static class MvpDefinitions
     public const int BaseMaxBastions = 1;
     public const int MaxBastionsAfterUnlock = 4;
 
-    public static readonly HashSet<EntityKind> UnitKinds =
-    [
+    // R05: FrozenSet cannot be mutated by callers (previously a public mutable HashSet).
+    public static readonly FrozenSet<EntityKind> UnitKinds = new[]
+    {
         EntityKind.LightBot,
         EntityKind.BasicTank,
         EntityKind.Scout,
@@ -28,13 +31,13 @@ public static class MvpDefinitions
         EntityKind.MediumTank,
         EntityKind.AntiAirBot,
         EntityKind.RocketLauncher
-    ];
+    }.ToFrozenSet();
 
-    public static readonly HashSet<EntityKind> FactoryKinds =
-    [
+    public static readonly FrozenSet<EntityKind> FactoryKinds = new[]
+    {
         EntityKind.TankFactory,
         EntityKind.DroneCenter
-    ];
+    }.ToFrozenSet();
 
     /// <summary>
     /// Embedded construction costs (parity with <c>config/build-costs.json</c>). Prefer
@@ -64,14 +67,14 @@ public static class MvpDefinitions
             [EntityKind.MachineGunTurret] = 1,
             [EntityKind.CannonTurret] = 2,
             [EntityKind.AntiAirTurret] = 2
-        };
+        }.AsReadOnly();
 
     public static readonly IReadOnlyDictionary<EntityKind, int> PowerProduction =
         new Dictionary<EntityKind, int>
         {
             [EntityKind.SolarPanel] = 5,
             [EntityKind.CoalPlant] = 20
-        };
+        }.AsReadOnly();
 
     /// <summary>Per-building energy buffer capacity = demand × this factor (ticks of full drain).</summary>
     public const int EnergyBufferCapacityFactor = 100;
@@ -102,7 +105,7 @@ public static class MvpDefinitions
             [ItemId.Ammo] = 100,
             [ItemId.Shell] = 50,
             [ItemId.AntiAirShell] = 50
-        };
+        }.AsReadOnly();
 
     public static int GetMaxStackSize(ItemId item)
     {
@@ -206,7 +209,7 @@ public static class MvpDefinitions
             [EntityKind.MediumTank] = new(Cost((ItemId.Steel, 10), (ItemId.Fuel, 3)), EntityKind.MediumTank, 150, TechnologyId.MediumTank),
             [EntityKind.AntiAirBot] = new(Cost((ItemId.Steel, 6), (ItemId.CopperPlate, 8)), EntityKind.AntiAirBot, 120, TechnologyId.AntiAirTurret),
             [EntityKind.RocketLauncher] = new(Cost((ItemId.Steel, 8), (ItemId.Fuel, 5)), EntityKind.RocketLauncher, 165, TechnologyId.RocketLauncher)
-        };
+        }.AsReadOnly();
 
     public static readonly IReadOnlyDictionary<ItemRecipeId, ItemRecipeDefinition> ItemRecipes =
         new Dictionary<ItemRecipeId, ItemRecipeDefinition>
@@ -215,7 +218,7 @@ public static class MvpDefinitions
             [ItemRecipeId.Composite] = new(ItemRecipeId.Composite, Cost((ItemId.IronPlate, 1), (ItemId.CopperPlate, 1)), ItemId.Composite, 1, 60),
             [ItemRecipeId.SciencePackT1] = new(ItemRecipeId.SciencePackT1, Cost((ItemId.IronGear, 1), (ItemId.CopperPlate, 1)), ItemId.SciencePackT1, 1, 35),
             [ItemRecipeId.SciencePackT2] = new(ItemRecipeId.SciencePackT2, Cost((ItemId.Composite, 1), (ItemId.Steel, 1), (ItemId.Fuel, 1)), ItemId.SciencePackT2, 1, 45)
-        };
+        }.AsReadOnly();
 
     // Research catalog moved to Research/MvpResearchCatalog.cs
 
@@ -230,7 +233,7 @@ public static class MvpDefinitions
             [EntityKind.Assembler] = 3,
             [EntityKind.Laboratory] = 3,
             [EntityKind.CoalPlant] = 2
-        };
+        }.AsReadOnly();
 
     public static EntityStats GetStats(EntityKind kind)
     {

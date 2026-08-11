@@ -32,7 +32,10 @@ public static class BuildBarModel
             EntityKind.CoalPlant => "P",
             EntityKind.Bastion => "B",
             EntityKind.Wall => "#",
+            EntityKind.SteelWall => "W",
             EntityKind.MachineGunTurret => "T",
+            EntityKind.CannonTurret => "K",
+            EntityKind.AntiAirTurret => "Y",
             _ => "?"
         };
     }
@@ -47,15 +50,14 @@ public static class BuildBarModel
         };
     }
 
-    public static int AffordableBuilds(EntityKind kind, Inventory inventory, BuildCostCatalog? buildCosts = null)
+    /// <summary>
+    /// R30: Affordability is delegated to a single Core query so the UI count matches what a real
+    /// ghost-build would pay for, including stock in nearby owned hubs — not just commander inventory.
+    /// </summary>
+    public static int AffordableBuilds(GameSimulation simulation, WorldEntity? commander, EntityKind kind)
     {
-        var costs = (buildCosts ?? MvpBuildCostCatalog.Embedded).Costs;
-        if (!costs.TryGetValue(kind, out var cost))
-        {
-            return 0;
-        }
-
-        return inventory.AffordableSets(cost);
+        ArgumentNullException.ThrowIfNull(simulation);
+        return commander is null ? 0 : simulation.GetAffordableBuildCount(commander, kind);
     }
 
     public static string AffordLabel(int affordable)

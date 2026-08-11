@@ -16,10 +16,7 @@ public static class EntityContentLoader
         var dto = JsonSerializer.Deserialize<EntityCatalogDto>(json, JsonOptions)
             ?? throw new InvalidOperationException("Entity catalog JSON deserialized to null.");
 
-        if (dto.SchemaVersion < 1)
-        {
-            throw new InvalidOperationException($"Unsupported entities schemaVersion '{dto.SchemaVersion}'.");
-        }
+        ContentSchema.RequireSupportedVersion("entities", dto.SchemaVersion);
 
         if (dto.Entities is null || dto.Entities.Count == 0)
         {

@@ -79,7 +79,10 @@ public sealed record GameCreationOptions(
     TileCatalog Tiles,
     EntityCatalog Entities,
     MapSettings? Map = null,
-    BuildCostCatalog? BuildCosts = null)
+    BuildCostCatalog? BuildCosts = null,
+    // R32: per-match tick rate that drives all Core duration-in-ticks conversions.
+    // Defaults to GameSimulation.DefaultTicksPerSecond; hosts thread GameSettings.TicksPerSecond here.
+    int TicksPerSecond = GameSimulation.DefaultTicksPerSecond)
 {
     public GameCreationOptions(int randomSeed, string profileId, ResearchCatalog catalog)
         : this(randomSeed, profileId, catalog, TileCatalog.Empty, EntityCatalog.Empty, null, null)

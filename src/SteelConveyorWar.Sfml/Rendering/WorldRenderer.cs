@@ -41,16 +41,27 @@ internal static class WorldRenderer
 
         DrawTechSignatures(target, simulation.GetTechSignatureHotspots(localPlayer));
 
-        var visibleEntities = world.Entities
-            .Where(entity => entity.IsAlive && !entity.IsGarrisoned && IsVisibleToLocalPlayer(simulation, localPlayer, entity))
-            .ToList();
+        // R33: partition visible entities in a single pass instead of enumerating the collection
+        // twice (once per draw layer). Structures render below units; order within each layer is
+        // unchanged, so the drawn result is identical.
+        var structureDraws = new List<WorldEntity>();
+        var unitDraws = new List<WorldEntity>();
+        foreach (var entity in world.Entities)
+        {
+            if (!entity.IsAlive || entity.IsGarrisoned || !IsVisibleToLocalPlayer(simulation, localPlayer, entity))
+            {
+                continue;
+            }
 
-        foreach (var entity in visibleEntities.Where(entity => !IsUnitDrawKind(entity.Kind)))
+            (IsUnitDrawKind(entity.Kind) ? unitDraws : structureDraws).Add(entity);
+        }
+
+        foreach (var entity in structureDraws)
         {
             DrawEntity(target, simulation, entity, selectedEntityId == entity.Id);
         }
 
-        foreach (var entity in visibleEntities.Where(entity => IsUnitDrawKind(entity.Kind)))
+        foreach (var entity in unitDraws)
         {
             DrawEntity(target, simulation, entity, selectedEntityId == entity.Id);
         }
@@ -139,6 +150,27 @@ internal static class WorldRenderer
     internal static bool IsVisibleToLocalPlayer(GameSimulation simulation, PlayerId localPlayer, WorldEntity entity)
     {
         return entity.OwnerId == localPlayer || simulation.GetVisibility(localPlayer, entity.Position) == VisibilityState.Visible;
+    }
+
+    // R27: a combat tracer may only be shown when the observer already sees it — otherwise the
+    // endpoint positions leak hidden movement/combat. A shot is visible if either the attacker or
+    // target is currently observable, or either endpoint tile is Visible to the local player.
+    internal static bool IsShotVisibleToLocalPlayer(GameSimulation simulation, PlayerId localPlayer, CombatShotEvent shot)
+    {
+        var attacker = simulation.World.GetEntity(shot.AttackerId);
+        if (attacker is not null && IsVisibleToLocalPlayer(simulation, localPlayer, attacker))
+        {
+            return true;
+        }
+
+        var targetEntity = simulation.World.GetEntity(shot.TargetId);
+        if (targetEntity is not null && IsVisibleToLocalPlayer(simulation, localPlayer, targetEntity))
+        {
+            return true;
+        }
+
+        return simulation.GetVisibility(localPlayer, shot.From.ToTilePosition()) == VisibilityState.Visible
+            || simulation.GetVisibility(localPlayer, shot.To.ToTilePosition()) == VisibilityState.Visible;
     }
 
     internal static void DrawEntity(IRenderTarget target, GameSimulation simulation, WorldEntity entity, bool isSelected)

@@ -1,18 +1,30 @@
 namespace SteelConveyorWar.Core;
 
-public sealed partial class GameSimulation
+/// <summary>
+/// R06: standalone combat system extracted from the <see cref="GameSimulation"/> god-object. Handles
+/// targeting/damage, the bastion-death cascade, and out-of-combat repair for one tick. Owns its scratch
+/// buffers and reaches the rest of the simulation only through <see cref="ISimulationSystemContext"/>,
+/// so it can be unit-tested in isolation.
+/// </summary>
+internal sealed class CombatSystem
 {
-    /// <summary>
-    /// Combat targeting/damage, bastion-death cascade, and out-of-combat repair for one tick.
-    /// </summary>
-    private static class CombatSystem
+    private readonly ISimulationSystemContext _context;
+
+    // Reused across ticks to avoid LINQ/ToList allocations on the hot combat path.
+    private readonly List<WorldEntity> _scratchEntities = new();
+    private readonly List<WorldEntity> _scratchEntitiesSecondary = new();
+
+    public CombatSystem(ISimulationSystemContext context)
     {
-        public static void Tick(GameSimulation sim)
-        {
-            sim.ProcessCombat();
-            sim.CascadeBastionDeaths();
-            sim.ProcessRepairOutOfCombat();
-        }
+        ArgumentNullException.ThrowIfNull(context);
+        _context = context;
+    }
+
+    public void Tick()
+    {
+        ProcessCombat();
+        _context.CascadeBastionDeaths();
+        ProcessRepairOutOfCombat();
     }
 
     private int ResolveAttackDamage(WorldEntity attacker, EntityStats baseline)
@@ -22,7 +34,7 @@ public sealed partial class GameSimulation
             return baseline.AttackDamage;
         }
 
-        return ResolveStat(
+        return _context.ResolveStat(
             attacker.OwnerId.Value,
             ResearchStatIds.AttackDamage,
             baseline.AttackDamage,
@@ -37,7 +49,7 @@ public sealed partial class GameSimulation
             return baseline.Armor;
         }
 
-        return ResolveStat(
+        return _context.ResolveStat(
             target.OwnerId.Value,
             ResearchStatIds.Armor,
             baseline.Armor,
@@ -52,7 +64,7 @@ public sealed partial class GameSimulation
             return baseline.AttackCooldownTicks;
         }
 
-        return ResolveStat(
+        return _context.ResolveStat(
             attacker.OwnerId.Value,
             ResearchStatIds.AttackCooldownTicks,
             baseline.AttackCooldownTicks,
@@ -62,7 +74,7 @@ public sealed partial class GameSimulation
 
     private int ComputeDamageAgainst(WorldEntity attacker, EntityStats attackerStats, WorldEntity target)
     {
-        SyncResolvedMaxHealth(target);
+        _context.SyncResolvedMaxHealth(target);
         var attackDamage = ResolveAttackDamage(attacker, attackerStats);
         var targetStats = MvpDefinitions.GetStats(target.Kind);
         var armor = ResolveArmor(target, targetStats);
@@ -71,6 +83,14 @@ public sealed partial class GameSimulation
             MvpDefinitions.GetCombatTargetCategory(target.Kind));
         return CombatDamage.ComputeFinalDamage(attackDamage, armor, resistance);
     }
+
+    /// <summary>
+    /// R06: test/helper bridge. Combat damage computation moved here from <see cref="GameSimulation"/>
+    /// during the god-object split; this exposes the same formula-C result to the simulation's
+    /// test helper without widening the private method's visibility beyond the assembly.
+    /// </summary>
+    internal int ComputeDamageForTests(WorldEntity attacker, EntityStats attackerStats, WorldEntity target)
+        => ComputeDamageAgainst(attacker, attackerStats, target);
 
     /// <summary>
     /// True when GroundToGround fire at a ground unit is blocked by an allied Wall/SteelWall on the LoS ray.
@@ -95,12 +115,12 @@ public sealed partial class GameSimulation
 
         foreach (var tile in EnumerateLineExclusive(attacker.Position, target.Position))
         {
-            if (!World.IsInside(tile))
+            if (!_context.World.IsInside(tile))
             {
                 continue;
             }
 
-            if (spatial.HasAlliedWallAt(tile, target.OwnerId.Value, AreAllied))
+            if (spatial.HasAlliedWallAt(tile, target.OwnerId.Value, _context.AreAllied))
             {
                 return true;
             }
@@ -153,7 +173,7 @@ public sealed partial class GameSimulation
         }
     }
 
-    private void ApplyCombatDamage(WorldEntity target, int damage)
+    private static void ApplyCombatDamage(WorldEntity target, int damage)
     {
         if (damage <= 0)
         {
@@ -165,23 +185,23 @@ public sealed partial class GameSimulation
 
     private void ProcessRepairOutOfCombat()
     {
-        if (Tick % 30 != 0)
+        if (_context.Tick % 30 != 0)
         {
             return;
         }
 
-        foreach (var player in _players.OrderBy(player => player.Id.Value))
+        foreach (var player in _context.Players.OrderBy(player => player.Id.Value))
         {
             if (!CapabilityResolver.HasCapability(player.Research, ResearchCapabilityIds.RepairOutOfCombat))
             {
                 continue;
             }
 
-            foreach (var bastion in World.Entities
+            foreach (var bastion in _context.World.Entities
                 .Where(entity => entity.IsAlive && entity.OwnerId == player.Id && entity.Kind == EntityKind.Bastion)
                 .OrderBy(entity => entity.Id))
             {
-                foreach (var unit in World.Entities
+                foreach (var unit in _context.World.Entities
                     .Where(entity =>
                         entity.IsAlive
                         && entity.OwnerId == player.Id
@@ -199,11 +219,11 @@ public sealed partial class GameSimulation
 
     private void ProcessCombat()
     {
-        _presentation.ClearCombatShots();
+        _context.Presentation.ClearCombatShots();
         // Per-pass combat index keeps range/splash queries neighborhood-limited; GameWorld tile
         // occupancy (#66) does not replace position-radius combat scans yet.
-        var spatial = CombatSpatialIndex.Build(World.Entities);
-        CollectSortedAliveEntities(
+        var spatial = CombatSpatialIndex.Build(_context.World.Entities);
+        _context.CollectSortedAliveEntities(
             _scratchEntities,
             static entity => !entity.IsGarrisoned
                              && entity.OwnerId is not null
@@ -232,7 +252,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            if (MvpDefinitions.GetPowerDemand(attacker.Kind) > 0 && !TryConsumeBuildingEnergy(attacker))
+            if (MvpDefinitions.GetPowerDemand(attacker.Kind) > 0 && !_context.TryConsumeBuildingEnergy(attacker))
             {
                 continue;
             }
@@ -244,7 +264,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            _presentation.AddCombatShot(new CombatShotEvent(
+            _context.Presentation.AddCombatShot(new CombatShotEvent(
                 attacker.Id,
                 target.Id,
                 attacker.WorldPosition,
@@ -264,7 +284,7 @@ public sealed partial class GameSimulation
                         || entity.IsGarrisoned
                         || entity.Id == target.Id
                         || entity.OwnerId is null
-                        || AreAllied(attacker.OwnerId, entity.OwnerId))
+                        || _context.AreAllied(attacker.OwnerId, entity.OwnerId))
                     {
                         continue;
                     }
@@ -288,7 +308,7 @@ public sealed partial class GameSimulation
 
             if (killed)
             {
-                CascadeBastionDeaths();
+                _context.CascadeBastionDeaths();
             }
         }
     }
@@ -305,7 +325,7 @@ public sealed partial class GameSimulation
             if (!entity.IsAlive
                 || entity.IsGarrisoned
                 || entity.OwnerId is null
-                || AreAllied(attacker.OwnerId, entity.OwnerId))
+                || _context.AreAllied(attacker.OwnerId, entity.OwnerId))
             {
                 continue;
             }
@@ -321,21 +341,5 @@ public sealed partial class GameSimulation
         }
 
         return best;
-    }
-
-    private void CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate)
-    {
-        into.Clear();
-        var entities = World.Entities;
-        for (var i = 0; i < entities.Count; i++)
-        {
-            var entity = entities[i];
-            if (entity.IsAlive && predicate(entity))
-            {
-                into.Add(entity);
-            }
-        }
-
-        into.Sort(static (left, right) => left.Id.CompareTo(right.Id));
     }
 }

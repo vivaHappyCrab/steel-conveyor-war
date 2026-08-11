@@ -1,9 +1,27 @@
+using System.Collections.Immutable;
+
 namespace SteelConveyorWar.Core.Commands;
 
 /// <summary>Shared header fields for all gameplay commands.</summary>
 public abstract record SimulationCommandBase(PlayerId Actor, long Tick) : ISimulationCommand
 {
     public abstract SimulationCommandKind Kind { get; }
+
+    /// <summary>
+    /// R03: per-author ordering key. Init-only so it is not part of any positional constructor
+    /// (keeps existing call sites source-compatible); the command source stamps it via
+    /// <c>command with { Sequence = n }</c> or <see cref="GameSimulation.EnqueueCommand"/>.
+    /// </summary>
+    public long Sequence { get; init; }
+
+    /// <summary>
+    /// R02: re-stamps scheduling metadata (<see cref="ISimulationCommand.Tick"/> and
+    /// <see cref="Sequence"/>) while preserving the concrete runtime command type and its payload.
+    /// Used by <see cref="Commands.IPlayerCommandSink"/> so hosts can build a command without knowing
+    /// the target tick, then have the sink assign the input-delayed tick and a monotonic sequence.
+    /// </summary>
+    public SimulationCommandBase WithScheduling(long tick, long sequence)
+        => this with { Tick = tick, Sequence = sequence };
 }
 
 public sealed record IssueMoveCommand(PlayerId Actor, long Tick, int EntityId, TilePosition Target)
@@ -66,11 +84,23 @@ public sealed record CancelResearchCommand(PlayerId Actor, long Tick, Technology
     public override SimulationCommandKind Kind => SimulationCommandKind.CancelResearch;
 }
 
-public sealed record SetTrackAllocationCommand(
-    PlayerId Actor,
-    long Tick,
-    IReadOnlyDictionary<string, int> Allocations) : SimulationCommandBase(Actor, Tick)
+public sealed record SetTrackAllocationCommand : SimulationCommandBase
 {
+    /// <summary>
+    /// R12: freezes a deep copy of <paramref name="Allocations"/> so that mutating the caller's
+    /// dictionary after constructing (or enqueuing) the command cannot change the applied intent.
+    /// Positional parameter names are preserved for existing call sites.
+    /// </summary>
+    public SetTrackAllocationCommand(PlayerId Actor, long Tick, IReadOnlyDictionary<string, int> Allocations)
+        : base(Actor, Tick)
+    {
+        this.Allocations = Allocations is null
+            ? ImmutableDictionary<string, int>.Empty
+            : Allocations.ToImmutableDictionary(StringComparer.Ordinal);
+    }
+
+    public IReadOnlyDictionary<string, int> Allocations { get; init; }
+
     public override SimulationCommandKind Kind => SimulationCommandKind.SetTrackAllocation;
 }
 
@@ -148,4 +178,19 @@ public sealed record WithdrawItemTypeFromHubOrOutputCommand(
     ItemId Item) : SimulationCommandBase(Actor, Tick)
 {
     public override SimulationCommandKind Kind => SimulationCommandKind.WithdrawItemTypeFromHubOrOutput;
+}
+
+/// <summary>
+/// R02: research selection intent (previously issued via the immediate <c>TrySelectResearch</c>
+/// convenience). Carries the optional exclusive-confirmation flag and preferred track so a queued
+/// command reproduces the same selection as the direct call.
+/// </summary>
+public sealed record SelectResearchCommand(
+    PlayerId Actor,
+    long Tick,
+    TechnologyId Technology,
+    bool ConfirmExclusive = false,
+    string? PreferredTrackId = null) : SimulationCommandBase(Actor, Tick)
+{
+    public override SimulationCommandKind Kind => SimulationCommandKind.SelectResearch;
 }

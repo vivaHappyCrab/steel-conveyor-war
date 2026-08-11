@@ -24,4 +24,7 @@ public enum SimulationCommandKind
     DepositToHubOrInput = 17,
     DepositItemTypeToHubOrInput = 18,
     WithdrawItemTypeFromHubOrOutput = 19,
+
+    // R02: research selection as a queued command so SFML research input no longer bypasses the queue.
+    SelectResearch = 20,
 }

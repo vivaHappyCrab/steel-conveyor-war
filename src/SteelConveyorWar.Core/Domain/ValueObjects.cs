@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace SteelConveyorWar.Core;
 
 public readonly record struct PlayerId(int Value);
@@ -68,13 +70,39 @@ public readonly record struct WorldPosition(double X, double Y)
 
 public readonly record struct CollisionSize(double Radius);
 
-public sealed record BastionOrder(
-    BastionOrderKind Kind,
-    TilePosition? Target = null,
-    IReadOnlyList<TilePosition>? Waypoints = null,
-    int WaypointIndex = 0)
+public sealed record BastionOrder
 {
-    public IReadOnlyList<TilePosition> WaypointList => Waypoints ?? Array.Empty<TilePosition>();
+    /// <summary>
+    /// R12: caller-owned <paramref name="Waypoints"/> are deep-copied into an immutable snapshot,
+    /// so mutating the source list after constructing (or enqueuing) an order cannot alter it.
+    /// Parameter names are preserved for existing positional/named call sites.
+    /// </summary>
+    public BastionOrder(
+        BastionOrderKind Kind,
+        TilePosition? Target = null,
+        IReadOnlyList<TilePosition>? Waypoints = null,
+        int WaypointIndex = 0)
+    {
+        this.Kind = Kind;
+        this.Target = Target;
+        WaypointList = Waypoints is null
+            ? ImmutableArray<TilePosition>.Empty
+            : Waypoints.ToImmutableArray();
+        this.WaypointIndex = WaypointIndex;
+    }
+
+    public BastionOrderKind Kind { get; init; }
+
+    public TilePosition? Target { get; init; }
+
+    /// <summary>
+    /// Immutable snapshot of the ordered waypoints (empty when none were supplied). Exposed as
+    /// <see cref="IReadOnlyList{T}"/> so existing <c>.Count</c> call sites keep compiling while the
+    /// backing store is an <see cref="ImmutableArray{T}"/>.
+    /// </summary>
+    public IReadOnlyList<TilePosition> WaypointList { get; init; }
+
+    public int WaypointIndex { get; init; }
 }
 
 public sealed record TechSignatureHotspot(int ZoneX, int ZoneY, int Intensity);

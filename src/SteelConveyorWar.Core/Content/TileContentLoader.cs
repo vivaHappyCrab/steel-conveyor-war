@@ -16,10 +16,7 @@ public static class TileContentLoader
         var dto = JsonSerializer.Deserialize<TileCatalogDto>(json, JsonOptions)
             ?? throw new InvalidOperationException("Tile catalog JSON deserialized to null.");
 
-        if (dto.SchemaVersion < 1)
-        {
-            throw new InvalidOperationException($"Unsupported tiles schemaVersion '{dto.SchemaVersion}'.");
-        }
+        ContentSchema.RequireSupportedVersion("tiles", dto.SchemaVersion);
 
         if (dto.Tiles is null || dto.Tiles.Count == 0)
         {

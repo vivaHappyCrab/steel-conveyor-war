@@ -35,6 +35,52 @@ public class BuildMenuCatalogTests
         Assert.Equal("H", BuildBarModel.Glyph(EntityKind.Hub));
     }
 
+    // R30: composition is derived from the authoritative catalog, not a hardcoded list.
+    [Fact]
+    public void BuildableKinds_ContainEveryCatalogEntity()
+    {
+        var catalogKinds = MvpBuildCostCatalog.Embedded.Costs.Keys.ToHashSet();
+        var menuKinds = BuildMenuCatalog.BuildableKinds.ToHashSet();
+
+        Assert.Equal(catalogKinds, menuKinds);
+    }
+
+    [Theory]
+    [InlineData(EntityKind.UndergroundConveyor)]
+    [InlineData(EntityKind.SteelWall)]
+    [InlineData(EntityKind.CannonTurret)]
+    [InlineData(EntityKind.AntiAirTurret)]
+    public void BuildableKinds_IncludePreviouslyMissingEntities(EntityKind kind)
+    {
+        Assert.Contains(kind, BuildMenuCatalog.BuildableKinds);
+    }
+
+    [Fact]
+    public void BuildableKinds_HaveNoDuplicates()
+    {
+        Assert.Equal(
+            BuildMenuCatalog.BuildableKinds.Length,
+            BuildMenuCatalog.BuildableKinds.Distinct().Count());
+    }
+
+    [Fact]
+    public void EveryBuildableKind_HasAGlyph()
+    {
+        foreach (var kind in BuildMenuCatalog.BuildableKinds)
+        {
+            Assert.NotEqual("?", BuildBarModel.Glyph(kind));
+        }
+    }
+
+    [Fact]
+    public void ComposeFrom_IsDeterministic()
+    {
+        var first = BuildMenuCatalog.ComposeFrom(MvpBuildCostCatalog.Embedded);
+        var second = BuildMenuCatalog.ComposeFrom(MvpBuildCostCatalog.Embedded);
+
+        Assert.Equal(first, second);
+    }
+
     [Fact]
     public void BastionOrderBarModel_AsdfHotkeysAndGlyphs()
     {

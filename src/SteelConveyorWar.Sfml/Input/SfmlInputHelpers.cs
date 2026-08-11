@@ -99,7 +99,7 @@ internal static class SfmlInputHelpers
             };
     }
 
-    internal static void ToggleResearchAllocation(GameSimulation simulation, PlayerId playerId)
+    internal static void ToggleResearchAllocation(GameSimulation simulation, SfmlCommandGateway commands, PlayerId playerId)
     {
         var snapshot = simulation.GetResearchSnapshot(playerId);
         if (snapshot.Tracks.Count < 2 || !snapshot.Tracks.Any(track => track.PlayerAdjustableAllocation))
@@ -111,7 +111,9 @@ internal static class SfmlInputHelpers
             ?? snapshot.Tracks[0];
         var tactical = snapshot.Tracks.FirstOrDefault(track => track.Id != cycle.Id) ?? snapshot.Tracks[^1];
         var fullCycle = cycle.AllocationBasisPoints >= 10_000;
-        simulation.TrySetTrackAllocation(playerId, new Dictionary<string, int>
+
+        // R02: enqueue through the command sink rather than mutating research allocation immediately.
+        commands.SetTrackAllocation(playerId, new Dictionary<string, int>
         {
             [cycle.Id] = fullCycle ? 7_000 : 10_000,
             [tactical.Id] = fullCycle ? 3_000 : 0

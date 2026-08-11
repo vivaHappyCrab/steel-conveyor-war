@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using SteelConveyorWar.Core.Commands;
 
 namespace SteelConveyorWar.Core;
 
@@ -21,7 +22,7 @@ namespace SteelConveyorWar.Core;
 /// </remarks>
 public static class SimulationStateHasher
 {
-    public const int AlgorithmVersion = 5;
+    public const int AlgorithmVersion = 7;
 
     public static string Compute(GameSimulation simulation)
     {
@@ -36,7 +37,10 @@ public static class SimulationStateHasher
             writer.Write((int)simulation.Status);
             writer.Write(simulation.WinnerId.HasValue);
             writer.Write(simulation.WinnerId?.Value ?? 0);
-            writer.Write(simulation.ResearchCatalog.ContentHash);
+            // R10: fold the full content manifest (research + build costs + entities + tiles) into the
+            // fingerprint, not just the research hash, so peers with divergent gameplay catalogs mismatch
+            // at tick 0 instead of silently diverging once a difference is first exercised.
+            writer.Write(SimulationContentManifest.Compute(simulation));
             writer.Write(simulation.ResearchProfile.Id);
             writer.Write(simulation.NextEntityId);
 
@@ -63,6 +67,43 @@ public static class SimulationStateHasher
             }
 
             // Presentation-only SimulationPresentationSink / CombatShotsThisTick intentionally omitted.
+        }
+
+        var hash = SHA256.HashData(stream.ToArray());
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// R13: separate fingerprint of the <b>not-yet-applied</b> command queue. <see cref="Compute"/>
+    /// hashes only authoritative state, so two peers can hold identical state but diverge on future
+    /// ticks if their pending queues differ. This hash makes that divergence observable: peers compare
+    /// <c>(ComputeStateHash, ComputePendingCommandsHash)</c> as the full session fingerprint.
+    /// Commands are ordered canonically by <c>(Tick, Actor, Sequence)</c> — the same key the tick loop
+    /// applies them in — so enqueue / network-arrival order does not affect the result. An empty queue
+    /// hashes to a stable constant (the empty-payload digest), not to the state hash.
+    /// </summary>
+    public static string ComputePendingCommandsHash(GameSimulation simulation)
+    {
+        ArgumentNullException.ThrowIfNull(simulation);
+
+        var ordered = simulation.PendingCommands
+            .OrderBy(command => command.Tick)
+            .ThenBy(command => command.Actor.Value)
+            .ThenBy(command => command.Sequence);
+
+        using var stream = new MemoryStream();
+        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(AlgorithmVersion);
+            var count = 0;
+            foreach (var command in ordered)
+            {
+                // Canonical JSON envelope (versioned, R11) is the wire-stable representation of the intent.
+                writer.Write(SimulationCommandSerializer.Serialize(command));
+                count++;
+            }
+
+            writer.Write(count);
         }
 
         var hash = SHA256.HashData(stream.ToArray());
@@ -170,6 +211,26 @@ public static class SimulationStateHasher
         {
             writer.Write((int)pair.Key);
             writer.Write(pair.Value);
+        }
+
+        // R08: queued commander orders drive future ticks and must be part of the hash surface.
+        var buildOrder = entity.QueuedBuildOrder;
+        writer.Write(buildOrder is not null);
+        if (buildOrder is not null)
+        {
+            writer.Write((int)buildOrder.TargetKind);
+            writer.Write(buildOrder.TargetPosition.X);
+            writer.Write(buildOrder.TargetPosition.Y);
+            writer.Write((int)buildOrder.Direction);
+            writer.Write(buildOrder.SelectedItemRecipe.HasValue);
+            writer.Write(buildOrder.SelectedItemRecipe.HasValue ? (int)buildOrder.SelectedItemRecipe.Value : 0);
+        }
+
+        var demolishOrder = entity.QueuedDemolishOrder;
+        writer.Write(demolishOrder is not null);
+        if (demolishOrder is not null)
+        {
+            writer.Write(demolishOrder.TargetEntityId);
         }
     }
 

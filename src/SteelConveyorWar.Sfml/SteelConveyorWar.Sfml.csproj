@@ -8,4 +8,9 @@
     <ProjectReference Include="..\SteelConveyorWar.Core\SteelConveyorWar.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- R27: expose internal presentation-gating helpers (WorldRenderer visibility checks) to tests. -->
+    <InternalsVisibleTo Include="SteelConveyorWar.Sfml.Tests" />
+  </ItemGroup>
+
 </Project>

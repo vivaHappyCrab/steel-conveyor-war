@@ -16,10 +16,7 @@ public static class BuildCostContentLoader
         var dto = JsonSerializer.Deserialize<BuildCostCatalogDto>(json, JsonOptions)
             ?? throw new InvalidOperationException("Build-cost catalog JSON deserialized to null.");
 
-        if (dto.SchemaVersion < 1)
-        {
-            throw new InvalidOperationException($"Unsupported build-costs schemaVersion '{dto.SchemaVersion}'.");
-        }
+        ContentSchema.RequireSupportedVersion("build-costs", dto.SchemaVersion);
 
         if (dto.Builds is null || dto.Builds.Count == 0)
         {
@@ -60,7 +57,8 @@ public static class BuildCostContentLoader
             }
         }
 
-        return new BuildCostCatalog(dto.SchemaVersion, costs, ticks, requirements);
+        // R05: hand the catalog ReadOnlyDictionary wrappers so callers cannot downcast to Dictionary and mutate.
+        return new BuildCostCatalog(dto.SchemaVersion, costs.AsReadOnly(), ticks.AsReadOnly(), requirements.AsReadOnly());
     }
 
     private static IReadOnlyDictionary<ItemId, int> ParseCost(Dictionary<string, int>? cost, EntityKind kind)

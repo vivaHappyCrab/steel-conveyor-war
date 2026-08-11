@@ -31,4 +31,32 @@ public static class LocalPlayerBinding
 
         return defaultId;
     }
+
+    /// <summary>
+    /// R24: validate the requested seat is actually on the map and controllable before the SFML
+    /// session assumes a commander exists. Turns a raw <c>First()</c> <see cref="InvalidOperationException"/>
+    /// into a domain-friendly message that lists the available seats.
+    /// </summary>
+    public static void EnsureSeatControllable(GameSimulation simulation, PlayerId localPlayer)
+    {
+        ArgumentNullException.ThrowIfNull(simulation);
+
+        var seat = simulation.Players.FirstOrDefault(player => player.Id == localPlayer);
+        if (seat is null)
+        {
+            var available = string.Join(
+                ", ",
+                simulation.Players.Select(player => player.Id.Value).OrderBy(id => id));
+            throw new InvalidOperationException(
+                $"Local player {localPlayer.Value} is not present on this map. Available player ids: {available}.");
+        }
+
+        var hasCommander = simulation.World.Entities.Any(entity =>
+            entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander);
+        if (!hasCommander)
+        {
+            throw new InvalidOperationException(
+                $"Local player {localPlayer.Value} has no commander on this map and cannot be controlled.");
+        }
+    }
 }

@@ -16,10 +16,7 @@ public static class GameSettingsLoader
         var dto = JsonSerializer.Deserialize<GameConfigDto>(json, JsonOptions)
             ?? throw new InvalidOperationException("Game settings JSON deserialized to null.");
 
-        if (dto.SchemaVersion < 1)
-        {
-            throw new InvalidOperationException($"Unsupported game schemaVersion '{dto.SchemaVersion}'.");
-        }
+        ContentSchema.RequireSupportedVersion("game", dto.SchemaVersion);
 
         if (string.IsNullOrWhiteSpace(dto.GameId))
         {

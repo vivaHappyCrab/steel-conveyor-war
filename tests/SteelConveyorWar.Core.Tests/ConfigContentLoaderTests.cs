@@ -11,7 +11,7 @@ public sealed class ConfigContentLoaderTests
         Assert.Equal("steel-conveyor-war", settings.GameId);
         Assert.Equal(42, settings.DefaultRandomSeed);
         Assert.Equal(30, settings.TicksPerSecond);
-        Assert.Equal(GameSimulation.TicksPerSecond, settings.TicksPerSecond);
+        Assert.Equal(GameSimulation.DefaultTicksPerSecond, settings.TicksPerSecond);
         Assert.Equal("research.json", settings.ResearchContentFile);
         Assert.Equal(ResearchProfileIds.MvpB, settings.ResearchProfileId);
         Assert.Equal("maps/default.json", settings.MapContentFile);

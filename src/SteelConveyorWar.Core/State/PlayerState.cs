@@ -6,12 +6,19 @@ public sealed class PlayerState
     private readonly List<TilePosition> _visibleTiles = new();
     private readonly List<TechSignatureHotspot> _techSignatures = new();
 
-    public PlayerState(PlayerId id, string name, WorldSize worldSize, int teamId)
+    public PlayerState(
+        PlayerId id,
+        string name,
+        WorldSize worldSize,
+        int teamId,
+        int ticksPerSecond = GameSimulation.DefaultTicksPerSecond)
     {
         Id = id;
         Name = name;
         TeamId = teamId;
         _visibility = new VisibilityState[worldSize.Width, worldSize.Height];
+        // R32: size the presentation energy-history window from the match tick rate.
+        EnergyStats = new EnergyStatsHistory(ticksPerSecond);
     }
 
     public PlayerId Id { get; }
@@ -37,7 +44,7 @@ public sealed class PlayerState
     /// Presentation-only energy time series for the SFML overlay.
     /// Not part of determinism hash; see § Presentation state in Core.
     /// </summary>
-    public EnergyStatsHistory EnergyStats { get; } = new();
+    public EnergyStatsHistory EnergyStats { get; }
 
     /// <summary>
     /// Presentation-only tech-signature hotspots for SFML fog overlay.

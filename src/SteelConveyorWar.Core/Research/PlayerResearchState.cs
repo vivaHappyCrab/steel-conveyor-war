@@ -36,6 +36,12 @@ public sealed class PlayerResearchState
     private readonly HashSet<string> _unlockedItemRecipes = new();
     private readonly List<AddModifierEffect> _appliedModifiers = new();
 
+    // R29: persistent largest-remainder accumulators so long-run pack allocation across tracks
+    // (by allocation basis points) and across weighted projects (by weight) matches the configured
+    // ratio instead of collapsing to a systematic last-entry bias. Integer-only => deterministic.
+    private readonly Dictionary<string, int> _trackSelectionRemainder = new();
+    private readonly Dictionary<TechnologyId, int> _projectSelectionRemainder = new();
+
     public IReadOnlySet<TechnologyId> CompletedTechnologies => _completedTechnologies.AsReadOnly();
 
     internal HashSet<TechnologyId> CompletedTechnologiesMutable => _completedTechnologies;
@@ -85,6 +91,10 @@ public sealed class PlayerResearchState
     public IReadOnlyList<AddModifierEffect> AppliedModifiers => _appliedModifiers.AsReadOnly();
 
     internal List<AddModifierEffect> AppliedModifiersMutable => _appliedModifiers;
+
+    internal Dictionary<string, int> TrackSelectionRemainder => _trackSelectionRemainder;
+
+    internal Dictionary<TechnologyId, int> ProjectSelectionRemainder => _projectSelectionRemainder;
 
     internal void EnsureTracks(ResearchProfileDefinition profile)
     {

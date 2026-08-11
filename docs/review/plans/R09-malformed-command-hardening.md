@@ -2,6 +2,18 @@
 
 **Severity:** High · **Домен:** robustness / network safety · **Roadmap:** P0
 **Статус валидации:** ✅ Подтверждено по коду
+**Статус реализации:** ✅ Реализовано 2026-08-11 (`SimulationCommandSerializer.cs`, `GameSimulation.cs`, `GameSimulation.Commands.cs`, `ResearchSystem.cs`; тесты в `MalformedCommandTests.cs`). ⚠️ Требуется прогон `dotnet build -c Release` + `dotnet test`.
+
+### Что сделано
+- **No-throw десериализация**: добавлены `TryDeserialize`/`TryDeserializeMany`, которые ловят любые исключения (битый JSON, отсутствующие поля, неизвестный kind) и возвращают `false`. Строгие `Deserialize`/`DeserializeMany` оставлены для доверенных путей/тестов.
+- **Roster-safe lookup**: добавлен `TryGetPlayer(PlayerId, out PlayerState)`; все research-диспетчеры (`TryCancelResearch`, `TrySelectResearch`, `TryConfirmExclusive`, `TrySetTrackAllocation`, `TrySetProjectWeight`) больше не бьют `.Single()` на неизвестном actor — возвращают reject (`false`/`NotAvailable`/`InvalidAllocation`/`InvalidTrack`).
+- **Extra-key rejection**: `TrySetTrackAllocation` (ResearchSystem) отклоняет любые allocation-ключи, отсутствующие в schedule tracks, до индексации `research.Tracks[...]` — нет `KeyNotFoundException`.
+- **No-throw tick loop**: `ApplyCommand` для неизвестного `Kind` возвращает `false` вместо `NotSupportedException`; `ApplyQueuedCommandsForCurrentTick` оборачивает `ApplyCommand` в try/catch — одна хостильная команда не роняет весь tick.
+- Тесты: fuzz на 500 случайных строк + edge-cases (`TryDeserialize_ReturnsFalse_ForGarbageInput_NeverThrows`), unknown-actor reject, queued malformed command не прерывает tick, extra allocation key → reject без `KeyNotFoundException`.
+
+### Отклонения от исходного плана
+- Полноценный `CommandResult` (Ok/Rejected/Reason) в п.5 не вводился — относится к R11; здесь применение остаётся `bool`, но гарантированно no-throw.
+- Roster-check (п.2) реализован на уровне применения (`TryGetPlayer` + R01 ownership-guard), а не внутри сериализатора, т.к. сериализатор не знает состав игроков. Untrusted actor отклоняется в момент применения.
 
 ## Проблема
 Malformed команда может исключением оборвать tick — для untrusted network input это denial-of-service. Несколько мест бросают на «плохих» данных, а применение команд не изолирует исключения.

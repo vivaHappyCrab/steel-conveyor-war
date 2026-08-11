@@ -38,6 +38,6 @@ public sealed class SfmlDisplayOptions
         1392,
         720,
         "Steel Conveyor War",
-        GameSimulation.TicksPerSecond,
+        GameSimulation.DefaultTicksPerSecond,
         DefaultLocalPlayerId);
 }

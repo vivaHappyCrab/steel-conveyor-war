@@ -50,6 +50,36 @@ public sealed class EncapsulationTests
         Assert.ThrowsAny<Exception>(() => ((IDictionary<EntityKind, int>)factory.BastionTemplate)[EntityKind.BasicTank] = 1);
     }
 
+    // R05: root-level authoritative collections must not be downcastable to their backing List/Dictionary.
+    [Fact]
+    public void RootCollections_AreNotCastMutable()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+
+        Assert.IsNotType<List<WorldEntity>>(simulation.World.Entities);
+        Assert.IsNotType<List<PlayerState>>(simulation.Players);
+        Assert.IsNotType<List<Commands.ISimulationCommand>>(simulation.PendingCommands);
+
+        Assert.Throws<NotSupportedException>(() =>
+            ((IList<WorldEntity>)simulation.World.Entities).Clear());
+        Assert.Throws<NotSupportedException>(() =>
+            ((IList<PlayerState>)simulation.Players).Clear());
+        Assert.Throws<NotSupportedException>(() =>
+            ((IList<Commands.ISimulationCommand>)simulation.PendingCommands).Clear());
+    }
+
+    // R05: static content tables must be immutable (previously public mutable HashSet / castable Dictionary).
+    [Fact]
+    public void ContentTables_AreNotCastMutable()
+    {
+        Assert.Throws<NotSupportedException>(() =>
+            ((IDictionary<EntityKind, int>)MvpDefinitions.PowerDemand)[EntityKind.Mine] = 0);
+        Assert.Throws<NotSupportedException>(() =>
+            ((IDictionary<ItemId, int>)MvpDefinitions.ItemStackSizes)[ItemId.IronPlate] = 0);
+        Assert.IsNotType<HashSet<EntityKind>>(MvpDefinitions.UnitKinds);
+        Assert.IsNotType<HashSet<EntityKind>>(MvpDefinitions.FactoryKinds);
+    }
+
     private static bool HasPublicSetter(Type type, string propertyName)
     {
         var property = type.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);

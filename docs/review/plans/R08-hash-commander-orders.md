@@ -2,6 +2,13 @@
 
 **Severity:** High · **Домен:** determinism / desync detector · **Roadmap:** P0
 **Статус валидации:** ✅ Подтверждено по коду
+**Статус реализации:** ✅ Реализовано 2026-08-11 (`SimulationStateHasher.cs`, тесты в `DeterminismHashTests.cs`). ⚠️ Требуется прогон `dotnet build -c Release` + `dotnet test`.
+
+### Что сделано
+- В `WriteEntity` добавлена детерминированная сериализация `QueuedBuildOrder` (`TargetKind`, `TargetPosition.X/Y`, `Direction`, `SelectedItemRecipe` наличие+значение) и `QueuedDemolishOrder` (`TargetEntityId`), с флагом наличия перед каждым блоком (как для остальных nullable-полей).
+- `AlgorithmVersion` поднят `5 → 6`.
+- Тесты: `QueuedBuildOrder_AffectsStateHash`, `QueuedDemolishOrder_AffectsStateHash` (разные очереди → разные hashes), `SameQueuedBuildOrder_ProducesIdenticalHash` (детерминизм сохранён). Тесты используют `internal set` через существующий `InternalsVisibleTo`.
+- Golden-ссылки не трогались — они отложены (#80), проверка идёт через dual-run equality.
 
 ## Проблема
 `QueuedBuildOrder` и `QueuedDemolishOrder` определяют поведение будущих тиков, но не участвуют в state hash. Два состояния с одинаковым hash могут выполнить разные build/demolish на следующих тиках — прямой дефект desync-детектора.

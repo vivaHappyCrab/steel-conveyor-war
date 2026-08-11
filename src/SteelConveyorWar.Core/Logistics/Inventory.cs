@@ -68,6 +68,13 @@ public sealed class Inventory
 
     internal bool TryRemove(ItemId item, int amount)
     {
+        // R28: reject negative amounts. Otherwise Has() returns true and
+        // remaining = Count - (negative) would *increase* the stored quantity.
+        if (amount < 0)
+        {
+            return false;
+        }
+
         if (!Has(item, amount))
         {
             return false;

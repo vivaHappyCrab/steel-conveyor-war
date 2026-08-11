@@ -29,3 +29,26 @@ Command queue/DTO/serializer существуют, но реальные hosts �
 
 ## Связанные замечания
 R1 (authorization в том же слое), R3 (canonical order), R11 (протокол), R13 (ledger в hash).
+
+---
+
+## Статус реализации: ✅ Реализовано 2026-08-11
+
+⚠️ **Требуется прогон `dotnet build -c Release` + `dotnet test`** — VM был недоступен, поэтому код не компилировался и тесты не запускались. Ниже перечислены изменения; их нужно верифицировать сборкой и прогоном тестов.
+
+### Что сделано
+- **Core — funnel ввода.** Добавлены `Commands/IPlayerCommandSink.cs` (единая операция `Enqueue`, экспонирует `InputDelayTicks` и `CommandLog`) и реализация по умолчанию `Commands/DeferredCommandSink.cs`. Sink стампует каждую команду тиком `simulation.Tick + InputDelayTicks` (по умолчанию 1) и монотонной пер-actor последовательностью (начиная с 1, т.к. Sequence 0 зарезервирован под legacy/unsequenced по R03), кладёт через `GameSimulation.EnqueueCommand` и пишет копию в replayable command log.
+- **`WithScheduling`.** В `SimulationCommandBase` добавлен `WithScheduling(tick, sequence)` (через `with`), чтобы sink мог обобщённо перештамповать любую команду, сохранив runtime-тип записи.
+- **SelectResearch как команда.** `TrySelectResearch` ранее не имел DTO. Добавлены `SelectResearchCommand` (+ `SimulationCommandKind.SelectResearch = 20`), ветка в `GameSimulation.Commands.cs` (`ApplyCommand`), сериализация в обе стороны и поля `ConfirmExclusive`/`PreferredTrackId` в `CommandPayloadDto`. `StartResearchCommand` теперь пробрасывает actor.
+- **Headless host.** `HeadlessHostRunner` создаёт `DeferredCommandSink`, stub-AI кладёт `IssueMoveCommand` в sink вместо `simulation.TryIssueMoveCommand`; результат отдаёт `CommandLog` (новое поле в `HeadlessHostResult`).
+- **SFML host.** Добавлен `Input/SfmlCommandGateway.cs` — тонкая обёртка над `IPlayerCommandSink`, строящая нужный DTO для каждого действия. Все обработчики ввода в `SfmlPlaySession.cs`, `SfmlInputHelpers.ToggleResearchAllocation`, `HudOverlay.TryHandleSidebarStorageClick`, `BastionUiOverlay` (ApplyBastionOrderCommand / TryAdjustBastionTemplate / TryHandleBastionPendingMapClick) переведены с `simulation.Try*` на `commands.*`.
+- **Проверка:** grep по `simulation.Try*`-геймплей-мутациям в `src/` → совпадений нет (DoD «Ни один host не вызывает immediate `Try*` в gameplay-пути»).
+
+### Тесты
+- `tests/SteelConveyorWar.Core.Tests/DeferredCommandSinkTests.cs`: планирование на будущий тик + монотонность последовательности; независимые последовательности пер-actor; отказ при `inputDelayTicks < 1`; детерминизм через sink (одинаковый hash в двух прогонах); **реплей command log в идентичный hash** (DoD «Есть replayable command log, покрытый тестом реплея»).
+- `CommandQueueTests.cs`: round-trip сериализации `SelectResearchCommand` (полный и с дефолтами).
+
+### Отклонения / заметки
+- Immediate `Try*` в ядре **не** помечены `[Obsolete]`/`internal` (пункт плана 4): они всё ещё нужны юнит-тестам ядра (напр. `RunImmediateMove`) и как реализация под `ApplyCommand`. Gameplay-путь хостов их не использует — DoD выполнен; полное сокрытие отложено.
+- Gateway-методы возвращают `true` оптимистически («ввод принят в очередь»): при отложенном применении синхронного success/fail нет. Сайты, ранее ветвившиеся по результату `Try*` (ctrl+клик депозит, rotate-in-if), переведены на семантику «действие поставлено в очередь → return», т.е. ctrl+клик по сущности больше не проваливается в move.
+- Input-delay/tick-mapping зафиксированы в `DeferredCommandSink` (`DefaultInputDelayTicks = 1`); окончательная политика TPS/назначения тиков — за R32.

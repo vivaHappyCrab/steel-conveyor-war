@@ -19,7 +19,9 @@ public sealed class GameWorld
 
     public WorldSize Size { get; }
 
-    public IReadOnlyList<WorldEntity> Entities => _entities;
+    // R05: expose a ReadOnlyCollection wrapper so callers cannot downcast to List<WorldEntity>
+    // and add/remove behind the _byId / _occupancy indexes (which would desync the world).
+    public IReadOnlyList<WorldEntity> Entities => _entities.AsReadOnly();
 
     public TerrainType GetTerrain(TilePosition position)
     {

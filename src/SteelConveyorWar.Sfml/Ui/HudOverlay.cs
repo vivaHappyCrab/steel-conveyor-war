@@ -235,6 +235,14 @@ internal static class HudOverlay
         }
 
         var selected = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
+        // R27: never read live data for a selected entity the local player cannot currently see.
+        // The session also clears such selections each tick; this is a defensive second gate so the
+        // HUD can never leak a hidden enemy's HP/energy/position/orders.
+        if (selected is not null && !WorldRenderer.IsVisibleToLocalPlayer(simulation, localPlayer, selected))
+        {
+            selected = null;
+        }
+
         if (selected is not null)
         {
             lines.Add($"Selected: {selected.Kind} #{selected.Id}");
@@ -624,6 +632,7 @@ internal static class HudOverlay
 
     internal static bool TryHandleSidebarStorageClick(
         GameSimulation simulation,
+        SfmlCommandGateway commands,
         PlayerId localPlayer,
         int? selectedEntityId,
         List<SidebarStorageHit> hits,
@@ -658,19 +667,19 @@ internal static class HudOverlay
 
             if (button == "Right" && hit.Kind == SidebarStorageKind.Input)
             {
-                return simulation.TryDepositItemTypeToHubOrInput(commander.Id, selected.Id, hit.Item);
+                return commands.DepositItemTypeToHubOrInput(commander.Id, localPlayer, selected.Id, hit.Item);
             }
 
             if (button == "Left" && hit.Kind == SidebarStorageKind.Output)
             {
-                return simulation.TryWithdrawItemTypeFromHubOrOutput(commander.Id, selected.Id, hit.Item);
+                return commands.WithdrawItemTypeFromHubOrOutput(commander.Id, localPlayer, selected.Id, hit.Item);
             }
 
             if (button == "Left"
                 && hit.Kind == SidebarStorageKind.Input
                 && selected.Kind == EntityKind.Hub)
             {
-                return simulation.TryWithdrawItemTypeFromHubOrOutput(commander.Id, selected.Id, hit.Item);
+                return commands.WithdrawItemTypeFromHubOrOutput(commander.Id, localPlayer, selected.Id, hit.Item);
             }
         }
 

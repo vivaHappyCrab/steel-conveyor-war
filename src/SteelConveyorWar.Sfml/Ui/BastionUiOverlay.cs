@@ -7,7 +7,7 @@ namespace SteelConveyorWar.Sfml;
 internal static class BastionUiOverlay
 {
     internal static void ApplyBastionOrderCommand(
-        GameSimulation simulation,
+        SfmlCommandGateway commands,
         int bastionId,
         PlayerId actorPlayerId,
         BastionOrderCommand command,
@@ -19,7 +19,7 @@ internal static class BastionUiOverlay
         {
             case BastionOrderCommand.ActiveDefense:
                 pendingMode = BastionPendingInputMode.None;
-                simulation.TryIssueBastionOrder(bastionId, actorPlayerId, new BastionOrder(BastionOrderKind.Defend));
+                commands.IssueBastionOrder(bastionId, actorPlayerId, new BastionOrder(BastionOrderKind.Defend));
                 break;
             case BastionOrderCommand.Patrol:
                 pendingMode = BastionPendingInputMode.PatrolWaypoints;
@@ -36,6 +36,7 @@ internal static class BastionUiOverlay
     internal static bool TryAdjustBastionTemplate(
         string key,
         GameSimulation simulation,
+        SfmlCommandGateway commands,
         WorldEntity bastion,
         PlayerId actorPlayerId,
         int templateUnitIndex)
@@ -64,7 +65,7 @@ internal static class BastionUiOverlay
             return false;
         }
 
-        simulation.TrySetBastionTemplate(bastion.Id, actorPlayerId, unitKind, Math.Max(0, current + delta));
+        commands.SetBastionTemplate(bastion.Id, actorPlayerId, unitKind, Math.Max(0, current + delta));
         return true;
     }
 
@@ -215,7 +216,7 @@ internal static class BastionUiOverlay
     }
 
     internal static bool TryHandleBastionPendingMapClick(
-        GameSimulation simulation,
+        SfmlCommandGateway commands,
         WorldEntity? selectedEntity,
         PlayerId localPlayer,
         BastionPendingInputMode pendingMode,
@@ -234,7 +235,7 @@ internal static class BastionUiOverlay
 
         if (pendingMode == BastionPendingInputMode.AttackTarget)
         {
-            consumed = simulation.TryIssueBastionOrder(
+            consumed = commands.IssueBastionOrder(
                 selectedEntity.Id,
                 localPlayer,
                 new BastionOrder(BastionOrderKind.AttackArea, tile));
@@ -243,7 +244,7 @@ internal static class BastionUiOverlay
 
         if (pendingMode == BastionPendingInputMode.ScoutTarget)
         {
-            consumed = simulation.TryIssueBastionOrder(
+            consumed = commands.IssueBastionOrder(
                 selectedEntity.Id,
                 localPlayer,
                 new BastionOrder(BastionOrderKind.Scout, tile));
@@ -256,7 +257,7 @@ internal static class BastionUiOverlay
             {
                 if (patrolWaypoints.Count is >= 2 and <= 4)
                 {
-                    consumed = simulation.TryIssueBastionOrder(
+                    consumed = commands.IssueBastionOrder(
                         selectedEntity.Id,
                         localPlayer,
                         new BastionOrder(BastionOrderKind.Patrol, Waypoints: patrolWaypoints.ToArray()));

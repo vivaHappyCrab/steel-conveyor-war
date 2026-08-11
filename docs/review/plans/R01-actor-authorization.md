@@ -2,6 +2,18 @@
 
 **Severity:** High · **Домен:** command / trust boundary · **Roadmap:** P0
 **Статус валидации:** ✅ Подтверждено по коду
+**Статус реализации:** ✅ Реализовано 2026-08-11 (правки в `GameSimulation.cs` / `GameSimulation.Commands.cs`, тесты в `OwnershipCommandTests.cs`). ⚠️ Требуется прогон `dotnet build -c Release` + `dotnet test` (сборочная VM была недоступна в сессии реализации).
+
+### Что сделано
+- Введён helper `IsAuthorizedCommander(commander, actor)`: при переданном `actor` (untrusted command-path через `ApplyCommand`) командир должен принадлежать этому actor; локальные/внутренние вызовы передают `null` и сохраняют прежнее поведение.
+- Во все ранее не-авторизованные entity-targeted `Try*`-методы добавлен необязательный параметр `PlayerId? actor = null` и guard: `TryPlaceGhostBuildFromCommander`, `TryQueueCommanderBuild`, `TryQueueCommanderDemolish`, `TryDemolishBuilding`, `TryCollectOutputBuffer`, `TryWithdrawFromHubOrOutput`, `TryDepositToHubOrInput`, `TryDepositItemTypeToHubOrInput`, `TryWithdrawItemTypeFromHubOrOutput`.
+- `ApplyCommand` пробрасывает `c.Actor` во все соответствующие ветки; внутренние вызовы (`TryQueueCommanderBuild`→`TryPlaceGhostBuildFromCommander`, `TryQueueCommanderDemolish`→`TryDemolishBuilding`) форвардят actor.
+- Тесты: `ApplyCommand_RejectsForeignActor_AcrossCommanderCommandKinds` (негатив по всем защищённым command kind + проверка неизменности состояния), `ApplyCommand_AllowsOwnerActor_ForCommanderCommand` (позитив).
+
+### Отклонения от исходного плана
+- Параметр `actor` сделан **необязательным (`null` = opt-out)**, а не обязательным, чтобы не ломать десятки доверенных локальных вызовов (SFML input, `CommanderOrdersSystem`, существующие тесты). Trust-boundary закрывается на untrusted-пути `ApplyCommand`, который всегда передаёт `c.Actor`.
+- Единый `CommandResult`/логирование отказа (п.5) не вводился — относится к R11.
+- Легаси `AssignFactoryBastionCommand` не трогался (no-op, без security-impact — как отмечено в исходном плане).
 
 ## Проблема
 Диспетчер `ApplyCommand` пробрасывает `Actor` только части команд (move/stop/rotate/research/factory/bastion/assembler), но игнорирует его для build/demolish/collect/withdraw/deposit. Знание чужого `CommanderId`/`EntityId` достаточно, чтобы выполнить действие от имени другого игрока. Для будущего сетевого host это прямой обход trust-boundary.

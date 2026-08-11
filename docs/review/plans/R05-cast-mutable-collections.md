@@ -2,6 +2,17 @@
 
 **Severity:** High · **Домен:** encapsulation / determinism · **Roadmap:** P0
 **Статус валидации:** ✅ Подтверждено по коду
+**Статус реализации:** ✅ Реализовано 2026-08-11 (`GameWorld.cs`, `GameSimulation.cs`, `GameSimulation.Commands.cs`, `MvpDefinitions.cs`, `BuildCostContentLoader.cs`; тесты в `EncapsulationTests.cs`). ⚠️ Требуется прогон `dotnet build -c Release` + `dotnet test`.
+
+### Что сделано
+- Root-коллекции завёрнуты в `ReadOnlyCollection` через `.AsReadOnly()`: `GameWorld.Entities`, `GameSimulation.Players`, `GameSimulation.PendingCommands` — downcast к `List<>` + add/remove теперь невозможен (защищает индексы `_byId`/`_occupancy` и буфер команд).
+- `MvpDefinitions`: `UnitKinds`/`FactoryKinds` переведены с публичного `HashSet<EntityKind>` на `FrozenSet<EntityKind>`; словари `PowerDemand`, `PowerProduction`, `ItemStackSizes`, `ProductionRecipes`, `ItemRecipes`, `TechSignatureIntensity` завёрнуты `.AsReadOnly()`.
+- `BuildCostContentLoader`: top-level `Costs`/`BuildTicks`/`Requirements` отдаются как `ReadOnlyDictionary`.
+- Тесты: `RootCollections_AreNotCastMutable`, `ContentTables_AreNotCastMutable` (downcast + мутация → `NotSupportedException`, тип не `List`/`HashSet`).
+
+### Отклонения от исходного плана
+- Глубокая иммутабельность вложенных payload-ов (например, `Costs[kind]` — внутренний `IReadOnlyDictionary<ItemId,int>`) относится к R12 (deep-immutable) и здесь не покрывается; закрыт корневой уровень каждой публичной коллекции/таблицы.
+- `FrozenDictionary` применён только к сетам; словари оставлены как `ReadOnlyDictionary` (достаточно против cast-мутации, без изменения объявленных типов свойств).
 
 ## Проблема
 Публичные свойства объявлены как `IReadOnlyList`/`IReadOnlyDictionary`, но за ними стоят реальные `List<>`/`Dictionary<>`. Внешний код может сделать downcast и мутировать коллекцию. Особенно опасен `GameWorld.Entities`: прямой add/remove обойдёт индексы `_byId` и `_occupancy` и рассинхронизирует мир.

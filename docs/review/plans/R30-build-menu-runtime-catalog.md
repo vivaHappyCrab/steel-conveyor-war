@@ -2,6 +2,21 @@
 
 **Severity:** High (gameplay/content) · **Домен:** SFML UI / content · **Roadmap:** P0/P1
 **Статус валидации:** ✅ Подтверждено по коду
+**Статус реализации:** ✅ Реализовано 2026-08-11 (`GameSimulation.cs`, `Ui/BuildMenuCatalog.cs`, `Ui/BuildBarModel.cs`, `Ui/BuildBarOverlay.cs`; тесты в `BuildAffordabilityQueryTests.cs`, `BuildMenuCatalogTests.cs`). ⚠️ Требуется прогон `dotnet build -c Release` + `dotnet test` (VM недоступна, изменения не скомпилированы).
+
+### Что сделано
+- `GameSimulation.GetAffordableBuildCount(commander, kind)` — новый публичный non-mutating запрос: считает affordability по тем же источникам оплаты, что и `TryPayBuildCostFromCommanderOrNearbyHubs` (инвентарь коммандера + владеемые hubs в радиусе `CommanderInteractRadius`), возвращает floor(min доступного/потребности) по каждому item.
+- `GameSimulation.IsBuildKindAvailable(playerId, kind)` — публичный gate (каталог + `IsBuildUnlocked`) для композиции меню без дублирования research/tier-гейтинга.
+- `BuildMenuCatalog` — состав `BuildableKinds` теперь **строится из authoritative каталога** (`ComposeFrom(BuildCostCatalog)`): первые 10 сохраняют историческую quick-page раскладку/хоткеи, все остальные kinds каталога добавляются детерминированно. Ранее отсутствовавшие `UndergroundConveyor`/`SteelWall`/`CannonTurret`/`AntiAirTurret` теперь в меню.
+- `BuildBarModel.Glyph` — добавлены глифы для `SteelWall`/`CannonTurret`/`AntiAirTurret`.
+- `BuildBarModel.AffordableBuilds(simulation, commander, kind)` + `BuildBarOverlay` — affordability считается одним Core-запросом (учёт hubs), embedded fallback и учёт только commander inventory убраны.
+
+### Тесты
+- `BuildAffordabilityQueryTests`: commander-only floor, вклад nearby hub, лимит по самому дефицитному item, unknown kind → 0 (сид 42, все владеемые hubs обнуляются в `NewGame`).
+- `BuildMenuCatalogTests`: состав меню == ключи каталога, наличие ранее пропущенных kinds, отсутствие дублей, у каждого kind есть глиф (≠ "?"), детерминизм `ComposeFrom`.
+
+### Отклонения от плана
+- Пункт 1 предлагал capability snapshot для набора меню. Композиция сведена к authoritative каталогу; per-player capability-гейтинг оставлен на Core (отклонение build + возможный greying через `IsBuildKindAvailable`), т.к. `BuildableKinds` индексируется в input-handling (хоткеи/hit-test) и должен оставаться детерминированным по индексам. После R18/R04 можно построить меню из per-player snapshot.
 
 ## Проблема
 Build bar считает affordability без `simulation.BuildCostCatalog`, поэтому модель использует embedded fallback; UI учитывает только commander inventory, тогда как Core может оплатить build из nearby hubs. Список buildable entities захардкожен и не включает настроенные `UndergroundConveyor`, `SteelWall`, `CannonTurret`, `AntiAirTurret`. UI расходится с рантайм-правилами.

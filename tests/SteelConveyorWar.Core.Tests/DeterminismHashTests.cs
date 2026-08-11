@@ -70,6 +70,57 @@ public sealed class DeterminismHashTests
         Assert.Equal(before, simulation.ComputeStateHash());
     }
 
+    // R08: QueuedBuildOrder / QueuedDemolishOrder drive future ticks, so they must be part of the hash surface.
+    [Fact]
+    public void QueuedBuildOrder_AffectsStateHash()
+    {
+        var baseline = GameSimulation.CreateNewGame(42);
+        var withOrder = GameSimulation.CreateNewGame(42);
+
+        var commander = withOrder.World.Entities.First(entity =>
+            entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Commander);
+        commander.QueuedBuildOrder = new CommanderBuildOrder(
+            EntityKind.TankFactory,
+            new TilePosition(commander.Position.X + 1, commander.Position.Y),
+            Direction.East);
+
+        Assert.NotEqual(baseline.ComputeStateHash(), withOrder.ComputeStateHash());
+    }
+
+    [Fact]
+    public void QueuedDemolishOrder_AffectsStateHash()
+    {
+        var baseline = GameSimulation.CreateNewGame(42);
+        var withOrder = GameSimulation.CreateNewGame(42);
+
+        var commander = withOrder.World.Entities.First(entity =>
+            entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Commander);
+        var hub = withOrder.World.Entities.First(entity =>
+            entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Hub);
+        commander.QueuedDemolishOrder = new CommanderDemolishOrder(hub.Id);
+
+        Assert.NotEqual(baseline.ComputeStateHash(), withOrder.ComputeStateHash());
+    }
+
+    [Fact]
+    public void SameQueuedBuildOrder_ProducesIdenticalHash()
+    {
+        var first = GameSimulation.CreateNewGame(42);
+        var second = GameSimulation.CreateNewGame(42);
+
+        foreach (var simulation in new[] { first, second })
+        {
+            var commander = simulation.World.Entities.First(entity =>
+                entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Commander);
+            commander.QueuedBuildOrder = new CommanderBuildOrder(
+                EntityKind.TankFactory,
+                new TilePosition(commander.Position.X + 1, commander.Position.Y),
+                Direction.East);
+        }
+
+        Assert.Equal(first.ComputeStateHash(), second.ComputeStateHash());
+    }
+
     private static string RunIdle(int seed, int ticks)
     {
         var simulation = GameSimulation.CreateNewGame(seed);

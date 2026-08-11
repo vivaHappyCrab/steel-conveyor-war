@@ -1,6 +1,11 @@
 namespace SteelConveyorWar.Core;
 
-public sealed class ResearchSystem
+/// <summary>
+/// R14: <c>internal</c> — accepts and mutates live authoritative research/simulation state, so it must
+/// not be reachable from Sfml/Headless/plugin hosts. Held only via <see cref="GameSimulation"/>'s private
+/// field; all research mutation goes through the command pipeline. Core.Tests keeps access via InternalsVisibleTo.
+/// </summary>
+internal sealed class ResearchSystem
 {
     public const int LabCycleTicks = 30;
     public const int AllocationScale = 10_000;
@@ -160,6 +165,16 @@ public sealed class ResearchSystem
             return ResearchCommandResult.InvalidAllocation;
         }
 
+        // R09: reject untrusted payloads carrying keys that are not schedule tracks,
+        // instead of indexing research.Tracks[...] (which would throw KeyNotFoundException).
+        foreach (var key in allocations.Keys)
+        {
+            if (_profile.Schedule.Tracks.All(track => track.Id != key))
+            {
+                return ResearchCommandResult.InvalidAllocation;
+            }
+        }
+
         research.EnsureTracks(_profile);
         foreach (var pair in allocations)
         {
@@ -309,7 +324,6 @@ public sealed class ResearchSystem
             .ToList();
 
         var activeProjects = CollectActiveProjects(research);
-        var packConsumptions = 0;
 
         foreach (var lab in labs)
         {
@@ -345,17 +359,11 @@ public sealed class ResearchSystem
                 continue;
             }
 
-            if (TryConsumePackForAnyActiveProject(lab, research, activeProjects))
-            {
-                packConsumptions++;
-            }
+            // R29: pick the project this pack advances (identity-preserving) using the persistent
+            // largest-remainder accumulators, then award the work directly to that project.
+            ConsumeAndAwardForCycle(lab, research, activeProjects);
 
             lab.WorkTicksTotal = 0;
-        }
-
-        if (packConsumptions > 0)
-        {
-            DistributeWork(research, activeProjects, packConsumptions);
         }
 
         EvaluateCompletions(research);
@@ -410,118 +418,127 @@ public sealed class ResearchSystem
             && IsTechnologyAvailable(research, definition);
     }
 
-    private static bool TryConsumePackForAnyActiveProject(
+    // R29: choose which active project a completed lab cycle advances, preserving pack identity.
+    // Track is chosen proportionally to its allocation basis points, then the project within the
+    // track proportionally to its weight — both via a persistent largest-remainder rotation so the
+    // long-run distribution matches the configured ratio (no last-entry bias). The consumed pack
+    // pays for the chosen project's cost and the work is awarded to that same project.
+    private void ConsumeAndAwardForCycle(
         WorldEntity lab,
         PlayerResearchState research,
         List<(string TrackId, TechnologyId TechnologyId, TechnologyDefinition Definition)> activeProjects)
     {
-        foreach (var project in activeProjects.OrderBy(project => project.TechnologyId.Value, StringComparer.Ordinal))
+        var affordable = activeProjects
+            .Where(project => CanAfford(lab, project.Definition))
+            .OrderBy(project => project.TrackId, StringComparer.Ordinal)
+            .ThenBy(project => project.TechnologyId.Value, StringComparer.Ordinal)
+            .ToList();
+        if (affordable.Count == 0)
         {
-            if (CanAfford(lab, project.Definition) && TryConsume(lab, project.Definition))
+            return;
+        }
+
+        var trackCandidates = affordable
+            .Select(project => project.TrackId)
+            .Distinct()
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToList();
+        var chosenTrack = SelectByLargestRemainder(
+            trackCandidates,
+            trackId => Math.Max(0, research.Tracks[trackId].AllocationBasisPoints),
+            research.TrackSelectionRemainder);
+
+        var trackProjects = affordable
+            .Where(project => project.TrackId == chosenTrack)
+            .OrderBy(project => project.TechnologyId.Value, StringComparer.Ordinal)
+            .ToList();
+        var trackDefinition = _profile.Schedule.Tracks.Single(track => track.Id == chosenTrack);
+
+        (string TrackId, TechnologyId TechnologyId, TechnologyDefinition Definition) target;
+        if (trackDefinition.Mode == ResearchTrackMode.Serial || trackProjects.Count == 1)
+        {
+            target = trackProjects[0];
+        }
+        else
+        {
+            var chosenTech = SelectByLargestRemainder(
+                trackProjects.Select(project => project.TechnologyId).ToList(),
+                techId => Math.Max(1, research.Tracks[chosenTrack].ProjectWeights.GetValueOrDefault(techId)),
+                research.ProjectSelectionRemainder);
+            target = trackProjects.Single(project => project.TechnologyId == chosenTech);
+        }
+
+        if (!TryConsume(lab, target.Definition))
+        {
+            return;
+        }
+
+        AwardWork(research, target.TechnologyId, target.Definition, 1);
+    }
+
+    // Stride / largest-remainder rotation: add each candidate's weight to its persistent
+    // accumulator, pick the largest (ties broken by candidate order), then subtract the total
+    // weight from the winner. Over many calls the selection frequency converges to the weights.
+    // Integer arithmetic only => fully deterministic across runs.
+    internal static TKey SelectByLargestRemainder<TKey>(
+        IReadOnlyList<TKey> candidates,
+        Func<TKey, int> weight,
+        Dictionary<TKey, int> accumulator)
+        where TKey : notnull
+    {
+        var total = 0;
+        foreach (var candidate in candidates)
+        {
+            var w = Math.Max(0, weight(candidate));
+            total += w;
+            accumulator[candidate] = accumulator.GetValueOrDefault(candidate) + w;
+        }
+
+        if (total <= 0)
+        {
+            return candidates[0];
+        }
+
+        var chosen = candidates[0];
+        var best = int.MinValue;
+        foreach (var candidate in candidates)
+        {
+            var acc = accumulator.GetValueOrDefault(candidate);
+            if (acc > best)
             {
-                return true;
+                best = acc;
+                chosen = candidate;
             }
         }
 
-        return false;
+        accumulator[chosen] = accumulator.GetValueOrDefault(chosen) - total;
+        return chosen;
+    }
+
+    // R28: aggregate duplicate science-pack entries by item so affordability is checked cumulatively
+    // and consumption is atomic (all-or-nothing). The content validator already rejects duplicates,
+    // but aggregating here keeps the runtime correct even if that guarantee is ever weakened.
+    private static IReadOnlyDictionary<ItemId, int> AggregateCost(TechnologyDefinition definition)
+    {
+        var aggregated = new Dictionary<ItemId, int>();
+        foreach (var pack in definition.Cost.SciencePacks)
+        {
+            aggregated[pack.Item] = aggregated.GetValueOrDefault(pack.Item) + pack.Amount;
+        }
+
+        return aggregated;
     }
 
     private static bool CanAfford(WorldEntity lab, TechnologyDefinition definition)
     {
-        return definition.Cost.SciencePacks.All(pack => lab.InputBuffer.Has(pack.Item, pack.Amount));
+        return lab.InputBuffer.HasAll(AggregateCost(definition));
     }
 
     private static bool TryConsume(WorldEntity lab, TechnologyDefinition definition)
     {
-        if (!CanAfford(lab, definition))
-        {
-            return false;
-        }
-
-        foreach (var pack in definition.Cost.SciencePacks)
-        {
-            if (!lab.InputBuffer.TryRemove(pack.Item, pack.Amount))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private void DistributeWork(
-        PlayerResearchState research,
-        List<(string TrackId, TechnologyId TechnologyId, TechnologyDefinition Definition)> activeProjects,
-        int packConsumptions)
-    {
-        var trackGroups = activeProjects
-            .GroupBy(project => project.TrackId)
-            .OrderBy(group => group.Key, StringComparer.Ordinal)
-            .ToList();
-
-        var trackAllocations = new Dictionary<string, int>();
-        var allocated = 0;
-        for (var i = 0; i < trackGroups.Count; i++)
-        {
-            var trackId = trackGroups[i].Key;
-            var track = research.Tracks[trackId];
-            int share;
-            if (i == trackGroups.Count - 1)
-            {
-                share = packConsumptions - allocated;
-            }
-            else
-            {
-                share = packConsumptions * track.AllocationBasisPoints / AllocationScale;
-                allocated += share;
-            }
-
-            trackAllocations[trackId] = Math.Max(0, share);
-        }
-
-        foreach (var group in trackGroups)
-        {
-            var workBudget = trackAllocations[group.Key];
-            if (workBudget <= 0)
-            {
-                continue;
-            }
-
-            var trackDefinition = _profile.Schedule.Tracks.Single(track => track.Id == group.Key);
-            var projects = group.OrderBy(project => project.TechnologyId.Value, StringComparer.Ordinal).ToList();
-            if (trackDefinition.Mode == ResearchTrackMode.Serial)
-            {
-                var project = projects[0];
-                AwardWork(research, project.TechnologyId, project.Definition, workBudget);
-                continue;
-            }
-
-            var weights = projects.Select(project =>
-            {
-                research.Tracks[group.Key].ProjectWeights.TryGetValue(project.TechnologyId, out var weight);
-                return Math.Max(1, weight);
-            }).ToList();
-            var weightSum = weights.Sum();
-            var awarded = 0;
-            for (var i = 0; i < projects.Count; i++)
-            {
-                int share;
-                if (i == projects.Count - 1)
-                {
-                    share = workBudget - awarded;
-                }
-                else
-                {
-                    share = workBudget * weights[i] / weightSum;
-                    awarded += share;
-                }
-
-                if (share > 0)
-                {
-                    AwardWork(research, projects[i].TechnologyId, projects[i].Definition, share);
-                }
-            }
-        }
+        // TryRemoveAll checks affordability atomically before removing anything, so there is no
+        // partial consumption even if the caller skipped the CanAfford pre-check.
+        return lab.InputBuffer.TryRemoveAll(AggregateCost(definition));
     }
 
     private void AwardWork(

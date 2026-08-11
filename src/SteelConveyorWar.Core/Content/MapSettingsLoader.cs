@@ -16,10 +16,7 @@ public static class MapSettingsLoader
         var dto = JsonSerializer.Deserialize<MapConfigDto>(json, JsonOptions)
             ?? throw new InvalidOperationException("Map settings JSON deserialized to null.");
 
-        if (dto.SchemaVersion < 1)
-        {
-            throw new InvalidOperationException($"Unsupported map schemaVersion '{dto.SchemaVersion}'.");
-        }
+        ContentSchema.RequireSupportedVersion("map", dto.SchemaVersion);
 
         if (string.IsNullOrWhiteSpace(dto.MapId))
         {

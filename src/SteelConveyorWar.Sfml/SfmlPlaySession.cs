@@ -2,6 +2,7 @@ using SFML.Graphics;
 using SFML.System;
 using SFML.Window;
 using SteelConveyorWar.Core;
+using SteelConveyorWar.Core.Commands;
 
 namespace SteelConveyorWar.Sfml;
 
@@ -36,6 +37,13 @@ internal sealed class SfmlPlaySession
         window.Closed += (_, _) => window.Close();
         window.SetFramerateLimit(60);
         var localPlayer = display.LocalPlayerId;
+        // R24: fail fast with a domain-friendly message if the requested seat is not on this map
+        // (e.g. --local-player 3 on a 2-player map) instead of a raw First() exception below.
+        LocalPlayerBinding.EnsureSeatControllable(simulation, localPlayer);
+        // R02: all gameplay mutations flow through the deferred command sink so local input takes the
+        // same tick-scheduled, replayable path as remote input.
+        var commandSink = new DeferredCommandSink(simulation);
+        var commands = new SfmlCommandGateway(commandSink);
         int? selectedEntityId = simulation.World.Entities.First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander).Id;
         var isBuildMenuOpen = false;
         EntityKind? pendingBuildKind = null;
@@ -205,7 +213,7 @@ internal sealed class SfmlPlaySession
                 && selectedEntity.OwnerId == localPlayer
                 && patrolWaypoints.Count is >= 2 and <= 4)
             {
-                simulation.TryIssueBastionOrder(
+                commands.IssueBastionOrder(
                     selectedEntity.Id,
                     localPlayer,
                     new BastionOrder(BastionOrderKind.Patrol, Waypoints: patrolWaypoints.ToArray()));
@@ -271,7 +279,7 @@ internal sealed class SfmlPlaySession
                 && selectedEntity?.Kind == EntityKind.Commander
                 && selectedEntity.OwnerId == localPlayer)
             {
-                simulation.TryStopCommander(selectedEntity.Id, localPlayer);
+                commands.StopCommander(selectedEntity.Id, localPlayer);
                 ClearDemolishHold();
                 return;
             }
@@ -291,16 +299,16 @@ internal sealed class SfmlPlaySession
                     var hoverEntity = simulation.World.GetTopEntityAt(hoverTile.Value);
                     if (hoverEntity is not null
                         && hoverEntity.OwnerId == localPlayer
-                        && BuildBarModel.IsDirectedKind(hoverEntity.Kind)
-                        && simulation.TryRotateEntity(hoverEntity.Id, localPlayer, clockwise: !counterClockwise))
+                        && BuildBarModel.IsDirectedKind(hoverEntity.Kind))
                     {
+                        commands.RotateEntity(hoverEntity.Id, localPlayer, clockwise: !counterClockwise);
                         return;
                     }
                 }
 
                 if (selectedEntity is not null && selectedEntity.OwnerId == localPlayer)
                 {
-                    simulation.TryRotateEntity(selectedEntity.Id, localPlayer, clockwise: !counterClockwise);
+                    commands.RotateEntity(selectedEntity.Id, localPlayer, clockwise: !counterClockwise);
                 }
 
                 return;
@@ -376,23 +384,29 @@ internal sealed class SfmlPlaySession
 
             if (!isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Assembler && SfmlInputHelpers.TryGetRecipeShortcut(key, out var recipeId))
             {
-                simulation.TrySetAssemblerRecipe(selectedEntity.Id, localPlayer, recipeId);
+                commands.SetAssemblerRecipe(selectedEntity.Id, localPlayer, recipeId);
                 recipePage = 0;
                 return;
             }
 
             if (!isResearchOverlayOpen && !isEnergyOverlayOpen && !isBuildMenuOpen && selectedEntity?.Kind == EntityKind.Laboratory && SfmlInputHelpers.TryGetNumberShortcut(key, out var researchIndex))
             {
-                var ownerId = selectedEntity.OwnerId ?? localPlayer;
-                var panel = ResearchPanelModel.FromSnapshot(simulation.GetResearchSnapshot(ownerId), recipePage);
+                // R26: research can only be steered on a laboratory the local player owns; selecting a
+                // visible enemy lab must never let us control their research. actor is always localPlayer.
+                if (selectedEntity.OwnerId != localPlayer)
+                {
+                    return;
+                }
+
+                var panel = ResearchPanelModel.FromSnapshot(simulation.GetResearchSnapshot(localPlayer), recipePage);
                 if (researchIndex < panel.PageEntries.Count)
                 {
                     var entry = panel.PageEntries[researchIndex];
-                    simulation.TrySelectResearch(
-                        ownerId,
+                    commands.SelectResearch(
+                        localPlayer,
                         entry.Id,
-                        confirmExclusive: entry.RequiresExclusiveConfirmation,
-                        preferredTrackId: entry.TrackId);
+                        entry.RequiresExclusiveConfirmation,
+                        entry.TrackId);
                 }
 
                 return;
@@ -408,7 +422,7 @@ internal sealed class SfmlPlaySession
                     var recipes = HudOverlay.GetFactoryRecipes(selectedEntity.Kind).ToList();
                     if (factoryRecipeIndex < recipes.Count)
                     {
-                        simulation.TrySetFactoryProduction(selectedEntity.Id, localPlayer, recipes[factoryRecipeIndex].OutputKind);
+                        commands.SetFactoryProduction(selectedEntity.Id, localPlayer, recipes[factoryRecipeIndex].OutputKind);
                     }
 
                     return;
@@ -421,7 +435,7 @@ internal sealed class SfmlPlaySession
             {
                 if (BastionOrderBarModel.TryGetCommandFromKey(key, out var orderCommand))
                 {
-                    BastionUiOverlay.ApplyBastionOrderCommand(simulation, selectedEntity.Id, localPlayer, orderCommand, ref bastionPendingMode, patrolWaypoints);
+                    BastionUiOverlay.ApplyBastionOrderCommand(commands, selectedEntity.Id, localPlayer, orderCommand, ref bastionPendingMode, patrolWaypoints);
                     return;
                 }
 
@@ -434,7 +448,7 @@ internal sealed class SfmlPlaySession
                     return;
                 }
 
-                if (BastionUiOverlay.TryAdjustBastionTemplate(key, simulation, selectedEntity, localPlayer, templateUnitIndex))
+                if (BastionUiOverlay.TryAdjustBastionTemplate(key, simulation, commands, selectedEntity, localPlayer, templateUnitIndex))
                 {
                     return;
                 }
@@ -533,7 +547,7 @@ internal sealed class SfmlPlaySession
 
                 if (tree.HitAllocation(mousePosition))
                 {
-                    SfmlInputHelpers.ToggleResearchAllocation(simulation, localPlayer);
+                    SfmlInputHelpers.ToggleResearchAllocation(simulation, commands, localPlayer);
                     return;
                 }
 
@@ -543,16 +557,16 @@ internal sealed class SfmlPlaySession
                     {
                         if (tree.CanCancelSelected)
                         {
-                            simulation.TryCancelResearch(localPlayer, researchSelectedId.Value);
+                            commands.CancelResearch(localPlayer, researchSelectedId.Value);
                         }
                         else if (tree.CanStartSelected)
                         {
                             var node = tree.SelectedNode;
-                            simulation.TrySelectResearch(
+                            commands.SelectResearch(
                                 localPlayer,
                                 researchSelectedId.Value,
-                                confirmExclusive: node?.RequiresExclusiveConfirmation == true,
-                                preferredTrackId: node?.TrackId);
+                                node?.RequiresExclusiveConfirmation == true,
+                                node?.TrackId);
                         }
                     }
 
@@ -570,11 +584,11 @@ internal sealed class SfmlPlaySession
                     if (isDouble)
                     {
                         var node = tree.Nodes.First(n => n.Id == techId);
-                        simulation.TrySelectResearch(
+                        commands.SelectResearch(
                             localPlayer,
                             techId,
-                            confirmExclusive: node.RequiresExclusiveConfirmation,
-                            preferredTrackId: node.TrackId);
+                            node.RequiresExclusiveConfirmation,
+                            node.TrackId);
                     }
 
                     return;
@@ -589,6 +603,7 @@ internal sealed class SfmlPlaySession
             if (IsOverSidePanel(mousePosition)
                 && HudOverlay.TryHandleSidebarStorageClick(
                     simulation,
+                    commands,
                     localPlayer,
                     selectedEntityId,
                     sidebarStorageHits,
@@ -619,19 +634,18 @@ internal sealed class SfmlPlaySession
                     {
                         var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
                         var clickedEntity = simulation.World.GetTopEntityAt(minimapTile.Value);
-                        if (ctrlPressed
-                            && clickedEntity is not null
-                            && simulation.TryDepositToHubOrInput(selectedEntity.Id, clickedEntity.Id))
+                        if (ctrlPressed && clickedEntity is not null)
                         {
+                            commands.DepositToHubOrInput(selectedEntity.Id, localPlayer, clickedEntity.Id);
                             return;
                         }
 
-                        simulation.TryIssueMoveCommand(selectedEntity.Id, localPlayer, minimapTile.Value);
+                        commands.IssueMove(selectedEntity.Id, localPlayer, minimapTile.Value);
                         return;
                     }
 
                     if (BastionUiOverlay.TryHandleBastionPendingMapClick(
-                            simulation,
+                            commands,
                             selectedEntity,
                             localPlayer,
                             bastionPendingMode,
@@ -687,7 +701,7 @@ internal sealed class SfmlPlaySession
                     {
                         var slot = compositionSlots[slotIndex];
                         templateUnitIndex = slotIndex;
-                        simulation.TrySetBastionTemplate(
+                        commands.SetBastionTemplate(
                             selectedForBar.Id,
                             localPlayer,
                             slot.UnitKind,
@@ -708,7 +722,7 @@ internal sealed class SfmlPlaySession
 
                 if (BastionUiOverlay.TryPickBastionOrderCommand(mousePosition, windowWidth, windowHeight, panelX, out var barCommand))
                 {
-                    BastionUiOverlay.ApplyBastionOrderCommand(simulation, selectedForBar.Id, localPlayer, barCommand, ref bastionPendingMode, patrolWaypoints);
+                    BastionUiOverlay.ApplyBastionOrderCommand(commands, selectedForBar.Id, localPlayer, barCommand, ref bastionPendingMode, patrolWaypoints);
                     return;
                 }
             }
@@ -723,7 +737,7 @@ internal sealed class SfmlPlaySession
             {
                 var selectedEntity = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
                 if (BastionUiOverlay.TryHandleBastionPendingMapClick(
-                        simulation,
+                        commands,
                         selectedEntity,
                         localPlayer,
                         bastionPendingMode,
@@ -748,12 +762,13 @@ internal sealed class SfmlPlaySession
                     && selectedEntity.OwnerId == localPlayer
                     && clickedEntity is not null)
                 {
-                    simulation.TryWithdrawFromHubOrOutput(selectedEntity.Id, clickedEntity.Id);
+                    commands.WithdrawFromHubOrOutput(selectedEntity.Id, localPlayer, clickedEntity.Id);
                 }
                 else if (isBuildMenuOpen && pendingBuildKind is not null && selectedEntity?.Kind == EntityKind.Commander)
                 {
-                    simulation.TryQueueCommanderBuild(
+                    commands.QueueCommanderBuild(
                         selectedEntity.Id,
+                        localPlayer,
                         pendingBuildKind.Value,
                         tile.Value,
                         pendingDirection,
@@ -806,19 +821,18 @@ internal sealed class SfmlPlaySession
 
                     var ctrlPressed = Keyboard.IsKeyPressed(Keyboard.Key.LControl) || Keyboard.IsKeyPressed(Keyboard.Key.RControl);
                     var clickedEntityMove = simulation.World.GetTopEntityAt(tile.Value);
-                    if (ctrlPressed
-                        && clickedEntityMove is not null
-                        && simulation.TryDepositToHubOrInput(selectedEntity.Id, clickedEntityMove.Id))
+                    if (ctrlPressed && clickedEntityMove is not null)
                     {
+                        commands.DepositToHubOrInput(selectedEntity.Id, localPlayer, clickedEntityMove.Id);
                         return;
                     }
 
-                    simulation.TryIssueMoveCommand(selectedEntity.Id, localPlayer, tile.Value);
+                    commands.IssueMove(selectedEntity.Id, localPlayer, tile.Value);
                     return;
                 }
 
                 if (BastionUiOverlay.TryHandleBastionPendingMapClick(
-                        simulation,
+                        commands,
                         selectedEntity,
                         localPlayer,
                         bastionPendingMode,
@@ -902,7 +916,7 @@ internal sealed class SfmlPlaySession
                     demolishHoldElapsed += frameDt;
                     if (demolishHoldElapsed >= SfmlUiLayout.DemolishHoldSeconds)
                     {
-                        simulation.TryQueueCommanderDemolish(holdCommander.Id, demolishHoldEntityId.Value);
+                        commands.QueueCommanderDemolish(holdCommander.Id, localPlayer, demolishHoldEntityId.Value);
                         demolishHoldCommitted = true;
                     }
                 }
@@ -913,15 +927,37 @@ internal sealed class SfmlPlaySession
             }
 
             accumulator += frameDt;
-            while (accumulator >= fixedDelta)
+            // R23: cap ticks per frame and drop excess backlog (see FixedStepPacer) so a long pause
+            // (minimized window, breakpoint) can't trigger a spiral-of-death catch-up. Dropping is
+            // acceptable for this local host; a future lockstep network host must stall/resync.
+            var (ticksThisFrame, pacedAccumulator) = FixedStepPacer.Plan(accumulator, fixedDelta);
+            accumulator = pacedAccumulator;
+            for (var tickIndex = 0; tickIndex < ticksThisFrame; tickIndex++)
             {
                 simulation.AdvanceTick();
                 foreach (var shot in simulation.CombatShotsThisTick)
                 {
-                    lingeringShots.Add((shot, SfmlUiLayout.CombatShotLingerSeconds));
+                    // R27: only buffer tracers the local player can actually see, so hidden combat
+                    // cannot be inferred from tracer endpoints.
+                    if (WorldRenderer.IsShotVisibleToLocalPlayer(simulation, localPlayer, shot))
+                    {
+                        lingeringShots.Add((shot, SfmlUiLayout.CombatShotLingerSeconds));
+                    }
                 }
 
-                accumulator -= fixedDelta;
+                // R27: re-validate the current selection every tick. If a non-owned entity has left
+                // the local player's vision (or was removed), drop the selection so the HUD stops
+                // leaking its live HP/position/orders.
+                if (selectedEntityId is not null)
+                {
+                    var stillSelectable = simulation.World.GetEntity(selectedEntityId.Value);
+                    if (stillSelectable is null
+                        || !WorldRenderer.IsVisibleToLocalPlayer(simulation, localPlayer, stillSelectable))
+                    {
+                        selectedEntityId = null;
+                    }
+                }
+
             }
 
             for (var i = lingeringShots.Count - 1; i >= 0; i--)

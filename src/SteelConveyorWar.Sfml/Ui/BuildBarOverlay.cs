@@ -53,7 +53,6 @@ internal static class BuildBarOverlay
             commander = simulation.World.Entities.FirstOrDefault(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander && entity.IsAlive);
         }
 
-        var inventory = commander?.Inventory ?? new Inventory();
         var bounds = GetBuildBarBounds(windowWidth, windowHeight, panelX, out var startX, out var barY);
         using var backdrop = new RectangleShape(new Vector2f(bounds.Size.X + 8f, bounds.Size.Y + 8f))
         {
@@ -69,7 +68,7 @@ internal static class BuildBarOverlay
         {
             var kind = BuildMenuCatalog.BuildableKinds[i];
             var slotX = startX + i * SfmlUiLayout.BuildBarSlotSize;
-            var affordable = BuildBarModel.AffordableBuilds(kind, inventory);
+            var affordable = BuildBarModel.AffordableBuilds(simulation, commander, kind);
             var selected = pendingBuildKind == kind;
             var fill = affordable <= 0
                 ? new Color(35, 40, 48, 220)
