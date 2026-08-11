@@ -158,8 +158,8 @@ This document records architecture and game-design decisions made while implemen
 
 ## Simulation State Hash
 
-- `SimulationStateHasher.AlgorithmVersion` (currently `5`) fingerprints authoritative Core state: seed, tick, status, research catalog hash/profile, next entity id, terrain, ordered players (teamId/inventory/visibility/research/power), ordered entities (buffers, energy buffer, sticky smelt recipe, work totals, paths, combat/build fields, bastion order waypoints).
-- Doubles use IEEE bit patterns (`DoubleToInt64Bits`). Unordered collections are sorted before hashing.
+- `SimulationStateHasher.AlgorithmVersion` (currently `8`) fingerprints authoritative Core state: seed, tick, status, content manifest (incl. gameplay tables), research profile, next entity id, terrain, ordered players (teamId/inventory/visibility/research/power), ordered entities (buffers, energy buffer, sticky smelt recipe, work totals, paths, combat/build fields, bastion order waypoints).
+- Authoritative continuous coordinates hash as raw millitile `int64`s (`WorldPosition` / `CollisionSize.RadiusMilli`). Unordered collections are sorted before hashing.
 - Primary quality gate: dual independent runs with the same seed/commands must match (`DeterminismHashTests`). A checked-in golden hex is optional; when adding/updating one, bump `AlgorithmVersion` if the surface changed, re-run the fixture, and commit the new constant intentionally.
 - **Issue #80 decision:** do **not** check in a golden hex yet. MVP Core still churns fields the hasher fingerprints (combat, energy buffers, recipes, research profile/catalog, factory spawn caps, balance timing). Dual-run already covers accidental non-determinism; a golden would mostly regress on intentional edits and inflate noise. Add a CI-asserted golden later once the hash surface stabilizes or multiplayer lockstep needs a fixed oracle.
 - Out of surface: SFML/UI, wall-clock, tick-stamped command logs, pending command buffer contents (applied commands affect hashed state; the queue itself is not hashed), presentation-only floats listed under Authoritative Numeric Policy, and **presentation side-channels in Core** (below).
