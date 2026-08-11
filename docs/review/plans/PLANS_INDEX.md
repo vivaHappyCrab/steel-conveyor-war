@@ -5,6 +5,10 @@
 
 **Статус валидации:** все 34 замечания подтверждены по исходникам — файлы и номера строк в ревью совпадают с фактическим кодом.
 
+> **Post-remediation follow-up:** остаточные пункты третьего ревью  
+> (`docs/review/CODE_REVIEW_POST_REMEDIATION_2026-08-11.md`, каталог H/M/L)  
+> вынесены в отдельные планы: [`post-remediation/PLANS_INDEX.md`](post-remediation/PLANS_INDEX.md).
+
 ## Легенда
 - **Severity:** High / Medium / Low
 - **Roadmap:** P0 (критично сейчас) · P1 (ближайшее) · P2 (позже)
