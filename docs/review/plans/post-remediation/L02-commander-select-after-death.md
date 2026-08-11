@@ -15,8 +15,10 @@
 
 ## Доказательства
 
-- `SfmlInputHelpers.cs:49-59`
-- Call sites in `InputCommandMapper` (F1 / copy / build paths)
+- `SfmlInputHelpers.cs:49-59` — `.First(...)` на живом local commander
+- Callers: F1 `InputCommandMapper.cs:137-143`; Q-copy `:153-156`
+- Start guard `LocalPlayerBinding.EnsureSeatControllable` (`:54-60`) покрывает только session start, **не** mid-match death
+- После defeat `AdvanceTick` early-return (`GameSimulation.cs:1600-1605`), но окно/input продолжают работать
 
 ---
 

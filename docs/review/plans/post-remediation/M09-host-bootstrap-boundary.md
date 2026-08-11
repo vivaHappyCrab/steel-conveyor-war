@@ -15,9 +15,11 @@
 
 ## Доказательства
 
-- `ContentBootstrap.cs:3-7,15-37,44-95`
-- `Client/Program.cs`, `Headless/Program.cs` — call bootstrap
-- Project context / AGENTS.md — Core stays headless deterministic; hosts own I/O
+- Documented rule «Core parse; hosts I/O»: `docs/MVP_IMPLEMENTATION_DECISIONS.md:29-31`
+- Implementation FS I/O in Core: `ContentBootstrap.cs:15-37` (`Directory.Exists`), `:44-95` (`File.ReadAllText`)
+- Callers: `Client/Program.cs:9`, `Headless/Program.cs:7`
+- R25 plan explicitly allowed Core hosting helper vs separate Hosting project and chose Core — это и есть boundary regression
+- `ContentBootstrapTests` — disk Load; нет proof «Core without filesystem»
 
 ---
 

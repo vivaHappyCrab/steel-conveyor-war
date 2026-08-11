@@ -17,10 +17,13 @@
 
 ## Доказательства
 
-- `SimulationContentManifest.cs:22-33`
-- `MapSettingsLoader.cs:98-105`
-- `GameSimulation.cs:1624-1645` — CreateStartingEntities
-- `VictorySystem.cs:30-45`
+- `SimulationContentManifest.cs:22-33` — только catalogs (research/profile/build/entity/tile/gameplay); **нет** TPS/map/roster/seed/algorithm
+- TPS на match (`GameCreationOptions` / `TicksPerSecond`) есть (R32), но в manifest не входит (R10 deviation)
+- `MapSettingsLoader.cs:98-106` — coords без bounds; triple completeness only `:63-70`
+- `GameSimulation.cs:1624-1645` — `ResolveStartPositions` без overlap/footprint checks; `AddCompletedEntity` `:1742-1747` добавляет вслепую
+- `VictorySystem.cs:30-45` — ровно одна active team → win
+- `GameStatus` = только `InProgress | PlayerWon` (`Enums.cs:89-93`) → `activeTeams.Count == 0` оставляет **вечный** `InProgress`
+- Tests: `TeamVictoryTests` / `MapStartPositionsTests` — happy paths; нет OOB/overlap/zero-team
 
 ---
 

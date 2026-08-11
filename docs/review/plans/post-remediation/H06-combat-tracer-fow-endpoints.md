@@ -23,7 +23,8 @@ R27 закрыл global unfiltered tracers и hidden selection, но закре�
 | `WorldRenderer.cs:94-112` | `DrawCombatShots` рисует полную линию |
 | `SfmlPlaySession.cs:453-460` | Buffers shots passing OR gate |
 | `PlayerView.cs:138-155,176-199` | Same OR policy; returns both coordinates |
-| `CombatShotVisibilityTests.cs` | Codifies OR behavior as expected |
+| `CombatShotVisibilityTests.cs:41-47` | Codifies OR + «owned attacker always visible» (incl. fog target) as expected |
+| Bot fair events | `ObservedCombatEvent` carries both positions — mirrors SFML leak surface |
 
 ---
 

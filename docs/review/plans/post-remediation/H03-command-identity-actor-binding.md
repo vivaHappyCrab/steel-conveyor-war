@@ -26,10 +26,12 @@ Tick apply сортирует по `(Actor, Sequence)`, но:
 | Участок | Что происходит |
 |---|---|
 | `GameSimulation.Commands.cs:126-145` | Sort + per-tick dedupe |
+| `GameSimulation.Commands.cs:128-131` | Комментарий про «stable OrderBy», фактически `List.Sort` (unstable) |
 | `GameSimulation.Commands.cs:178-190` | `CompareCanonical` только Actor/Sequence |
-| `DeferredCommandSink.cs:19-20,41-54,59-65` | Per-sink sequence; trusts Actor |
+| `GameSimulation.Commands.cs:33-44` | `EnqueueCommand` — **нет** actor auth |
+| `DeferredCommandSink.cs:19-20,41-54,59-65` | Per-sink sequence; trusts `command.Actor` |
 | `SimulationStateHasher.cs:89-102` | Pending hash тоже `(Tick,Actor,Sequence)` без tie-break payload |
-| `CommandQueueTests` | Не покрывает reverse-order conflicting same-key payloads |
+| `CommandQueueTests` | Distinct sequences / fixed-order duplicate; **не** conflicting payloads + opposite arrival |
 
 Комментарий в коде утверждает «OrderBy is a stable sort» — фактически используется `List.Sort`, который нестабилен. Документацию/ожидания нужно исправить вместе с кодом.
 

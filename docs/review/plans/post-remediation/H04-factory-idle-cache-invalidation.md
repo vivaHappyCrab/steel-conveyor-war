@@ -26,11 +26,14 @@ Manual factory может навсегда остаться в idle-skip пос�
 | `FactoryBastionSystem.cs:56-63` | Idle skip before unlock/capacity checks |
 | `FactoryBastionSystem.cs:71-80` | Locked recipe → RememberIdleFactorySkip |
 | `FactoryBastionSystem.cs:109-113` | RememberIdleFactorySkip writes epoch/version |
-| `GameSimulation.cs:818-852` | Manual target set without unlock gate |
-| `GameSimulation.cs:45,255` | `_armyAccountingEpoch` / bump |
+| `GameSimulation.cs:818-852` | Manual target set: recipe existence + factory kind only — **no** unlock check |
+| `FactoryBastionSystem.cs:369-380` | `IsRecipeUnlockedForOwner` (used on tick path, not on set-production) |
+| `GameSimulation.cs:45,255` | `_armyAccountingEpoch` / bump on set production / spawn / deaths — **not** research complete |
 | `ResearchTickSystem.cs:16-20` | ProcessResearch + SyncAllResolvedMaxHealth only |
 | `WorldEntity.cs:65-74` | IdleFactorySupplyEpoch / IdleFactoryInputVersion |
-| `SimulationStateHasher.WriteEntity` | Cache fields omitted |
+| `SimulationStateHasher.WriteEntity` | Cache fields omitted (behavior-affecting unhashed derived state) |
+
+Autofill менее затронут (re-resolve каждый tick); early idle `continue` — manual path.
 
 ---
 

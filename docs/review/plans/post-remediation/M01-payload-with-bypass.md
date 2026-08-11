@@ -17,10 +17,11 @@
 
 ## Доказательства
 
-- `Domain/ValueObjects.cs:78-110` — `WaypointList { get; init; }`
-- `Commands/SimulationCommands.cs:87-104` — `Allocations { get; init; }`
-- `ImmutablePayloadTests.cs` — no `with` cases
-- Movement may do `order with { WaypointIndex = ... }` (scalar) — must keep working
+- `Domain/ValueObjects.cs:93-110` — ctor копирует в `ImmutableArray`, но `WaypointList { get; init; }`
+- `Commands/SimulationCommands.cs:94-104` — ctor → `ImmutableDictionary`, но `Allocations { get; init; }`
+- `ImmutablePayloadTests.cs:12-76` — только source-mutation после ctor/enqueue, **нет** `with`-replacement
+- Легитимный scalar `with` (не баг): `MovementSystem.cs:54` — `unit.Order with { WaypointIndex = nextIndex }`
+- R12 plan «Отклонения» намеренно оставил interface-typed init — именно это и оставляет дыру
 
 ---
 

@@ -18,9 +18,11 @@
 
 ## Доказательства
 
-- `PlayerView.cs:11-14,91-126,136,161-173`
+- `PlayerView.cs:11-14,76-133,136,161-173` — mutable nested collections as `IReadOnly*`; terrain `null` unless `includeTerrain`
+- `IPlayerView` / bot fair default `includeTerrain: false` (R04 ADR deferred terrain for bots — atomic map decisions still open)
 - `ObservationSnapshots.cs` — DTO shapes
 - `BotObservationContractTests` — tick isolation, not cast-mutation / map atomicity
+- Related presentation cost (SFML, not bot DoD): `SessionPresenter` rebuilds full capture each catch-up tick — see also M07
 
 ---
 

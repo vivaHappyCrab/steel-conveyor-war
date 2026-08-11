@@ -8,6 +8,8 @@
 **Базовый commit ревью:** `ba43004` / `develop` после PR #111 + отчёт PR #112.  
 **Связанный issue:** [#61](https://github.com/vivaHappyCrab/steel-conveyor-war/issues/61)
 
+Evidence в планах дополнительно уточнён по повторной сверке кода на `802d5b4` (call-site inventory, protocol/batch gaps, spatial rebuild sites, zero-team victory hole, dirty-catch-up options).
+
 ## Легенда
 
 - **Severity:** High / Medium / Low

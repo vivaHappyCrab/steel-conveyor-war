@@ -21,11 +21,15 @@
 
 ## Доказательства
 
-- `ContentCrossValidator.cs:17-67` — narrow checks; `tiles` unused
-- `ResearchContentLoader.cs` — no schema version field
-- `ResearchSystem` unlock apply — unknown kinds ignored
-- `GameplayTablesLoader` — Enum.TryParse accepts numeric strings; limited range checks
-- `MapSettingsLoader.cs:98-105` — coordinates without bounds
+- `ContentCrossValidator.cs:17-67` — только build→tech, recipe→tech, Defeat→EntityKind; **`tiles` accepted but never referenced**
+- `ContentBootstrap.cs:71` — вызывает validator (сила = ширина графа)
+- `ResearchContentLoader.cs:285-291` — `ResearchCatalogDto` **без** `SchemaVersion` (в отличие от остальных loaders + `ContentSchema.RequireSupportedVersion`)
+- `ResearchContentLoader.cs:144-148` — `ParseUnlock` принимает любые contentKind/contentId strings
+- `ResearchSystem.cs:723-735` — `UnlockContentEffect`: unknown `ContentKind` → silent no-op (нет `default`)
+- `GameplayTablesLoader` — `Enum.TryParse` принимает numeric strings; limited range checks
+- `MapSettingsLoader.cs:98-105` — coordinates without bounds (связка M11)
+- JSON options: case-insensitive, **нет** `UnmappedMemberHandling = Disallow`
+- `ContentCrossValidationTests` — только три текущих edge + schema на build-costs
 
 ---
 

@@ -20,11 +20,15 @@ Bot/host не может доверять advertised vocabulary.
 
 ## Доказательства
 
-- `GameSimulation.cs:794-805` — `TrySetProjectWeight`
+- `GameSimulation.cs:794-805` — `TrySetProjectWeight` (public, no DTO)
+- `ResearchSystem.cs:187-231` — мутирует **project weights** parallel-track (это **не** то же самое, что `SetTrackAllocationCommand` / basis points)
 - `GameSimulation.cs:855-863` — obsolete assign always false
-- `SimulationCommandKind.cs:18` — AssignFactoryBastion still present
-- `PlayerView.cs:11-14,136` — advertises all enum values
-- `CommandProtocolTests` / `CommandSerializerPropertyTests` — shallow asserts
+- `SimulationCommandKind.cs:18` + serializer/dispatcher — AssignFactoryBastion всё ещё в wire
+- `PlayerView.cs:11-14,136` — advertises all enum values (включая dead kind; без project-weight)
+- `CommandProtocolTests.cs:56-66` / `CommandSerializerPropertyTests.cs:27-31` — только Kind/Actor/Tick/Sequence/runtime type
+- `SerializeMany` / `DeserializeMany` / `TryDeserializeMany` — zero test hits по именам API
+
+Важно: старый R11 plan deviation «weights покрыты SetTrackAllocation» **некорректен** для project weights.
 
 ---
 
@@ -42,12 +46,12 @@ Tests: round-trip value equality for every kind + batch APIs
 
 ## План фикса
 
-1. Добавить `SetProjectWeightCommand` + serializer + ApplyCommand branch + actor auth.
-2. Удалить `AssignFactoryBastion` из public vocabulary **или** filter in `GetAvailableCommandKinds` and serializer (prefer remove/obsolete with migration note).
+1. Добавить `SetProjectWeightCommand` (actor, trackId, technologyId, weight) + serializer + ApplyCommand → `TrySetProjectWeight` с actor checks.
+2. Удалить `AssignFactoryBastion` из public vocabulary **или** filter in `GetAvailableCommandKinds` and serializer (prefer remove/obsolete + protocol bump note; deserialize→reject для legacy).
 3. Introduce `CommandPayloadEquality` / snapshot assert helpers.
-4. Expand property tests to compare all fields after round-trip.
-5. Add tests for SerializeMany/DeserializeMany/TryDeserializeMany (success + truncated/malformed).
-6. Optional: `IPlayerView.GetAvailableCommandKinds` returns frozen immutable list filtered by registry.
+4. Expand property tests to compare **all payload fields** after round-trip (не только header).
+5. Add tests for SerializeMany/DeserializeMany/TryDeserializeMany (success + truncated/malformed/`Try*` false).
+6. Optional: SFML/UI path для project weights, если дизайн требует player control; `GetAvailableCommandKinds` → frozen filtered list.
 
 ---
 

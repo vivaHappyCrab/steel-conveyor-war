@@ -28,7 +28,10 @@
 | `EntityCatalog.cs:10-14` | Public `IReadOnlyDictionary` over that instance |
 | `TileContentLoader.cs:40-45` / `TileCatalog.cs:9-13` | Same pattern |
 | `BuildCostContentLoader.cs:60-90` | Root `.AsReadOnly()`, nested cost dicts raw |
-| `GameplayTablesLoader.cs:150-180,311-337` | Recipe input maps retained inside records |
+| `GameplayTablesLoader.cs:37-48,150-180,311-337` | Root AsReadOnly; recipe input maps retained inside records |
+| `ValueObjects.cs:134` | `ProductionRecipe.Inputs` typed `IReadOnlyDictionary` over potentially live dict |
+| `EncapsulationTests.ContentTables_AreNotCastMutable` | Embedded Frozen/AsReadOnly **power maps only** — not loaded Entity/Tile/nested costs/recipes |
+| `ContentManifestHashTests` | Even mutates via `with` + dict replace to prove identity sensitivity (assumes mutability) |
 | R05 tests | Cover world/players/queue/root MvpDefinitions — not entity/tile nested graphs |
 
 ---

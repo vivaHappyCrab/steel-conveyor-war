@@ -39,9 +39,13 @@ clear frameFogDirty
 
 Monotonic `FogInvalidationGeneration` + retained dirty union until consumer acks. Heavier API.
 
-**Recommendation:** Option A — minimal, SFML-local, matches catch-up ownership.
+**Option C (simple backstop):**
 
-Also accumulate entity invalidation implicitly by always collecting entity snapshots each frame (already done) — FoW tiles are the gap.
+Force full minimap rebuild when `ticksThisFrame > 1` (correct, slightly heavier; OK with R23 cap ≤8).
+
+**Recommendation:** Option A as primary; C acceptable interim. Entity markers partially self-heal via previous/current snapshots — primary gap is **terrain/FoW patches**, not markers. 180-frame full rebuild (`MinimapDirtyTracker` interval) is drift backstop, not the fix.
+
+Dirty overwrite details: idle skip clears (`FogOfWarSystem.cs:55-63`); repaint clears then rebuilds (`PlayerState.cs:78-85`, `:91-93`, `:107-120`).
 
 ---
 

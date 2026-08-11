@@ -17,9 +17,12 @@ Correctness equivalence к per-unit algorithm закрыта; performance DoD �
 
 ## Доказательства
 
-- `PowerSystem.cs:243-280` — batched loop
+- `PowerSystem.cs:243-280` — batched loop vs **одного** next heap competitor
 - `PowerSystem.cs:289-327` — `CountConsecutivePreferredUnits`
-- `EnergyBatchedWaterfillTests` — equivalence, not large equal-ratio perf
+- Equal empty buffers / equal caps → `batch == 1`: при `bufA=bufB=0`, `capA=capB`, `idA < idB` → `maxPreferredT = 0` → `units = 1` (строки 303–327)
+- Per tick также: новый `PriorityQueue` + scan (`:155-177`); per-player kind dictionaries (`:133-145`)
+- `EnergyBatchedWaterfillTests` — equivalence (включая equal-ratio), **не** complexity/bench
+- Quick bench `power` (80 assemblers) слишком мал / не equal-ratio stress
 
 ---
 

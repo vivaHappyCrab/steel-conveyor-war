@@ -19,6 +19,8 @@ Match загружает `config/gameplay-tables.json`, кладёт катал�
 
 Это корневой content-authority дефект третьего ревью.
 
+Contrast: **build costs** уже match-scoped (`BuildCostCatalog` для place/cost). Gap specifically **gameplay tables** (recipes/stats/footprints/power/combat via `MvpDefinitions` → Embedded).
+
 ---
 
 ## Доказательства (file:line)
