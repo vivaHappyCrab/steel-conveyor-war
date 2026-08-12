@@ -58,9 +58,9 @@ R21 extracted SessionState/mapper, but session god-method remains.
 
 ## Definition of Done
 
-- [ ] Frame tile shape disposed/reused.
-- [ ] Session responsibilities split enough that Run is orchestration-only (<~200 lines ideal).
-- [ ] R21 residual updated honestly (full pure mapper may remain partial).
+- [x] Frame tile shape disposed/reused.
+- [x] Session responsibilities split enough that Run is orchestration-only (<~200 lines ideal).
+- [x] R21 residual updated honestly (full pure mapper may remain partial).
 
 ## Специалисты
 

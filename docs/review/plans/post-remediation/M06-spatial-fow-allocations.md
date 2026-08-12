@@ -61,10 +61,10 @@ Do not claim closure without measured improvement.
 
 ## Definition of Done
 
-- [ ] ≤1 full spatial rebuild per tick (or documented phase- rationalized ≤2).
-- [ ] Hot `GetEntitiesAt` path allocation-free or pooled.
-- [ ] Bench evidence on 100+ units / FoW scenario.
-- [ ] R07/R16 performance residuals updated.
+- [x] ≤1 full spatial rebuild per tick (or documented phase- rationalized ≤2).
+- [x] Hot `GetEntitiesAt` path allocation-free or pooled.
+- [x] Bench evidence on 100+ units / FoW scenario.
+- [x] R07/R16 performance residuals updated.
 
 ## Специалисты
 

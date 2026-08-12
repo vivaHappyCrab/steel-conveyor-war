@@ -11,7 +11,20 @@ internal sealed class PathfindingWorkspace
 
     public Dictionary<TilePosition, int> CostSoFar { get; } = new();
 
+    /// <summary>M06: pooled path reconstruction + candidate ring buffers.</summary>
+    public List<TilePosition> PathScratch { get; } = new();
+
+    public List<TilePosition> CandidateScratch { get; } = new();
+
     public void Clear()
+    {
+        ClearSearch();
+        PathScratch.Clear();
+        CandidateScratch.Clear();
+    }
+
+    /// <summary>Clears A* search state only so candidate rings can survive across attempts.</summary>
+    public void ClearSearch()
     {
         Open.Clear();
         Previous.Clear();

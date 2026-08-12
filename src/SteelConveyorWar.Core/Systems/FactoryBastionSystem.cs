@@ -416,6 +416,7 @@ public sealed partial class GameSimulation
         }
 
         World.AddEntity(unit);
+        _spatialQueryIndex.InsertAlive(unit, GameplayTables);
         // Live mid-tick accounting: later factories in this tick must see the new living unit.
         InsertSortedById(_scratchUnits, unit);
         _armyAccountingAliveUnits++;
@@ -455,7 +456,6 @@ public sealed partial class GameSimulation
 
     private bool TryFindSpawnTileNear(WorldEntity factory, EntityKind unitKind, out TilePosition spawnTile)
     {
-        _spatialQueryIndex.Rebuild(World.Entities, GameplayTables);
         var footprint = GameplayTables.GetFootprint(factory.Kind);
         for (var ring = 1; ring <= 6; ring++)
         {
@@ -515,7 +515,6 @@ public sealed partial class GameSimulation
     {
         CollectSortedAliveEntities(_scratchBastions, static entity => entity.Kind == EntityKind.Bastion);
         CollectSortedAliveEntities(_scratchUnits, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
-        _spatialQueryIndex.Rebuild(World.Entities, GameplayTables);
 
         for (var bastionIndex = 0; bastionIndex < _scratchBastions.Count; bastionIndex++)
         {

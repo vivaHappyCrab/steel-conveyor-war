@@ -64,10 +64,10 @@ Frame p95 + managed/native alloc with explored map.
 
 ## Definition of Done
 
-- [ ] Default CI fails on budget exceed.
-- [ ] Budgets calibrated from real measurements.
-- [ ] Matrix includes non-duplicated FoW and larger army/power cases.
-- [ ] R22 marked closed.
+- [x] Default CI fails on budget exceed.
+- [x] Budgets calibrated from real measurements.
+- [x] Matrix includes non-duplicated FoW and larger army/power cases.
+- [x] R22 marked closed.
 
 ## Специалисты
 

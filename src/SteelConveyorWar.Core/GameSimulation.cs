@@ -320,6 +320,8 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     void ISimulationSystemContext.CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate) =>
         CollectSortedAliveEntities(into, predicate);
 
+    SpatialQueryIndex ISimulationSystemContext.SharedSpatialIndex => _spatialQueryIndex;
+
     // R14: explicit implementation so the internal instance method above is not forced back to public.
     bool ISimulationSystemContext.TryConsumeBuildingEnergy(WorldEntity building) => TryConsumeBuildingEnergy(building);
 
@@ -409,6 +411,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         ghost.ConstructionTicksRemaining = buildTicks;
         ghostId = ghost.Id;
         World.AddEntity(ghost);
+        _spatialQueryIndex.InsertAlive(ghost, GameplayTables);
         commander.QueuedBuildOrder = null;
         commander.QueuedDemolishOrder = null;
         return true;
@@ -1625,12 +1628,16 @@ public sealed partial class GameSimulation : ISimulationSystemContext
 
         Tick++;
         ApplyQueuedCommandsForCurrentTick();
+        // M06: spatial phase 1/2 — commander through factory share this rebuild (+ Relocate/InsertAlive).
+        _spatialQueryIndex.Rebuild(World.Entities, GameplayTables);
         CommanderOrdersSystem.Tick(this);
         _powerSystem.Tick();
         ProductionSystem.Tick(this);
         LogisticsSystem.Tick(this);
         ResearchTickSystem.Tick(this);
         FactoryBastionSystem.Tick(this);
+        // M06: spatial phase 2/2 — refresh after factory spawns before movement + shared combat index.
+        _spatialQueryIndex.Rebuild(World.Entities, GameplayTables);
         MovementSystem.Tick(this);
         _combatSystem.Tick();
         _powerSystem.RecordStats();
@@ -1746,7 +1753,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             return false;
         }
 
-        return !World.GetEntitiesAt(candidate).Any(entity => entity.IsAlive);
+        return !World.AnyAliveAt(candidate, static entity => true);
     }
 
     private static void AddStartingCommanderInventory(WorldEntity commander)
@@ -1943,7 +1950,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             return true;
         }
 
-        return tiles.All(tile => !World.GetEntitiesAt(tile).Any(entity => entity.IsAlive));
+        return tiles.All(tile => !World.AnyAliveAt(tile, static entity => true));
     }
 
     private bool IsValidResourceAnchor(EntityKind kind, TilePosition anchor)

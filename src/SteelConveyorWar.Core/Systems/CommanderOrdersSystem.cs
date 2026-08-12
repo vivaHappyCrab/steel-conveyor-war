@@ -18,7 +18,6 @@ public sealed partial class GameSimulation
 
     private void ProcessCommanderBuildOrders()
     {
-        _spatialQueryIndex.Rebuild(World.Entities, GameplayTables);
         foreach (var commander in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Commander && entity.QueuedBuildOrder is not null).ToList())
         {
             var order = commander.QueuedBuildOrder!;
@@ -46,7 +45,6 @@ public sealed partial class GameSimulation
 
     private void ProcessCommanderDemolishOrders()
     {
-        _spatialQueryIndex.Rebuild(World.Entities, GameplayTables);
         foreach (var commander in World.Entities.Where(entity => entity.IsAlive && entity.Kind == EntityKind.Commander && entity.QueuedDemolishOrder is not null).ToList())
         {
             var order = commander.QueuedDemolishOrder!;
@@ -69,7 +67,6 @@ public sealed partial class GameSimulation
 
     private void ProcessCommanderMoveCommands()
     {
-        _spatialQueryIndex.Rebuild(World.Entities, GameplayTables);
         foreach (var commander in World.Entities.Where(entity =>
                      entity.IsAlive
                      && entity.Kind == EntityKind.Commander

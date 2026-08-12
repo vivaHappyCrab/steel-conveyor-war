@@ -14,22 +14,23 @@ Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(jsonOut))!);
 
 if (quick)
 {
-    // Alloc smoke / CI soft gate: measure tick ns + alloc without BenchmarkDotNet warm-up cost.
+    // Alloc smoke / CI hard gate (M04): measure tick ns + alloc without BenchmarkDotNet warm-up cost.
+    // Local/verify: soft unless SCW_BENCH_HARD_GATE=1. CI sets the hard gate.
     var report = TickScenarioRunner.RunQuickMatrix();
     File.WriteAllText(jsonOut, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
     Console.WriteLine($"Wrote quick benchmark report to {jsonOut}");
     var failed = report.Scenarios.Where(s => s.ExceededSoftBudget).ToList();
     if (failed.Count > 0)
     {
+        var hard = string.Equals(Environment.GetEnvironmentVariable("SCW_BENCH_HARD_GATE"), "1", StringComparison.Ordinal);
         foreach (var f in failed)
         {
             Console.Error.WriteLine(
-                $"SOFT FAIL {f.Name}: p95={f.P95TickNs}ns alloc/tick={f.AllocBytesPerTick} " +
+                $"{(hard ? "HARD" : "SOFT")} FAIL {f.Name}: p95={f.P95TickNs}ns alloc/tick={f.AllocBytesPerTick} " +
                 $"(budgets p95={f.P95BudgetNs} alloc={f.AllocBudgetBytes})");
         }
 
-        // Soft fail: non-zero only when SCW_BENCH_HARD_GATE=1 (after calibration).
-        if (string.Equals(Environment.GetEnvironmentVariable("SCW_BENCH_HARD_GATE"), "1", StringComparison.Ordinal))
+        if (hard)
         {
             return 1;
         }

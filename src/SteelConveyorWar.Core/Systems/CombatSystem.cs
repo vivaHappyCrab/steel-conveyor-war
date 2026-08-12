@@ -14,7 +14,6 @@ internal sealed class CombatSystem
     private readonly List<WorldEntity> _scratchEntities = new();
     private readonly List<WorldEntity> _scratchEntitiesSecondary = new();
     private readonly List<PlayerState> _scratchPlayers = new();
-    private readonly SpatialQueryIndex _spatialQueryIndex = new();
 
     public CombatSystem(ISimulationSystemContext context)
     {
@@ -246,10 +245,9 @@ internal sealed class CombatSystem
     private void ProcessCombat()
     {
         _context.Presentation.ClearCombatShots();
-        // Per-pass spatial index keeps range/splash queries neighborhood-limited; GameWorld tile
-        // occupancy (#66) does not replace position-radius combat scans yet.
-        _spatialQueryIndex.Rebuild(_context.World.Entities, _context.GameplayTables);
-        var spatial = _spatialQueryIndex;
+        // M06: share the post-factory spatial index (movement Relocate keeps it current). Second
+        // full rebuild would be redundant when entity set is unchanged after factory.
+        var spatial = _context.SharedSpatialIndex;
         var tables = _context.GameplayTables;
         _context.CollectSortedAliveEntities(
             _scratchEntities,

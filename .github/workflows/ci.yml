@@ -100,7 +100,7 @@ jobs:
         run: |
           xvfb-run -a dotnet run --project src/SteelConveyorWar.Client -c Release --no-build -- --smoke-test
 
-  # R22: performance soft-gate (quick alloc/tick smoke). Hard thresholds via SCW_BENCH_HARD_GATE=1 after calibration.
+  # R22/M04: performance hard gate (quick alloc/tick smoke). Local override: unset SCW_BENCH_HARD_GATE.
   benchmark:
     name: benchmark-quick
     runs-on: ubuntu-latest
@@ -120,6 +120,8 @@ jobs:
           dotnet build tests/SteelConveyorWar.Benchmarks/SteelConveyorWar.Benchmarks.csproj -c Release --no-restore /p:ContinuousIntegrationBuild=true
 
       - name: Quick tick/alloc matrix
+        env:
+          SCW_BENCH_HARD_GATE: "1"
         run: >
           dotnet run --project tests/SteelConveyorWar.Benchmarks
           -c Release

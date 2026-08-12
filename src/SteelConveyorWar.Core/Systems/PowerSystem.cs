@@ -17,6 +17,11 @@ internal sealed class PowerSystem
     private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickProducedByKind = new();
     private readonly Dictionary<PlayerId, Dictionary<EntityKind, int>> _tickConsumedByKind = new();
 
+    // M05/M06: reuse fill heap + equal-ratio group scratch across ticks (clear, do not realloc).
+    private readonly PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)> _fillHeap =
+        new(EnergyFillPriorityComparer);
+    private readonly List<WorldEntity> _fillGroupScratch = new();
+
     /// <summary>
     /// Orders fill candidates by fill fraction ascending (<c>buffer/capacity</c> via cross-multiply), then entity id.
     /// </summary>
@@ -34,6 +39,11 @@ internal sealed class PowerSystem
     {
         ArgumentNullException.ThrowIfNull(context);
         _context = context;
+        foreach (var player in context.Players)
+        {
+            _tickProducedByKind[player.Id] = new Dictionary<EntityKind, int>();
+            _tickConsumedByKind[player.Id] = new Dictionary<EntityKind, int>();
+        }
     }
 
     /// <summary>Produces power and fills energy buffers emptiest-first.</summary>
@@ -133,14 +143,28 @@ internal sealed class PowerSystem
 
     private void ResetEnergyTickAccumulators()
     {
-        _tickPowerProduced.Clear();
-        _tickPowerConsumed.Clear();
-        _tickProducedByKind.Clear();
-        _tickConsumedByKind.Clear();
         foreach (var player in _context.Players)
         {
-            _tickProducedByKind[player.Id] = new Dictionary<EntityKind, int>();
-            _tickConsumedByKind[player.Id] = new Dictionary<EntityKind, int>();
+            if (!_tickProducedByKind.TryGetValue(player.Id, out var producedMap))
+            {
+                producedMap = new Dictionary<EntityKind, int>();
+                _tickProducedByKind[player.Id] = producedMap;
+            }
+            else
+            {
+                producedMap.Clear();
+            }
+
+            if (!_tickConsumedByKind.TryGetValue(player.Id, out var consumedMap))
+            {
+                consumedMap = new Dictionary<EntityKind, int>();
+                _tickConsumedByKind[player.Id] = consumedMap;
+            }
+            else
+            {
+                consumedMap.Clear();
+            }
+
             _tickPowerProduced[player.Id] = 0;
             _tickPowerConsumed[player.Id] = 0;
         }
@@ -149,9 +173,8 @@ internal sealed class PowerSystem
     /// <summary>
     /// Distributes this tick's <see cref="PlayerState.PowerProduced"/> into owned consumer buffers
     /// emptiest-first: lowest <c>EnergyBuffer/Capacity</c> (exact rational order via cross-multiply),
-    /// then lowest entity id. Batched water-filling: each heap pop grants every consecutive unit that
-    /// would still prefer the same entity under <see cref="EnergyFillRatioComparer"/> (same result as
-    /// per-unit dequeue/enqueue, fewer heap ops when production is large).
+    /// then lowest entity id. M05 level water-fill: identical <c>(buffer, capacity)</c> groups rise
+    /// together in O(group × levels), independent of produced energy on equal-ratio plateaus.
     /// </summary>
     private void FillEnergyBuffersEmptiestFirst(PlayerState player)
     {
@@ -161,7 +184,7 @@ internal sealed class PowerSystem
             return;
         }
 
-        var heap = new PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)>(EnergyFillPriorityComparer);
+        _fillHeap.Clear();
         foreach (var entity in _context.World.Entities)
         {
             if (!entity.IsAlive
@@ -172,10 +195,10 @@ internal sealed class PowerSystem
                 continue;
             }
 
-            heap.Enqueue(entity, (entity.EnergyBuffer, entity.EnergyBufferCapacity, entity.Id));
+            _fillHeap.Enqueue(entity, (entity.EnergyBuffer, entity.EnergyBufferCapacity, entity.Id));
         }
 
-        DistributeEnergyEmptiestFirstBatched(heap, remaining);
+        DistributeEnergyEmptiestFirstBatched(_fillHeap, remaining, _fillGroupScratch);
     }
 
     /// <summary>
@@ -193,7 +216,8 @@ internal sealed class PowerSystem
         }
 
         var heap = BuildFillHeap(consumers);
-        DistributeEnergyEmptiestFirstBatched(heap, energy);
+        var group = new List<WorldEntity>();
+        DistributeEnergyEmptiestFirstBatched(heap, energy, group);
     }
 
     /// <summary>
@@ -241,43 +265,113 @@ internal sealed class PowerSystem
         return heap;
     }
 
+    /// <summary>
+    /// Level water-fill: pop an identical <c>(buffer, capacity)</c> group (id-ascending), raise the
+    /// whole plateau by full levels, then partial +1 by id — same order as per-unit emptiest-first.
+    /// </summary>
     private static void DistributeEnergyEmptiestFirstBatched(
         PriorityQueue<WorldEntity, (int Buffer, int Capacity, int Id)> heap,
-        int remaining)
+        int remaining,
+        List<WorldEntity> groupScratch)
     {
         while (remaining > 0 && heap.Count > 0)
         {
-            var target = heap.Dequeue();
-            var space = target.EnergyBufferCapacity - target.EnergyBuffer;
-            int batch;
+            groupScratch.Clear();
+            var first = heap.Dequeue();
+            groupScratch.Add(first);
+            var groupBuf = first.EnergyBuffer;
+            var groupCap = first.EnergyBufferCapacity;
+
+            while (heap.Count > 0)
+            {
+                heap.TryPeek(out _, out var key);
+                if (key.Buffer != groupBuf || key.Capacity != groupCap)
+                {
+                    break;
+                }
+
+                groupScratch.Add(heap.Dequeue());
+            }
+
+            var space = groupCap - groupBuf;
+            if (space <= 0)
+            {
+                continue;
+            }
+
+            int maxLevels;
+            int? nextBuf = null;
+            int? nextCap = null;
+            int? nextId = null;
             if (heap.Count == 0)
             {
-                batch = Math.Min(remaining, space);
+                maxLevels = space;
             }
             else
             {
                 heap.TryPeek(out _, out var next);
-                batch = CountConsecutivePreferredUnits(
-                    target.EnergyBuffer,
-                    target.EnergyBufferCapacity,
-                    target.Id,
+                nextBuf = next.Buffer;
+                nextCap = next.Capacity;
+                nextId = next.Id;
+                // Levels the lowest-id member can still start vs the next competitor.
+                maxLevels = CountConsecutivePreferredUnits(
+                    groupBuf,
+                    groupCap,
+                    groupScratch[0].Id,
                     next.Buffer,
                     next.Capacity,
                     next.Id,
-                    Math.Min(remaining, space));
+                    space);
+                if (maxLevels <= 0)
+                {
+                    maxLevels = 1;
+                }
             }
 
-            // Target was heap-min, so at least one unit is always preferred over the next competitor.
-            if (batch <= 0)
+            var groupCount = groupScratch.Count;
+            var fullLevels = Math.Min(maxLevels, Math.Min(space, remaining / groupCount));
+            if (fullLevels > 0)
             {
-                batch = Math.Min(1, Math.Min(remaining, space));
+                for (var i = 0; i < groupCount; i++)
+                {
+                    groupScratch[i].EnergyBuffer += fullLevels;
+                }
+
+                remaining -= fullLevels * groupCount;
+                groupBuf += fullLevels;
+                space -= fullLevels;
             }
 
-            target.EnergyBuffer += batch;
-            remaining -= batch;
-            if (target.EnergyBuffer < target.EnergyBufferCapacity)
+            // Partial level: +1 in ascending id order while still preferred vs next competitor.
+            if (remaining > 0 && space > 0)
             {
-                heap.Enqueue(target, (target.EnergyBuffer, target.EnergyBufferCapacity, target.Id));
+                for (var i = 0; i < groupCount && remaining > 0; i++)
+                {
+                    var entity = groupScratch[i];
+                    if (nextBuf is not null
+                        && EnergyFillRatioComparer.CompareRatios(
+                            groupBuf,
+                            groupCap,
+                            entity.Id,
+                            nextBuf.Value,
+                            nextCap!.Value,
+                            nextId!.Value) > 0)
+                    {
+                        break;
+                    }
+
+                    entity.EnergyBuffer++;
+                    remaining--;
+                }
+            }
+
+            for (var i = 0; i < groupCount; i++)
+            {
+                var entity = groupScratch[i];
+                if (entity.EnergyBuffer < entity.EnergyBufferCapacity)
+                {
+                    heap.Enqueue(entity, (entity.EnergyBuffer, entity.EnergyBufferCapacity, entity.Id));
+                }
             }
         }
     }

@@ -106,6 +106,20 @@ pwsh eng/verify.ps1
 | M10 | Observation frame immutability | ✅ |
 | M11 | Session manifest / roster / draw | ✅ |
 | M07 | Minimap catch-up dirty union | ✅ |
-| M04–M09, L01–L03 | остаток индекса | ⏳ тот же PR |
+| M04 | Benchmark hard gate + matrix | ✅ |
+| M05 | Level energy water-fill | ✅ |
+| M06 | Spatial rebuilds / FoW dirty paint | ✅ |
+| M08 | SFML resources + session split | ✅ |
+| M09, L01–L03 | остаток индекса | ⏳ тот же PR |
 
-Порядок оставшихся: M04 → M05/M06 → M08 → M09 → L01–L03.
+Порядок оставшихся: M09 → L01–L03.
+
+### Post-remediation residual notes (honest)
+
+| Residual | Notes |
+|----------|-------|
+| R22 | CI `SCW_BENCH_HARD_GATE=1`; calibrated 5ms / 2.5MB; expanded matrix (idle_factory/army100/battle/power_equal/fow_moving/hash). Local soft. |
+| R15 | Level water-fill for identical `(buffer,capacity)` plateaus; equivalence tests + `power_equal` bench. |
+| R07 | ≤2 shared spatial rebuilds/tick (post-commands, post-factory); combat shares index; path/candidate scratch; placement `AnyAliveAt`. |
+| R16 | Moved-source dirty disk decay/paint; static sources skip full decay. |
+| R21 | Tile `RectangleShape` disposed; `SimulationPump` + `PresentationComposer` extracted; mapper purity still partial. |

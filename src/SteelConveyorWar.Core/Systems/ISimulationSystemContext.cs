@@ -57,4 +57,10 @@ internal interface ISimulationSystemContext
     /// id for deterministic iteration. Reuses the caller's buffer to avoid per-tick allocations.
     /// </summary>
     void CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate);
+
+    /// <summary>
+    /// M06: shared spatial index rebuilt at most twice per tick (post-commands, post-factory).
+    /// Combat/movement share this instance; mid-pass movers use Relocate, spawns use InsertAlive.
+    /// </summary>
+    SpatialQueryIndex SharedSpatialIndex { get; }
 }

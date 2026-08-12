@@ -9,8 +9,9 @@ namespace SteelConveyorWar.Sfml;
 /// <summary>
 /// Owns SFML session state, input bindings, camera updates, and frame presentation.
 /// Gameplay mutations go through <see cref="GameSimulation"/> APIs only.
-/// R21: UI mode state lives in <see cref="SessionState"/>; intents route through
-/// <see cref="InputCommandMapper"/> into <see cref="SfmlCommandGateway"/>.
+/// R21/M08: UI mode state lives in <see cref="SessionState"/>; intents route through
+/// <see cref="InputCommandMapper"/>; tick work in <see cref="SimulationPump"/>; overlays in
+/// <see cref="PresentationComposer"/>. Run remains window/event/camera orchestration.
 /// </summary>
 internal sealed class SfmlPlaySession
 {
@@ -424,12 +425,8 @@ internal sealed class SfmlPlaySession
         };
 
         var clock = new Clock();
-        var accumulator = 0f;
         var fixedDelta = 1f / display.TicksPerSecond;
-        var lingeringShots = new List<(CombatShotEvent Shot, CombatShotRevealMode Reveal, float Remaining)>();
-        // M07: pooled frame-scoped FoW dirty union across multi-tick catch-up (R23 cap).
-        var frameFogDirtyKeys = new HashSet<(int X, int Y)>();
-        var frameFogDirtyTiles = new List<TilePosition>();
+        var simulationPump = new SimulationPump(simulation, localPlayer, inputMapper);
 
         var renderedFrames = 0;
 
@@ -440,57 +437,14 @@ internal sealed class SfmlPlaySession
 
             var mouseTile = TileFromScreen(Mouse.GetPosition(window));
             var hoverTarget = mouseTile is null ? null : simulation.World.GetTopEntityAt(mouseTile.Value);
-            inputMapper.TickDemolishHold(
-                simulation,
+            simulationPump.TickDemolishHold(
                 frameDt,
                 Mouse.IsButtonPressed(Mouse.Button.Right),
                 hoverTarget?.Id);
 
-            accumulator += frameDt;
-            // R23: cap ticks per frame and drop excess backlog (see FixedStepPacer) so a long pause
-            // (minimized window, breakpoint) can't trigger a spiral-of-death catch-up. Dropping is
-            // acceptable for this local host; a future lockstep network host must stall/resync.
-            var (ticksThisFrame, pacedAccumulator) = FixedStepPacer.Plan(accumulator, fixedDelta);
-            accumulator = pacedAccumulator;
-            frameFogDirtyKeys.Clear();
-            for (var tickIndex = 0; tickIndex < ticksThisFrame; tickIndex++)
-            {
-                simulation.AdvanceTick();
-                // M07: union dirty FoW tiles from every catch-up tick — the final tick alone may be empty.
-                MinimapDirtyTracker.AccumulateFogDirty(
-                    frameFogDirtyKeys,
-                    simulation.GetFogDirtyTiles(localPlayer));
-                foreach (var shot in simulation.CombatShotsThisTick)
-                {
-                    // H06: buffer reveal mode at capture time so linger cannot later upgrade a
-                    // partial reveal into a full hidden-endpoint leak.
-                    var reveal = WorldRenderer.ClassifyShotForLocalPlayer(simulation, localPlayer, shot);
-                    if (CombatShotVisibility.IsVisible(reveal))
-                    {
-                        lingeringShots.Add((shot, reveal, SfmlUiLayout.CombatShotLingerSeconds));
-                    }
-                }
-
-                // R27: re-validate the current selection every tick. If a non-owned entity has left
-                // the local player's vision (or was removed), drop the selection so the HUD stops
-                // leaking its live HP/position/orders.
-                inputMapper.RefreshSelectionVisibility(simulation);
-            }
-
-            MinimapDirtyTracker.CopyFogDirty(frameFogDirtyKeys, frameFogDirtyTiles);
-
-            for (var i = lingeringShots.Count - 1; i >= 0; i--)
-            {
-                var remaining = lingeringShots[i].Remaining - frameDt;
-                if (remaining <= 0f)
-                {
-                    lingeringShots.RemoveAt(i);
-                }
-                else
-                {
-                    lingeringShots[i] = (lingeringShots[i].Shot, lingeringShots[i].Reveal, remaining);
-                }
-            }
+            // R23: cap ticks per frame and drop excess backlog (see FixedStepPacer).
+            simulationPump.AdvanceFixedSteps(frameDt, fixedDelta);
+            simulationPump.AgeLingeringShots(frameDt);
 
             var mousePosition = Mouse.GetPosition(window);
             if (isMiddleDragging)
@@ -524,142 +478,25 @@ internal sealed class SfmlPlaySession
                 ClampCamera();
             }
 
-            window.Clear(new Color(18, 22, 18));
-            using (var worldView = CreateWorldView())
-            {
-                window.SetView(worldView);
-                var hoverTile = TileFromScreen(mousePosition);
-                if (session.IsBuildMenuOpen
-                    && BuildBarOverlay.GetBuildBarBounds(windowWidth, windowHeight, panelX, buildMenu, out _, out _).Contains(new Vector2f(mousePosition.X, mousePosition.Y)))
-                {
-                    hoverTile = null;
-                }
-
-                WorldRenderer.DrawWorld(
-                    window,
-                    simulation,
-                    localPlayer,
-                    session.SelectedEntityId,
-                    session.IsBuildMenuOpen ? session.PendingBuildKind : null,
-                    session.PendingDirection,
-                    hoverTile,
-                    session.PatrolWaypoints,
-                    lingeringShots.Select(entry => (entry.Shot, entry.Reveal)).ToList(),
-                    camera.X,
-                    camera.Y,
-                    playfieldWidth,
-                    playfieldHeight);
-            }
-
-            window.SetView(window.DefaultView);
-            HudOverlay.DrawTopBar(window, simulation, localPlayer, font, playfieldWidth);
-            HudOverlay.DrawMinimap(
+            PresentationComposer.DrawFrame(
                 window,
                 simulation,
                 localPlayer,
-                windowWidth,
-                camera.X,
-                camera.Y,
+                session,
+                inputMapper,
+                buildMenu,
+                font,
+                camera,
                 playfieldWidth,
                 playfieldHeight,
-                frameFogDirtyTiles);
-            HudOverlay.DrawHud(
-                window,
-                simulation,
-                localPlayer,
-                session.SelectedEntityId,
-                session.IsBuildMenuOpen,
-                session.PendingBuildKind,
-                session.PendingDirection,
-                session.PendingRecipe,
-                session.RecipePage,
-                session.TemplateUnitIndex,
-                session.BastionPendingMode,
-                session.PatrolWaypoints.Count,
-                font,
-                windowWidth,
-                windowHeight,
                 panelX,
                 panelTop,
-                session.IsResearchOverlayOpen,
-                session.ResearchSelectedId,
-                session.SidebarStorageHits);
-            if (session.IsEnergyOverlayOpen)
-            {
-                var bottomReserved = SfmlUiLayout.BuildBarSlotSize + SfmlUiLayout.BuildBarBottomMargin + 8f;
-                var stats = simulation.GetPlayer(localPlayer).EnergyStats.Query((int)session.EnergySelectedInterval);
-                var energyPanel = EnergyStatsPanelModel.Build(
-                    stats,
-                    session.EnergySelectedInterval,
-                    windowWidth,
-                    windowHeight,
-                    panelX,
-                    bottomReserved);
-                EnergyStatsOverlay.DrawEnergyStatsOverlay(window, energyPanel, font, mousePosition);
-            }
-            else if (session.IsResearchOverlayOpen)
-            {
-                var bottomReserved = SfmlUiLayout.BuildBarSlotSize + SfmlUiLayout.BuildBarBottomMargin + 8f;
-                var overlayBounds = ResearchTreePanelModel.ComputeOverlayBounds(windowWidth, windowHeight, panelX, bottomReserved);
-                var tree = ResearchTreePanelModel.FromSnapshot(
-                    simulation.GetResearchSnapshot(localPlayer),
-                    overlayBounds,
-                    session.ResearchSelectedId);
-                ClampResearchScroll(tree);
-                ResearchTreeOverlay.DrawResearchTreeOverlay(window, tree, font, session.ResearchScrollY, windowWidth, windowHeight);
-            }
-
-            if (session.IsBuildMenuOpen)
-            {
-                BuildBarOverlay.DrawBuildBar(
-                    window,
-                    simulation,
-                    localPlayer,
-                    session.SelectedEntityId,
-                    session.PendingBuildKind,
-                    session.PendingDirection,
-                    session.PendingRecipe,
-                    font,
-                    windowWidth,
-                    windowHeight,
-                    panelX,
-                    mousePosition,
-                    buildMenu);
-            }
-            else if (!session.IsResearchOverlayOpen && !session.IsEnergyOverlayOpen)
-            {
-                var selectedForOrders = inputMapper.GetSelectedEntity(simulation);
-                if (selectedForOrders?.Kind == EntityKind.Bastion && selectedForOrders.OwnerId == localPlayer)
-                {
-                    if (session.IsBastionCompositionOpen)
-                    {
-                        BastionUiOverlay.DrawBastionCompositionPanel(
-                            window,
-                            simulation,
-                            selectedForOrders,
-                            session.TemplateUnitIndex,
-                            font,
-                            windowWidth,
-                            windowHeight,
-                            panelX,
-                            mousePosition);
-                    }
-
-                    BastionUiOverlay.DrawBastionOrderBar(
-                        window,
-                        selectedForOrders,
-                        session.BastionPendingMode,
-                        font,
-                        windowWidth,
-                        windowHeight,
-                        panelX,
-                        mousePosition);
-                }
-                else
-                {
-                    session.CloseBastionComposition();
-                }
-            }
+                windowWidth,
+                windowHeight,
+                mousePosition,
+                simulationPump.VisibleShots(),
+                simulationPump.FrameFogDirtyTiles,
+                CreateWorldView);
 
             window.Display();
 

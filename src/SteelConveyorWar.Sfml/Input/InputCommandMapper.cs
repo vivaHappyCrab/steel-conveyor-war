@@ -45,9 +45,10 @@ internal readonly record struct InputMapResult(
 }
 
 /// <summary>
-/// R21: maps input intents + <see cref="SessionState"/> into gateway enqueues / state transitions.
+/// R21/M08: maps input intents + <see cref="SessionState"/> into gateway enqueues / state transitions.
 /// No SFML window APIs — hover tiles, modifiers, and overlay hit outcomes are injected by the host.
 /// Pure <c>Map*</c> helpers build command DTOs (tick placeholder 0) for tests and gateway enqueue.
+/// Still consults live simulation for selection/hover validation; full snapshot→intent purity is partial.
 /// </summary>
 internal sealed class InputCommandMapper
 {

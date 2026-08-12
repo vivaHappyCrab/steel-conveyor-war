@@ -23,7 +23,7 @@ internal static class WorldRenderer
         float playfieldHeight)
     {
         var world = simulation.World;
-        var tile = new RectangleShape(new Vector2f(SfmlUiLayout.TileSize - 1f, SfmlUiLayout.TileSize - 1f));
+        using var tile = new RectangleShape(new Vector2f(SfmlUiLayout.TileSize - 1f, SfmlUiLayout.TileSize - 1f));
         var minX = Math.Max(0, (int)(cameraX / SfmlUiLayout.TileSize) - 1);
         var minY = Math.Max(0, (int)(cameraY / SfmlUiLayout.TileSize) - 1);
         var maxX = Math.Min(world.Size.Width - 1, (int)((cameraX + playfieldWidth) / SfmlUiLayout.TileSize) + 1);

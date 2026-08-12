@@ -139,7 +139,7 @@ This document records architecture and game-design decisions made while implemen
 ## Open Follow-Ups
 
 - Optionally drop `EntityKind` as the primary content key (string `EntityTypeId` only) once catalogs stabilize — R18 stage kept the enum as a legacy mirror.
-- Calibrate hard performance thresholds for `SteelConveyorWar.Benchmarks` (`SCW_BENCH_HARD_GATE=1`) after nightly/local baselines (R22 soft gate is in CI today).
+- Optionally tighten `SteelConveyorWar.Benchmarks` budgets further from CI artifact trends (R22/M04 hard gate is on in CI; local stays soft unless `SCW_BENCH_HARD_GATE=1`).
 - Tune energy demand/production balance and optional consumer priority tiers beyond emptiest-first once production loops are playtested.
 - Expand SFML research controls from prototype paging/hotkeys to a dedicated full tree panel; optional further `HudOverlay` subpanel split.
 - Replace simplified oil item movement with a dedicated fluid network if T2 playtests show it is needed.
@@ -173,8 +173,9 @@ This document records architecture and game-design decisions made while implemen
 
 ## Performance Gate
 
-- `tests/SteelConveyorWar.Benchmarks` (BenchmarkDotNet) exercises idle / army / battle / power / FoW tick scenarios (R22).
-- CI job `benchmark-quick` runs `--quick` tick/alloc smoke with soft budgets and uploads JSON artifacts. Hard fail is opt-in via `SCW_BENCH_HARD_GATE=1` after calibration.
+- `tests/SteelConveyorWar.Benchmarks` (BenchmarkDotNet) exercises idle_factory / army_move / battle / power_equal / fow_moving / hash scenarios (R22/M04).
+- CI job `benchmark-quick` runs `--quick` with **hard** budgets (`SCW_BENCH_HARD_GATE=1`) and uploads JSON artifacts. Local/`eng/verify.ps1` stay soft unless that env var is set (override for experimentation).
+- Calibrated budgets: p95 ≤ 5 ms/tick, alloc ≤ 2.5 MB/tick (~3–5× measured Release headroom on the expanded matrix; hash covers `ComputeStateHash` scratch).
 
 ## Presentation state in Core
 
