@@ -1,20 +1,23 @@
 # Сводный статус код-ревью R01–R34
 
-**Дата:** 2026-08-11 (доработка отложенных)
-**Сборка/тесты:** ✅ `dotnet build -c Release`; Core 382; SFML 62; bench quick + CI job `benchmark-quick`.
+**Дата:** 2026-08-12 (четвёртое ревью после PR #114)  
+**Сборка/тесты:** ✅ `eng/verify.ps1` — Core 437; Hosting 4; SFML 76; bench quick.
 
-## Итоги
+> Историческая запись волны PR #111 («34/34 fully realized») **не** является строгим DoD-счётом.  
+> Актуальная переоценка: [`CODE_REVIEW_FOURTH_2026-08-12.md`](CODE_REVIEW_FOURTH_2026-08-12.md) — **~32 ✅ / 2 🟡 (R01, R34)**.
+
+## Итоги (строго после #114)
 
 - **Всего пунктов:** 34
-- **✅ Реализовано полностью:** 34
-- **🟡 Частично:** 0
+- **✅ Реализовано полностью (строгий DoD):** ~32
+- **🟡 Частично:** 2 (`R01` null-actor `Try*`; `R34` tiles unused in cross-graph)
 - **⏸️ Отложено:** 0
 
 ## Сводная таблица
 
 | ID  | Тема                                              | Статус |
 |-----|---------------------------------------------------|--------|
-| R01 | Авторизация actor в командах                       | ✅ Реализовано |
+| R01 | Авторизация actor в командах                       | 🟡 Частично (bound sink; `Try*` null opt-out) |
 | R02 | Очередь команд на боевом пути (production path)    | ✅ Реализовано |
 | R03 | Канонический порядок команд                        | ✅ Реализовано |
 | R04 | Неизменяемый снапшот наблюдения                     | ✅ Реализовано |
@@ -47,7 +50,7 @@
 | R31 | Состав ростера и победа по командам                 | ✅ Реализовано |
 | R32 | Настраиваемый TPS                                   | ✅ Реализовано |
 | R33 | SFML rendering hotspots (minimap cache)             | ✅ Реализовано |
-| R34 | Кросс-каталожная валидация схем контента            | ✅ Реализовано |
+| R34 | Кросс-каталожная валидация схем контента            | 🟡 Частично (tiles unused) |
 
 ## Доработка отложенных (этот проход)
 
@@ -128,3 +131,31 @@ pwsh eng/verify.ps1
 | R16 | Moved-source dirty disk decay/paint; static sources skip full decay. |
 | R21 | Tile `RectangleShape` disposed; `SimulationPump` + `PresentationComposer` extracted; exclusive UI modes include build (L03); mapper purity still partial. |
 | R25 | Bootstrap I/O moved to `SteelConveyorWar.Hosting` (M09); Core parse-only restored. |
+
+---
+
+# Четвёртое ревью (после PR #114)
+
+**Дата:** 2026-08-12  
+**Отчёт:** [`CODE_REVIEW_FOURTH_2026-08-12.md`](CODE_REVIEW_FOURTH_2026-08-12.md)  
+**Commit:** `c31ba95`  
+**Верификация:** ✅ `eng/verify.ps1` — Core **437**, Hosting **4**, SFML **76**, headless + client smoke
+
+## Итог аудита
+
+| Метрика | Третье ревью | Четвёртое |
+|---------|-------------:|----------:|
+| Итоговая оценка | 5.8/10 | **7.4/10** |
+| High findings | 7 | **0** |
+| Post-remediation H/M/L | open catalog | **21/21 CLOSED** |
+| R01–R34 (строгий DoD) | 8✅ / 24🟡 / 2🔴 | **~32✅ / 2🟡 (R01, R34)** |
+
+## Честные остатки
+
+| ID | Статус | Notes |
+|----|--------|-------|
+| R01 | 🟡 | Hosts bind via `BoundPlayerCommandSink`; public `Try*` still allow `actor = null` |
+| R34 | 🟡 | Cross-catalog expanded; tiles catalog still unused in graph |
+| Low polish | — | `MvpDefinitions` Embedded accessors not obsolete; `GetEntitiesAt` allocs; SFML mapper/`Run` size |
+
+P1 focus: seal null-actor `Try*`, transport/auth prototype, cross-OS hash compare.

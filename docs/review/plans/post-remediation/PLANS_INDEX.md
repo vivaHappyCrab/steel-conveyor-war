@@ -10,6 +10,8 @@
 
 Evidence в планах дополнительно уточнён по повторной сверке кода на `802d5b4` (call-site inventory, protocol/batch gaps, spatial rebuild sites, zero-team victory hole, dirty-catch-up options).
 
+**Четвёртое ревью (после реализации):** [`../CODE_REVIEW_FOURTH_2026-08-12.md`](../CODE_REVIEW_FOURTH_2026-08-12.md) — все H/M/L **CLOSED** на `c31ba95` (PR #114).
+
 ## Легенда
 
 - **Severity:** High / Medium / Low
