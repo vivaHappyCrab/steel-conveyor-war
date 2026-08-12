@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace SteelConveyorWar.Core.Commands;
 
 /// <summary>
@@ -9,12 +11,13 @@ public static class SimulationCommandVocabulary
 {
     /// <summary>
     /// Kinds a host/bot may advertise and submit. Excludes obsolete wire numbers that never apply.
+    /// M10: frozen so callers cannot mutate the shared vocabulary via cast.
     /// </summary>
     public static IReadOnlyList<SimulationCommandKind> AdvertisedKinds { get; } =
         Enum.GetValues<SimulationCommandKind>()
             .Where(kind => !IsObsolete(kind))
             .OrderBy(kind => (int)kind)
-            .ToArray();
+            .ToImmutableArray();
 
     /// <summary>
     /// <see cref="SimulationCommandKind.AssignFactoryBastion"/> is retained for wire-number stability

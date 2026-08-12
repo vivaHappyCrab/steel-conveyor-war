@@ -177,6 +177,37 @@ public static class MinimapDirtyTracker
         return new MinimapUpdatePlan(MinimapRedrawKind.PatchTiles, tiles);
     }
 
+    /// <summary>
+    /// M07: union FoW dirty tiles from one simulation tick into a frame-scoped set so multi-tick
+    /// catch-up (R23, ≤ <see cref="FixedStepPacer.MaxTicksPerFrame"/>) does not drop intermediate dirty.
+    /// </summary>
+    public static void AccumulateFogDirty(
+        HashSet<(int X, int Y)> frameFogDirty,
+        IReadOnlyList<TilePosition> tickFogDirty)
+    {
+        ArgumentNullException.ThrowIfNull(frameFogDirty);
+        ArgumentNullException.ThrowIfNull(tickFogDirty);
+        for (var i = 0; i < tickFogDirty.Count; i++)
+        {
+            var tile = tickFogDirty[i];
+            frameFogDirty.Add((tile.X, tile.Y));
+        }
+    }
+
+    /// <summary>M07: materialize a frame fog-dirty set into a tile list for <see cref="Plan"/>.</summary>
+    public static void CopyFogDirty(
+        HashSet<(int X, int Y)> frameFogDirty,
+        List<TilePosition> destination)
+    {
+        ArgumentNullException.ThrowIfNull(frameFogDirty);
+        ArgumentNullException.ThrowIfNull(destination);
+        destination.Clear();
+        foreach (var (x, y) in frameFogDirty)
+        {
+            destination.Add(new TilePosition(x, y));
+        }
+    }
+
     private static void AddFootprint(HashSet<(int X, int Y)> set, MinimapEntitySnapshot entity)
     {
         var width = Math.Max(1, entity.Width);

@@ -71,10 +71,10 @@ TPS:
 
 ## Definition of Done
 
-- [ ] Session identity includes map/roster/TPS/seed.
-- [ ] Invalid starts fail load.
-- [ ] Zero-team match terminates.
-- [ ] R10/R31/R32 residuals updated.
+- [x] Session identity includes map/roster/TPS/seed.
+- [x] Invalid starts fail load.
+- [x] Zero-team match terminates.
+- [x] R10/R31/R32 residuals updated.
 
 ## Специалисты
 

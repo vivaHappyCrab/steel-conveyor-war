@@ -68,7 +68,8 @@ internal static class HudOverlay
         float cameraX,
         float cameraY,
         float playfieldWidth,
-        float playfieldHeight)
+        float playfieldHeight,
+        IReadOnlyList<TilePosition>? frameFogDirtyOverride = null)
     {
         var world = simulation.World;
         var mapW = world.Size.Width;
@@ -110,7 +111,9 @@ internal static class HudOverlay
             currentPlayer: localPlayer,
             framesSinceFullRebuild: _minimapFramesSinceFull);
 
-        var fogDirty = simulation.GetFogDirtyTiles(localPlayer);
+        // M07: prefer the frame-aggregated dirty union from multi-tick catch-up; fall back to the
+        // live last-tick query only when the session did not supply an override.
+        var fogDirty = frameFogDirtyOverride ?? simulation.GetFogDirtyTiles(localPlayer);
         var plan = MinimapDirtyTracker.Plan(
             needsFull,
             fogDirty,

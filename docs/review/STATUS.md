@@ -81,7 +81,8 @@ pwsh eng/verify.ps1
 **Дата:** 2026-08-12  
 **Ветка:** `ai/61-post-remediation-fixes` · issue [#61](https://github.com/vivaHappyCrab/steel-conveyor-war/issues/61)  
 **Индекс планов:** [`docs/review/plans/post-remediation/PLANS_INDEX.md`](plans/post-remediation/PLANS_INDEX.md)  
-**Верификация P0 (+ caretaker H06/M02 hardening):** ✅ scoped verify — Core **426**, SFML **70**, headless smoke
+**Верификация P0 (+ caretaker H06/M02 hardening):** ✅ scoped verify — Core **426**, SFML **70**, headless smoke  
+**Верификация M10/M11/M07:** ✅ `eng/verify.ps1` — Core **438**, SFML **69**, headless + client smoke
 
 ## Wave P0
 
@@ -102,6 +103,9 @@ pwsh eng/verify.ps1
 | M01 | Payload `with` bypass | ✅ |
 | M02 | Command protocol vocabulary | ✅ |
 | M03 | Schema + cross-catalog validation | ✅ |
-| M10–M11, M04–M09, L01–L03 | остаток индекса | ⏳ тот же PR |
+| M10 | Observation frame immutability | ✅ |
+| M11 | Session manifest / roster / draw | ✅ |
+| M07 | Minimap catch-up dirty union | ✅ |
+| M04–M09, L01–L03 | остаток индекса | ⏳ тот же PR |
 
-Порядок оставшихся: M10 → M11 → M07 → M04 → M05/M06 → M08 → M09 → L01–L03.
+Порядок оставшихся: M04 → M05/M06 → M08 → M09 → L01–L03.

@@ -125,6 +125,8 @@ public sealed class BotObservationContractTests
         Assert.NotNull(snapshot.TechSignatures);
         Assert.NotEmpty(snapshot.AvailableCommandKinds);
         Assert.NotNull(snapshot.EventsThisTick);
+        Assert.NotNull(snapshot.FogBoard);
+        Assert.Equal(snapshot.ObservationTick, snapshot.FogBoard.ObservationTick);
     }
 
     [Fact]

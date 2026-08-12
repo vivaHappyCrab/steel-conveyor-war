@@ -66,4 +66,18 @@ public sealed class TeamVictoryTests
         Assert.Equal(new PlayerId(2), simulation.WinnerId);
         Assert.Equal(2, simulation.WinnerTeamId);
     }
+
+    [Fact]
+    public void MutualElimination_EndsInDraw()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+
+        KillCommander(simulation, new PlayerId(1));
+        KillCommander(simulation, new PlayerId(2));
+        simulation.AdvanceTick();
+
+        Assert.Equal(GameStatus.Draw, simulation.Status);
+        Assert.Null(simulation.WinnerId);
+        Assert.Null(simulation.WinnerTeamId);
+    }
 }

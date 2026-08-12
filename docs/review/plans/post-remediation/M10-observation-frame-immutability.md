@@ -62,10 +62,10 @@ All nested collections: `ImmutableDictionary` / `ImmutableHashSet` / `ImmutableA
 
 ## Definition of Done
 
-- [ ] Snapshots hard-immutable (cast-mutation tests).
-- [ ] One API yields atomic map+entities+economy for tick T.
-- [ ] R04/R19 residuals closed for immutability/atomicity.
-- [ ] Coordinate with H06 for events.
+- [x] Snapshots hard-immutable (cast-mutation tests).
+- [x] One API yields atomic map+entities+economy for tick T.
+- [x] R04/R19 residuals closed for immutability/atomicity.
+- [x] Coordinate with H06 for events.
 
 ## Специалисты
 

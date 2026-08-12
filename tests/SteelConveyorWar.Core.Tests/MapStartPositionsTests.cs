@@ -89,6 +89,39 @@ public sealed class MapStartPositionsTests
         Assert.Equal(MapPlayerDefinition.DefaultColorPlayerTwo, map.Players[1].Color);
     }
 
+    [Fact]
+    public void CreateNewGame_RejectsOverlappingStarts()
+    {
+        var map = new MapSettings(
+            1,
+            "overlap",
+            [
+                new MapPlayerDefinition(1, "Blue", 1, new(4, 56), new(1, 56), new(5, 58), "#46BAFF"),
+                // Same commander tile as Blue — footprints overlap.
+                new MapPlayerDefinition(2, "Red", 2, new(4, 56), new(188, 56), new(186, 58), "#DC4646")
+            ]);
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            GameSimulation.CreateNewGame(GameCreationOptions.Default with { RandomSeed = 42, Map = map }));
+        Assert.Contains("overlap", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CreateNewGame_RejectsOutOfBoundsStarts()
+    {
+        var map = new MapSettings(
+            1,
+            "oob",
+            [
+                new MapPlayerDefinition(1, "Blue", 1, new(4, 56), new(1, 56), new(5, 58), "#46BAFF"),
+                new MapPlayerDefinition(2, "Red", 2, new(900, 56), new(188, 56), new(186, 58), "#DC4646")
+            ]);
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            GameSimulation.CreateNewGame(GameCreationOptions.Default with { RandomSeed = 42, Map = map }));
+        Assert.Contains("outside world", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void AssertCommanderAt(GameSimulation simulation, PlayerId owner, TilePosition expected)
     {
         var commander = Assert.Single(

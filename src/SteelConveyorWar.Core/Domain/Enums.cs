@@ -89,7 +89,9 @@ public enum Direction
 public enum GameStatus
 {
     InProgress,
-    PlayerWon
+    PlayerWon,
+    /// <summary>M11: every team eliminated (mutual wipe) — match terminates with no winner.</summary>
+    Draw
 }
 
 public enum VisibilityState

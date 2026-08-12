@@ -58,6 +58,20 @@ internal static class ContentFreeze
         return source.ToImmutableArray();
     }
 
+    /// <summary>M10: freeze sets for observation snapshots (cast-mutation throws).</summary>
+    public static IReadOnlySet<T> Set<T>(IEnumerable<T> source, IEqualityComparer<T>? comparer = null)
+    {
+        if (source is ImmutableHashSet<T> immutable
+            && (comparer is null || Equals(immutable.KeyComparer, comparer)))
+        {
+            return immutable;
+        }
+
+        return comparer is null
+            ? source.ToImmutableHashSet()
+            : source.ToImmutableHashSet(comparer);
+    }
+
     private static bool AreAllFrozen<TInnerKey, TInnerValue>(
         IEnumerable<IReadOnlyDictionary<TInnerKey, TInnerValue>> values)
         where TInnerKey : notnull

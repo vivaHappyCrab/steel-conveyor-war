@@ -59,6 +59,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         EntityCatalog entities,
         BuildCostCatalog buildCosts,
         GameplayTablesCatalog gameplayTables,
+        MapSettings map,
         int ticksPerSecond)
     {
         World = world;
@@ -71,6 +72,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         EntityCatalog = entities;
         BuildCostCatalog = buildCosts;
         GameplayTables = gameplayTables;
+        Map = map;
         _researchSystem = new ResearchSystem(catalog, profile);
         _powerSystem = new PowerSystem(this);
         _combatSystem = new CombatSystem(this);
@@ -83,6 +85,9 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     public GameWorld World { get; }
 
     public int RandomSeed { get; }
+
+    /// <summary>M11: match roster/map identity used by <see cref="SimulationSessionManifest"/>.</summary>
+    public MapSettings Map { get; }
 
     public ResearchCatalog ResearchCatalog { get; }
 
@@ -157,6 +162,15 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             throw new InvalidOperationException("Map config must declare at least two players for MVP.");
         }
 
+        // M11: fail-fast start bounds/overlap (and remaining cross-catalog gates) before world spawn.
+        ContentCrossValidator.Validate(
+            options.Catalog,
+            options.ResolvedBuildCosts,
+            options.Entities,
+            options.Tiles,
+            options.ResolvedGameplayTables,
+            map);
+
         var size = new WorldSize(MapPlayerDefinition.DefaultWorldWidth, MapPlayerDefinition.DefaultWorldHeight);
         var terrain = CreateStartingTerrain(size, options.RandomSeed);
         var players = map.Players
@@ -187,6 +201,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             options.Entities,
             options.ResolvedBuildCosts,
             options.ResolvedGameplayTables,
+            map,
             options.TicksPerSecond);
         simulation.CreateStartingEntities(map);
         simulation._powerSystem.Tick();

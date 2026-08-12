@@ -427,6 +427,9 @@ internal sealed class SfmlPlaySession
         var accumulator = 0f;
         var fixedDelta = 1f / display.TicksPerSecond;
         var lingeringShots = new List<(CombatShotEvent Shot, CombatShotRevealMode Reveal, float Remaining)>();
+        // M07: pooled frame-scoped FoW dirty union across multi-tick catch-up (R23 cap).
+        var frameFogDirtyKeys = new HashSet<(int X, int Y)>();
+        var frameFogDirtyTiles = new List<TilePosition>();
 
         var renderedFrames = 0;
 
@@ -449,9 +452,14 @@ internal sealed class SfmlPlaySession
             // acceptable for this local host; a future lockstep network host must stall/resync.
             var (ticksThisFrame, pacedAccumulator) = FixedStepPacer.Plan(accumulator, fixedDelta);
             accumulator = pacedAccumulator;
+            frameFogDirtyKeys.Clear();
             for (var tickIndex = 0; tickIndex < ticksThisFrame; tickIndex++)
             {
                 simulation.AdvanceTick();
+                // M07: union dirty FoW tiles from every catch-up tick — the final tick alone may be empty.
+                MinimapDirtyTracker.AccumulateFogDirty(
+                    frameFogDirtyKeys,
+                    simulation.GetFogDirtyTiles(localPlayer));
                 foreach (var shot in simulation.CombatShotsThisTick)
                 {
                     // H06: buffer reveal mode at capture time so linger cannot later upgrade a
@@ -468,6 +476,8 @@ internal sealed class SfmlPlaySession
                 // leaking its live HP/position/orders.
                 inputMapper.RefreshSelectionVisibility(simulation);
             }
+
+            MinimapDirtyTracker.CopyFogDirty(frameFogDirtyKeys, frameFogDirtyTiles);
 
             for (var i = lingeringShots.Count - 1; i >= 0; i--)
             {
@@ -543,7 +553,16 @@ internal sealed class SfmlPlaySession
 
             window.SetView(window.DefaultView);
             HudOverlay.DrawTopBar(window, simulation, localPlayer, font, playfieldWidth);
-            HudOverlay.DrawMinimap(window, simulation, localPlayer, windowWidth, camera.X, camera.Y, playfieldWidth, playfieldHeight);
+            HudOverlay.DrawMinimap(
+                window,
+                simulation,
+                localPlayer,
+                windowWidth,
+                camera.X,
+                camera.Y,
+                playfieldWidth,
+                playfieldHeight,
+                frameFogDirtyTiles);
             HudOverlay.DrawHud(
                 window,
                 simulation,

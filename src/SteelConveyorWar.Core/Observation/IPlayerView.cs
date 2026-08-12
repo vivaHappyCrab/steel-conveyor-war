@@ -5,8 +5,9 @@ namespace SteelConveyorWar.Core;
 /// <summary>
 /// Per-player observation surface for bots and future net clients.
 /// Use <see cref="PlayerObservationMode.Fair"/> to avoid reading live <see cref="GameWorld.Entities"/> as cheat vision.
-/// R04: entity observation returns immutable, tick-stamped snapshots (never live <see cref="WorldEntity"/>),
+/// R04/M10: entity observation returns immutable, tick-stamped snapshots (never live <see cref="WorldEntity"/>),
 /// so a retained reference cannot be used to keep reading state after an entity re-enters fog.
+/// Prefer <see cref="CaptureFrame"/> for atomic map+entities+economy decisions at one tick.
 /// </summary>
 public interface IPlayerView
 {
@@ -66,21 +67,27 @@ public interface IPlayerView
     IReadOnlyList<TechSignatureObservation> GetTechSignatures();
 
     /// <summary>
-    /// R19: The command vocabulary the actor may submit through an <see cref="IPlayerCommandSink"/>.
-    /// Ownership/authority is still enforced per-command at apply time; this only advertises the protocol
-    /// surface so a bot need not hard-code the enum.
+    /// R19/M10: The command vocabulary the actor may submit through an <see cref="IPlayerCommandSink"/>.
+    /// Returns a frozen list; mutating it cannot affect the global vocabulary.
     /// </summary>
     IReadOnlyList<SimulationCommandKind> GetAvailableCommandKinds();
 
     /// <summary>
-    /// R19/R27: This tick's combat events the observer is allowed to see, filtered by the same fair
+    /// R19/R27/H06: This tick's combat events the observer is allowed to see, filtered by the same fair
     /// visibility gate SFML uses for tracers. Empty in the common no-combat case.
     /// </summary>
     IReadOnlyList<ObservedCombatEvent> GetEventsThisTick();
 
     /// <summary>
-    /// Captures a whole-observation snapshot bound to the current tick. Safe to retain: values are
-    /// copied and never track later simulation changes.
+    /// M10: Captures an atomic observation frame for the current tick — entities, economy/research,
+    /// tech signatures, command vocabulary, H06-safe events, and a frozen fog/terrain board. Prefer
+    /// this over piecemeal live queries when making map-aware decisions.
+    /// </summary>
+    PlayerObservationSnapshot CaptureFrame();
+
+    /// <summary>
+    /// Captures a whole-observation snapshot bound to the current tick. Equivalent to
+    /// <see cref="CaptureFrame"/> (includes fog/terrain board).
     /// </summary>
     PlayerObservationSnapshot CaptureSnapshot();
 }
