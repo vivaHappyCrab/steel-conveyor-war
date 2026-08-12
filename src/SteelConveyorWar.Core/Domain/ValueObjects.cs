@@ -78,8 +78,10 @@ public readonly record struct CollisionSize(long RadiusMilli);
 public sealed record BastionOrder
 {
     /// <summary>
-    /// R12: caller-owned <paramref name="Waypoints"/> are deep-copied into an immutable snapshot,
+    /// R12 / M01: caller-owned <paramref name="Waypoints"/> are deep-copied into an immutable snapshot,
     /// so mutating the source list after constructing (or enqueuing) an order cannot alter it.
+    /// <see cref="WaypointList"/> is get-only (no init) so <c>with { WaypointList = ... }</c> cannot
+    /// substitute a mutable collection; use <see cref="WithWaypointIndex"/> for scalar updates.
     /// Parameter names are preserved for existing positional/named call sites.
     /// </summary>
     public BastionOrder(
@@ -103,11 +105,16 @@ public sealed record BastionOrder
     /// <summary>
     /// Immutable snapshot of the ordered waypoints (empty when none were supplied). Exposed as
     /// <see cref="IReadOnlyList{T}"/> so existing <c>.Count</c> call sites keep compiling while the
-    /// backing store is an <see cref="ImmutableArray{T}"/>.
+    /// backing store is an <see cref="ImmutableArray{T}"/>. Get-only to close the record <c>with</c>
+    /// mutable-collection bypass (M01).
     /// </summary>
-    public IReadOnlyList<TilePosition> WaypointList { get; init; }
+    public IReadOnlyList<TilePosition> WaypointList { get; }
 
     public int WaypointIndex { get; init; }
+
+    /// <summary>Scalar waypoint-index update that preserves the frozen waypoint snapshot.</summary>
+    public BastionOrder WithWaypointIndex(int waypointIndex)
+        => this with { WaypointIndex = waypointIndex };
 }
 
 public sealed record TechSignatureHotspot(int ZoneX, int ZoneY, int Intensity);
@@ -131,6 +138,21 @@ public sealed record EntityStats(
     ProjectileKind ProjectileKind = ProjectileKind.GroundToGround,
     int SplashRadius = 0);
 
-public sealed record ProductionRecipe(IReadOnlyDictionary<ItemId, int> Inputs, EntityKind OutputKind, int WorkTicks, TechnologyId? RequiredTechnology = null);
+public sealed record ProductionRecipe(IReadOnlyDictionary<ItemId, int> Inputs, EntityKind OutputKind, int WorkTicks, TechnologyId? RequiredTechnology = null)
+{
+    // H07: nested recipe input maps must not remain cast-mutable after construction / `with`.
+    public IReadOnlyDictionary<ItemId, int> Inputs
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value);
+    } = ContentFreeze.Dictionary(Inputs);
+}
 
-public sealed record ItemRecipeDefinition(ItemRecipeId Id, IReadOnlyDictionary<ItemId, int> Inputs, ItemId OutputItem, int OutputAmount, int WorkTicks);
+public sealed record ItemRecipeDefinition(ItemRecipeId Id, IReadOnlyDictionary<ItemId, int> Inputs, ItemId OutputItem, int OutputAmount, int WorkTicks)
+{
+    public IReadOnlyDictionary<ItemId, int> Inputs
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value);
+    } = ContentFreeze.Dictionary(Inputs);
+}

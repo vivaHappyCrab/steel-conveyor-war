@@ -185,17 +185,17 @@ public sealed partial class GameSimulation
 
         if (target.Kind == EntityKind.Hub)
         {
-            return target.Inventory.TryAddWithinTotalStackLimit(item, 1, GetHubStorageStacks(target.OwnerId));
+            return target.Inventory.TryAddWithinTotalStackLimit(item, 1, GetHubStorageStacks(target.OwnerId), GameplayTables);
         }
 
         return IsBuildingWithBuffers(target.Kind)
             ? TryAddToBuffer(target.InputBuffer, item, 1)
-            : target.Inventory.TryAddWithinStackLimit(item, 1);
+            : target.Inventory.TryAddWithinStackLimit(item, 1, GameplayTables);
     }
 
-    private static bool TryAddToBuffer(Inventory buffer, ItemId item, int amount)
+    private bool TryAddToBuffer(Inventory buffer, ItemId item, int amount)
     {
-        return buffer.TryAddWithinStackLimit(item, amount);
+        return buffer.TryAddWithinStackLimit(item, amount, GameplayTables);
     }
 
     private static bool TryAddToConveyor(WorldEntity conveyor, ItemId item, int progressTicks)

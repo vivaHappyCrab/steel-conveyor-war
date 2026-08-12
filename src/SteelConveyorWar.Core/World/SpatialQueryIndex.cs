@@ -18,8 +18,9 @@ internal sealed class SpatialQueryIndex
     private readonly Dictionary<long, List<WorldEntity>> _wallsByTile = new();
     private readonly Stack<List<WorldEntity>> _listPool = new();
 
-    public void Rebuild(IReadOnlyList<WorldEntity> entities)
+    public void Rebuild(IReadOnlyList<WorldEntity> entities, GameplayTablesCatalog tables)
     {
+        ArgumentNullException.ThrowIfNull(tables);
         Clear();
         foreach (var entity in entities)
         {
@@ -35,7 +36,7 @@ internal sealed class SpatialQueryIndex
                 continue;
             }
 
-            foreach (var tile in GameWorld.GetFootprintTiles(entity.Kind, entity.Position))
+            foreach (var tile in GameWorld.GetFootprintTiles(entity.Kind, entity.Position, tables))
             {
                 Add(_wallsByTile, tile, entity);
             }
@@ -45,10 +46,10 @@ internal sealed class SpatialQueryIndex
         SortBuckets(_wallsByTile);
     }
 
-    public static SpatialQueryIndex Build(IReadOnlyList<WorldEntity> entities)
+    public static SpatialQueryIndex Build(IReadOnlyList<WorldEntity> entities, GameplayTablesCatalog? tables = null)
     {
         var index = new SpatialQueryIndex();
-        index.Rebuild(entities);
+        index.Rebuild(entities, tables ?? GameplayTablesCatalog.Embedded);
         return index;
     }
 

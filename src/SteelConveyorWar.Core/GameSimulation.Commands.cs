@@ -15,6 +15,10 @@ public sealed partial class GameSimulation
     // (not hashed): lets hosts/tests observe *why* an intent did not apply instead of a silent drop.
     private readonly List<CommandRejection> _commandRejections = new();
 
+    // H03: when EnqueueCommand receives Sequence 0 (legacy/test helpers), assign a positive per-actor
+    // sequence so production apply never depends on unstable equal-key ordering.
+    private readonly Dictionary<int, long> _enqueueSequenceByActor = new();
+
     /// <summary>Commands waiting for a future tick (FIFO within a tick).</summary>
     // R05: ReadOnlyCollection wrapper so external code cannot mutate the pending buffer via downcast.
     public IReadOnlyList<ISimulationCommand> PendingCommands => _commandBuffer.AsReadOnly();
@@ -29,6 +33,8 @@ public sealed partial class GameSimulation
     /// <summary>
     /// Enqueues a command for application at the start of <see cref="AdvanceTick"/> when
     /// simulation <see cref="Tick"/> equals <see cref="ISimulationCommand.Tick"/>.
+    /// H03: <see cref="ISimulationCommand.Sequence"/> must be &gt; 0 after enqueue — Sequence 0 is
+    /// auto-stamped with a positive per-actor counter for legacy helpers.
     /// </summary>
     public void EnqueueCommand(ISimulationCommand command)
     {
@@ -40,7 +46,19 @@ public sealed partial class GameSimulation
                 $"Command tick {command.Tick} must be greater than current simulation tick {Tick}.");
         }
 
+        if (command is SimulationCommandBase baseCommand && baseCommand.Sequence <= 0)
+        {
+            command = baseCommand.WithScheduling(baseCommand.Tick, NextEnqueueSequence(baseCommand.Actor));
+        }
+
         _commandBuffer.Add(command);
+    }
+
+    private long NextEnqueueSequence(PlayerId actor)
+    {
+        var next = _enqueueSequenceByActor.TryGetValue(actor.Value, out var current) ? current + 1 : 1;
+        _enqueueSequenceByActor[actor.Value] = next;
+        return next;
     }
 
     /// <summary>Convenience: stamps <paramref name="factory"/> with <c>Tick + 1</c> and enqueues.</summary>
@@ -77,9 +95,13 @@ public sealed partial class GameSimulation
             SelectResearchCommand c => TrySelectResearch(
                 c.Actor, c.Technology, c.ConfirmExclusive, c.PreferredTrackId, c.Actor) == ResearchCommandResult.Ok,
             SetTrackAllocationCommand c => TrySetTrackAllocation(c.Actor, c.Allocations) == ResearchCommandResult.Ok,
+            SetProjectWeightCommand c => TrySetProjectWeight(
+                c.Actor, c.TrackId, c.Technology, c.Weight) == ResearchCommandResult.Ok,
             SetFactoryProductionCommand c => TrySetFactoryProduction(
                 c.FactoryId, c.Actor, c.OutputKind, c.BastionId),
+#pragma warning disable CS0618 // Obsolete AssignFactoryBastion retained for apply-path rejection diagnostics.
             AssignFactoryBastionCommand c => TryAssignFactoryBastion(c.FactoryId, c.BastionId),
+#pragma warning restore CS0618
             SetBastionTemplateCommand c => TrySetBastionTemplate(c.BastionId, c.Actor, c.UnitKind, c.Count),
             IssueBastionOrderCommand c => TryIssueBastionOrder(c.BastionId, c.Actor, c.Order),
             SetAssemblerRecipeCommand c => TrySetAssemblerRecipe(c.AssemblerId, c.Actor, c.RecipeId),
@@ -125,23 +147,22 @@ public sealed partial class GameSimulation
 
         if (currentTick is { Count: > 0 })
         {
-            // R03: apply in a canonical (Actor, Sequence) order so the result does not depend on
-            // network arrival / enqueue order. OrderBy is a stable sort, so unsequenced (Sequence == 0)
-            // commands retain their insertion order as a last-resort tiebreaker.
+            // H03: List.Sort is unstable — equal keys must not rely on insertion order. Canonical key is
+            // (Actor, Sequence, Kind, payload JSON). Duplicate (Actor, Sequence) after the first are rejected.
             currentTick.Sort(CompareCanonical);
 
             HashSet<(int Actor, long Sequence)>? appliedKeys = null;
             foreach (var command in currentTick)
             {
-                // R03: duplicate suppression. A sequenced command replayed with the same
-                // (Actor, Sequence) is applied at most once. Sequence 0 is exempt (legacy/local).
-                if (command.Sequence != 0)
+                appliedKeys ??= new HashSet<(int, long)>();
+                if (!appliedKeys.Add((command.Actor.Value, command.Sequence)))
                 {
-                    appliedKeys ??= new HashSet<(int, long)>();
-                    if (!appliedKeys.Add((command.Actor.Value, command.Sequence)))
-                    {
-                        continue;
-                    }
+                    _commandRejections.Add(new CommandRejection(
+                        command.Kind,
+                        command.Actor,
+                        command.Sequence,
+                        "duplicate (Actor, Sequence)"));
+                    continue;
                 }
 
                 // R09: a single malformed/hostile command must never abort the whole tick.
@@ -176,8 +197,8 @@ public sealed partial class GameSimulation
     }
 
     /// <summary>
-    /// R03: canonical cross-peer command comparison for a single tick: order by author, then by the
-    /// author-assigned monotonic <see cref="ISimulationCommand.Sequence"/>.
+    /// H03: canonical cross-peer command comparison for a single tick:
+    /// (Actor, Sequence, Kind, stable payload JSON). Does not assume <see cref="List{T}.Sort"/> stability.
     /// </summary>
     private static int CompareCanonical(ISimulationCommand left, ISimulationCommand right)
     {
@@ -187,6 +208,20 @@ public sealed partial class GameSimulation
             return byActor;
         }
 
-        return left.Sequence.CompareTo(right.Sequence);
+        var bySequence = left.Sequence.CompareTo(right.Sequence);
+        if (bySequence != 0)
+        {
+            return bySequence;
+        }
+
+        var byKind = left.Kind.CompareTo(right.Kind);
+        if (byKind != 0)
+        {
+            return byKind;
+        }
+
+        return string.CompareOrdinal(
+            SimulationCommandSerializer.Serialize(left),
+            SimulationCommandSerializer.Serialize(right));
     }
 }

@@ -73,3 +73,35 @@ dotnet test tests/SteelConveyorWar.Sfml.Tests -c Release    # 62
 dotnet run --project tests/SteelConveyorWar.Benchmarks -c Release -- --quick
 pwsh eng/verify.ps1
 ```
+
+---
+
+# Post-remediation H/M/L (третье ревью)
+
+**Дата:** 2026-08-12  
+**Ветка:** `ai/61-post-remediation-fixes` · issue [#61](https://github.com/vivaHappyCrab/steel-conveyor-war/issues/61)  
+**Индекс планов:** [`docs/review/plans/post-remediation/PLANS_INDEX.md`](plans/post-remediation/PLANS_INDEX.md)  
+**Верификация P0:** ✅ `eng/verify.ps1` — Core **405**, SFML **68**, headless + client smoke
+
+## Wave P0
+
+| ID | Тема | Статус |
+|----|------|--------|
+| H04 | Factory idle-cache invalidation (CapabilityEpoch + unlock gate) | ✅ |
+| H02 | Research remainder hash (`AlgorithmVersion` 9) | ✅ |
+| H01 | Gameplay tables authoritative (match-scoped) | ✅ |
+| H07 | Content catalog deep freeze | ✅ |
+| H05 | Build menu from runtime `BuildCostCatalog` | ✅ |
+| H06 | Combat tracer FoW Policy B (no hidden endpoint leak) | ✅ |
+| H03 | Canonical command identity + `BoundPlayerCommandSink` | ✅ |
+
+## Wave P1 / P2
+
+| ID | Тема | Статус |
+|----|------|--------|
+| M01 | Payload `with` bypass | ✅ |
+| M02 | Command protocol vocabulary | ✅ |
+| M03 | Schema + cross-catalog validation | ✅ |
+| M10–M11, M04–M09, L01–L03 | остаток индекса | ⏳ тот же PR |
+
+Порядок оставшихся: M10 → M11 → M07 → M04 → M05/M06 → M08 → M09 → L01–L03.

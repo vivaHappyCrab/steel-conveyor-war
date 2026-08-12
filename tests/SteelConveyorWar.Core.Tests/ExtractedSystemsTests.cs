@@ -201,6 +201,8 @@ public sealed class ExtractedSystemsTests
 
         public SimulationPresentationSink Presentation { get; } = new();
 
+        public GameplayTablesCatalog GameplayTables { get; init; } = GameplayTablesCatalog.Embedded;
+
         public int CascadeBastionDeathsCalls { get; private set; }
 
         public PlayerState GetPlayer(PlayerId playerId) => _players.Single(player => player.Id == playerId);

@@ -2,10 +2,11 @@ using SteelConveyorWar.Core;
 
 namespace SteelConveyorWar.Sfml;
 
-// R30: The buildable set is composed from the authoritative BuildCostCatalog rather than a hardcoded
+// H05/R30: The buildable set is composed from the match BuildCostCatalog rather than a hardcoded
 // list, so every entity configured in build-costs.json (e.g. UndergroundConveyor/SteelWall/
 // CannonTurret/AntiAirTurret) appears in the menu without editing SFML code. The only thing kept
 // here is a preferred display ordering; any catalog kind not listed is appended deterministically.
+// Production path: ComposeFrom(simulation.BuildCostCatalog) at session start — never Embedded.
 public static class BuildMenuCatalog
 {
     private static readonly EntityKind[] PreferredOrder =
@@ -35,12 +36,16 @@ public static class BuildMenuCatalog
         EntityKind.AntiAirTurret
     ];
 
-    // Derived from the embedded authoritative catalog (same content as config/build-costs.json).
-    public static readonly EntityKind[] BuildableKinds = ComposeFrom(MvpBuildCostCatalog.Embedded);
+    /// <summary>
+    /// Embedded-default composition for unit tests only. Production sessions must call
+    /// <see cref="ComposeFrom"/> with <see cref="GameSimulation.BuildCostCatalog"/>.
+    /// </summary>
+    [Obsolete("H05: use ComposeFrom(simulation.BuildCostCatalog) at session start; not for production.")]
+    public static EntityKind[] BuildableKinds => ComposeFrom(MvpBuildCostCatalog.Embedded);
 
     /// <summary>
     /// Deterministically orders every kind present in <paramref name="catalog"/>: known kinds follow
-    /// <see cref="PreferredOrder"/>, and any remaining catalog kinds are appended in EntityKind order.
+    /// PreferredOrder, and any remaining catalog kinds are appended in EntityKind order.
     /// </summary>
     public static EntityKind[] ComposeFrom(BuildCostCatalog catalog)
     {

@@ -176,9 +176,10 @@ public static class SimulationCommandSerializer
             SetFactoryProductionCommand c => new CommandEnvelopeDto(
                 c.Kind, actor, tick,
                 new CommandPayloadDto { FactoryId = c.FactoryId, OutputKind = c.OutputKind, BastionId = c.BastionId }),
-            AssignFactoryBastionCommand c => new CommandEnvelopeDto(
-                c.Kind, actor, tick,
-                new CommandPayloadDto { FactoryId = c.FactoryId, BastionId = c.BastionId }),
+#pragma warning disable CS0618 // M02: obsolete kind rejected, not serialized
+            AssignFactoryBastionCommand => throw new NotSupportedException(
+                "AssignFactoryBastion is obsolete and removed from the command protocol vocabulary (M02)."),
+#pragma warning restore CS0618
             SetBastionTemplateCommand c => new CommandEnvelopeDto(
                 c.Kind, actor, tick,
                 new CommandPayloadDto { BastionId = c.BastionId, UnitKind = c.UnitKind, Count = c.Count }),
@@ -218,6 +219,14 @@ public static class SimulationCommandSerializer
                     Technology = c.Technology.Value,
                     ConfirmExclusive = c.ConfirmExclusive,
                     PreferredTrackId = c.PreferredTrackId,
+                }),
+            SetProjectWeightCommand c => new CommandEnvelopeDto(
+                c.Kind, actor, tick,
+                new CommandPayloadDto
+                {
+                    TrackId = c.TrackId,
+                    Technology = c.Technology.Value,
+                    Weight = c.Weight,
                 }),
             _ => throw new NotSupportedException($"Unknown command type '{command.GetType().Name}'."),
         };
@@ -259,8 +268,10 @@ public static class SimulationCommandSerializer
                 actor, tick, p.Allocations ?? new Dictionary<string, int>()),
             SimulationCommandKind.SetFactoryProduction => new SetFactoryProductionCommand(
                 actor, tick, Require(p.FactoryId, "factoryId"), p.OutputKind, p.BastionId),
-            SimulationCommandKind.AssignFactoryBastion => new AssignFactoryBastionCommand(
-                actor, tick, Require(p.FactoryId, "factoryId"), Require(p.BastionId, "bastionId")),
+#pragma warning disable CS0618 // M02: obsolete kind rejected on deserialize
+            SimulationCommandKind.AssignFactoryBastion => throw new NotSupportedException(
+                "AssignFactoryBastion is obsolete and rejected on deserialize (M02)."),
+#pragma warning restore CS0618
             SimulationCommandKind.SetBastionTemplate => new SetBastionTemplateCommand(
                 actor, tick, Require(p.BastionId, "bastionId"), Require(p.UnitKind, "unitKind"), Require(p.Count, "count")),
             SimulationCommandKind.IssueBastionOrder => new IssueBastionOrderCommand(
@@ -287,6 +298,10 @@ public static class SimulationCommandSerializer
             SimulationCommandKind.SelectResearch => new SelectResearchCommand(
                 actor, tick, new TechnologyId(Require(p.Technology, "technology")),
                 p.ConfirmExclusive ?? false, p.PreferredTrackId),
+            SimulationCommandKind.SetProjectWeight => new SetProjectWeightCommand(
+                actor, tick, Require(p.TrackId, "trackId"),
+                new TechnologyId(Require(p.Technology, "technology")),
+                Require(p.Weight, "weight")),
             _ => throw new NotSupportedException($"Unknown command kind '{dto.Kind}'."),
         };
 
@@ -373,6 +388,8 @@ public static class SimulationCommandSerializer
         public ItemId? Item { get; set; }
         public BastionOrderKind? OrderKind { get; set; }
         public string? Technology { get; set; }
+        public string? TrackId { get; set; }
+        public int? Weight { get; set; }
         public Dictionary<string, int>? Allocations { get; set; }
         public TileDto[]? Waypoints { get; set; }
     }

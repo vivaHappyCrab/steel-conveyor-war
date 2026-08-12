@@ -38,7 +38,7 @@ public sealed class SpatialQueryIndexTests
         var first = new WorldEntity(1, EntityKind.Wall, new TilePosition(2, 2), new PlayerId(1));
         var index = SpatialQueryIndex.Build([first]);
         var second = new WorldEntity(2, EntityKind.Wall, new TilePosition(3, 3), new PlayerId(1));
-        index.Rebuild([second]);
+        index.Rebuild([second], GameplayTablesCatalog.Embedded);
 
         Assert.Empty(index.QueryByPositionInEuclideanRange(new TilePosition(2, 2), 0));
         Assert.Contains(index.QueryByPositionInEuclideanRange(new TilePosition(3, 3), 0), entity => entity.Id == 2);

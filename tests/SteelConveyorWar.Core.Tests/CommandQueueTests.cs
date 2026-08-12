@@ -126,16 +126,65 @@ public sealed class CommandQueueTests
         var commander = simulation.World.Entities.First(entity =>
             entity.OwnerId == player && entity.Kind == EntityKind.Commander);
 
-        // Same (Actor, Sequence) => second occurrence must be suppressed. Distinct targets let us
-        // observe which one won: the first (stable order) is applied, the duplicate is dropped.
-        var first = new IssueMoveCommand(player, 1, commander.Id, new TilePosition(12, 10)) { Sequence = 5 };
-        var duplicate = new IssueMoveCommand(player, 1, commander.Id, new TilePosition(8, 9)) { Sequence = 5 };
-        simulation.EnqueueCommand(first);
-        simulation.EnqueueCommand(duplicate);
-
+        // Same (Actor, Sequence) with conflicting payloads: first by canonical payload order wins.
+        var a = new IssueMoveCommand(player, 1, commander.Id, new TilePosition(12, 10)) { Sequence = 5 };
+        var b = new IssueMoveCommand(player, 1, commander.Id, new TilePosition(8, 9)) { Sequence = 5 };
+        simulation.EnqueueCommand(a);
+        simulation.EnqueueCommand(b);
         simulation.AdvanceTick();
 
-        Assert.Equal(new TilePosition(12, 10), simulation.World.GetEntity(commander.Id)!.MoveTarget);
+        var winner = string.CompareOrdinal(
+            SimulationCommandSerializer.Serialize(a),
+            SimulationCommandSerializer.Serialize(b)) <= 0
+            ? new TilePosition(12, 10)
+            : new TilePosition(8, 9);
+        Assert.Equal(winner, simulation.World.GetEntity(commander.Id)!.MoveTarget);
+        Assert.Contains(simulation.LastTickCommandRejections, r => r.Reason.Contains("duplicate"));
+    }
+
+    // H03: conflicting payloads + opposite arrival must converge to the same applied command.
+    [Fact]
+    public void ConflictingSameKey_OppositeArrival_SameResult()
+    {
+        var forward = RunConflictingMoves(reverseEnqueue: false);
+        var reversed = RunConflictingMoves(reverseEnqueue: true);
+        Assert.Equal(forward.Target, reversed.Target);
+        Assert.Equal(forward.Hash, reversed.Hash);
+    }
+
+    [Fact]
+    public void EnqueueCommand_AutoAssignsPositiveSequence_WhenZero()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 1);
+        var player = new PlayerId(1);
+        var commander = simulation.World.Entities.First(entity =>
+            entity.OwnerId == player && entity.Kind == EntityKind.Commander);
+        simulation.EnqueueCommand(new IssueMoveCommand(player, 1, commander.Id, new TilePosition(12, 10)));
+        Assert.Equal(1, simulation.PendingCommands[0].Sequence);
+    }
+
+    private static (TilePosition Target, string Hash) RunConflictingMoves(bool reverseEnqueue)
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var player = new PlayerId(1);
+        var commander = simulation.World.Entities.First(entity =>
+            entity.OwnerId == player && entity.Kind == EntityKind.Commander);
+
+        var a = new IssueMoveCommand(player, 1, commander.Id, new TilePosition(12, 10)) { Sequence = 7 };
+        var b = new IssueMoveCommand(player, 1, commander.Id, new TilePosition(8, 9)) { Sequence = 7 };
+        if (reverseEnqueue)
+        {
+            simulation.EnqueueCommand(b);
+            simulation.EnqueueCommand(a);
+        }
+        else
+        {
+            simulation.EnqueueCommand(a);
+            simulation.EnqueueCommand(b);
+        }
+
+        simulation.AdvanceTick();
+        return (simulation.World.GetEntity(commander.Id)!.MoveTarget!.Value, simulation.ComputeStateHash());
     }
 
     private static string RunTwoSequencedMoves(bool reverseEnqueue)

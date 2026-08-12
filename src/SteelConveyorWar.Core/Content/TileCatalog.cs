@@ -10,5 +10,12 @@ public sealed record TileCatalog(
     int SchemaVersion,
     IReadOnlyDictionary<string, TileDefinition> Tiles)
 {
-    public static TileCatalog Empty { get; } = new(1, new Dictionary<string, TileDefinition>());
+    // H07: freeze at construction / `with` so public graphs cannot be cast-mutated.
+    public IReadOnlyDictionary<string, TileDefinition> Tiles
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value, StringComparer.Ordinal);
+    } = ContentFreeze.Dictionary(Tiles, StringComparer.Ordinal);
+
+    public static TileCatalog Empty { get; } = new(1, new Dictionary<string, TileDefinition>(StringComparer.Ordinal));
 }

@@ -57,7 +57,7 @@ internal sealed class PowerSystem
     }
 
     /// <summary>
-    /// Drains <see cref="MvpDefinitions.GetPowerDemand"/> from the building buffer when it can afford to run.
+    /// Drains match-scoped power demand from the building buffer when it can afford to run.
     /// Returns false when the buffer is too low (work must pause). No demand configured → success (unpowered-free).
     /// Successful drains accumulate into this tick's energy-stats consumption sample.
     /// </summary>
@@ -65,7 +65,7 @@ internal sealed class PowerSystem
     // (the class itself is already internal; this makes the intent explicit).
     internal bool TryConsumeBuildingEnergy(WorldEntity building)
     {
-        var demand = MvpDefinitions.GetPowerDemand(building.Kind);
+        var demand = _context.GameplayTables.GetPowerDemand(building.Kind);
         if (demand <= 0)
         {
             return true;
@@ -103,13 +103,14 @@ internal sealed class PowerSystem
             player.PowerDemand = 0;
         }
 
+        var tables = _context.GameplayTables;
         foreach (var entity in _context.World.Entities.Where(entity => entity.IsAlive && entity.OwnerId is not null))
         {
             var player = _context.GetPlayer(entity.OwnerId!.Value);
             var produced = entity.Kind switch
             {
-                EntityKind.SolarPanel => MvpDefinitions.PowerProduction.GetValueOrDefault(EntityKind.SolarPanel),
-                EntityKind.CoalPlant when entity.InputBuffer.TryRemove(ItemId.Coal, 1) => MvpDefinitions.PowerProduction.GetValueOrDefault(EntityKind.CoalPlant),
+                EntityKind.SolarPanel => tables.PowerProduction.GetValueOrDefault(EntityKind.SolarPanel),
+                EntityKind.CoalPlant when entity.InputBuffer.TryRemove(ItemId.Coal, 1) => tables.PowerProduction.GetValueOrDefault(EntityKind.CoalPlant),
                 _ => 0
             };
             if (produced > 0)
@@ -121,7 +122,7 @@ internal sealed class PowerSystem
             }
 
             // HUD demand = installed consumer rating (not actual drain this tick).
-            player.PowerDemand += MvpDefinitions.GetPowerDemand(entity.Kind);
+            player.PowerDemand += tables.GetPowerDemand(entity.Kind);
         }
 
         foreach (var player in _context.Players)

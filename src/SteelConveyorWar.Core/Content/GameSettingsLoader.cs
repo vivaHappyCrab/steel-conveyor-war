@@ -4,12 +4,9 @@ namespace SteelConveyorWar.Core;
 
 public static class GameSettingsLoader
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
-    };
+    // Host-only keys (e.g. window) are declared on the DTO so UnmappedMemberHandling.Disallow
+    // still rejects true typos while allowing known presentation fields Core ignores.
+    private static readonly JsonSerializerOptions JsonOptions = ContentJsonOptions.CreateStrict();
 
     public static GameSettings Parse(string json)
     {
@@ -66,6 +63,15 @@ public static class GameSettingsLoader
         public MapConfigRefDto? Map { get; set; }
         public BuildCostsConfigRefDto? BuildCosts { get; set; }
         public GameplayTablesConfigRefDto? GameplayTables { get; set; }
+        /// <summary>Host presentation only — accepted so strict JSON does not reject game.json.</summary>
+        public WindowConfigDto? Window { get; set; }
+    }
+
+    private sealed class WindowConfigDto
+    {
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public string Title { get; set; } = "";
     }
 
     private sealed class SimulationConfigDto

@@ -73,6 +73,13 @@ public sealed record MapSettings(
     string MapId,
     IReadOnlyList<MapPlayerDefinition> Players)
 {
+    // H07: freeze the player roster list against cast-mutation.
+    public IReadOnlyList<MapPlayerDefinition> Players
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(Players);
+
     public static MapSettings Default1v1 { get; } = CreateDefault1v1();
 
     private static MapSettings CreateDefault1v1()

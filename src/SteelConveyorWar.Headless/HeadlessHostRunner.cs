@@ -17,7 +17,7 @@ public static class HeadlessHostRunner
         ArgumentNullException.ThrowIfNull(options);
 
         var playerId = new PlayerId(options.PlayerId);
-        var sink = new DeferredCommandSink(simulation);
+        var sink = new BoundPlayerCommandSink(new DeferredCommandSink(simulation), playerId);
         // R19: the bot observes only through the fair observation contract — it never reads World/GetPlayer.
         var view = simulation.CreatePlayerView(playerId, PlayerObservationMode.Fair);
         var commandsIssued = 0;

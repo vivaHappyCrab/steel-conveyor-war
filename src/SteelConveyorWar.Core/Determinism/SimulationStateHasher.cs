@@ -22,7 +22,7 @@ namespace SteelConveyorWar.Core;
 /// </remarks>
 public static class SimulationStateHasher
 {
-    public const int AlgorithmVersion = 8;
+    public const int AlgorithmVersion = 9;
 
     public static string Compute(GameSimulation simulation)
     {
@@ -89,7 +89,9 @@ public static class SimulationStateHasher
         var ordered = simulation.PendingCommands
             .OrderBy(command => command.Tick)
             .ThenBy(command => command.Actor.Value)
-            .ThenBy(command => command.Sequence);
+            .ThenBy(command => command.Sequence)
+            .ThenBy(command => command.Kind)
+            .ThenBy(command => SimulationCommandSerializer.Serialize(command), StringComparer.Ordinal);
 
         using var stream = new MemoryStream();
         using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
@@ -267,6 +269,21 @@ public static class SimulationStateHasher
                 writer.Write(weight.Key.Value);
                 writer.Write(weight.Value);
             }
+        }
+
+        // H02: largest-remainder schedulers are authoritative hidden state (not rebuildable from weights alone).
+        writer.Write(research.TrackSelectionRemainder.Count);
+        foreach (var pair in research.TrackSelectionRemainder.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            writer.Write(pair.Key);
+            writer.Write(pair.Value);
+        }
+
+        writer.Write(research.ProjectSelectionRemainder.Count);
+        foreach (var pair in research.ProjectSelectionRemainder.OrderBy(pair => pair.Key.Value, StringComparer.Ordinal))
+        {
+            writer.Write(pair.Key.Value);
+            writer.Write(pair.Value);
         }
 
         writer.Write(research.AppliedModifiers.Count);

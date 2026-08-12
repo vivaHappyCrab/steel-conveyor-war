@@ -87,10 +87,10 @@ Severity note: shipped defaults match Embedded↔JSON, so default MVP play OK; H
 
 ## Definition of Done
 
-- [ ] Production SFML path never reads `MvpBuildCostCatalog.Embedded` for menu composition.
-- [ ] Menu kinds == `simulation.BuildCostCatalog.Costs.Keys` (ordered).
-- [ ] Tests cover custom catalog divergence.
-- [ ] R30 marked closed.
+- [x] Production SFML path never reads `MvpBuildCostCatalog.Embedded` for menu composition.
+- [x] Menu kinds == `simulation.BuildCostCatalog.Costs.Keys` (ordered).
+- [x] Tests cover custom catalog divergence.
+- [x] R30 marked closed.
 
 ---
 

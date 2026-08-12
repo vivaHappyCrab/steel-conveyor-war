@@ -60,17 +60,17 @@ public sealed class BotObservationContractTests
     }
 
     [Fact]
-    public void AvailableCommandKinds_CoverTheEntireVocabulary()
+    public void AvailableCommandKinds_CoverTheAdvertisedVocabulary()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var fair = simulation.CreatePlayerView(Blue, PlayerObservationMode.Fair);
 
         var kinds = fair.GetAvailableCommandKinds();
 
-        foreach (var kind in Enum.GetValues<SimulationCommandKind>())
-        {
-            Assert.Contains(kind, kinds);
-        }
+        Assert.Equal(SimulationCommandVocabulary.AdvertisedKinds, kinds);
+#pragma warning disable CS0618
+        Assert.DoesNotContain(SimulationCommandKind.AssignFactoryBastion, kinds);
+#pragma warning restore CS0618
     }
 
     [Fact]

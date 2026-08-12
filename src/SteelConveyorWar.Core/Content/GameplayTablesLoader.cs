@@ -4,12 +4,7 @@ namespace SteelConveyorWar.Core;
 
 public static class GameplayTablesLoader
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = ContentJsonOptions.CreateStrict();
 
     public static GameplayTablesCatalog Parse(string json)
     {
@@ -34,17 +29,18 @@ public static class GameplayTablesLoader
             throw new InvalidOperationException("Gameplay-tables catalog must declare at least one entityStats entry.");
         }
 
+        // H07: GameplayTablesCatalog compact ctor freezes all table graphs (incl. nested recipe Inputs).
         return new GameplayTablesCatalog(
             dto.SchemaVersion,
-            powerDemand.AsReadOnly(),
-            powerProduction.AsReadOnly(),
-            itemStackSizes.AsReadOnly(),
-            footprints.AsReadOnly(),
-            collisionRadius.AsReadOnly(),
-            techSignature.AsReadOnly(),
-            productionRecipes.AsReadOnly(),
-            itemRecipes.AsReadOnly(),
-            entityStats.AsReadOnly(),
+            powerDemand,
+            powerProduction,
+            itemStackSizes,
+            footprints,
+            collisionRadius,
+            techSignature,
+            productionRecipes,
+            itemRecipes,
+            entityStats,
             resistances);
     }
 
@@ -78,7 +74,7 @@ public static class GameplayTablesLoader
 
         foreach (var (key, value) in source)
         {
-            if (!Enum.TryParse<ItemId>(key, ignoreCase: true, out var item))
+            if (!Enum.TryParse<ItemId>(key, ignoreCase: true, out var item) || !Enum.IsDefined(item))
             {
                 throw new InvalidOperationException($"{section} has unknown item '{key}'.");
             }
@@ -195,12 +191,12 @@ public static class GameplayTablesLoader
 
         foreach (var (key, recipe) in source)
         {
-            if (!Enum.TryParse<ItemRecipeId>(key, ignoreCase: true, out var recipeId))
+            if (!Enum.TryParse<ItemRecipeId>(key, ignoreCase: true, out var recipeId) || !Enum.IsDefined(recipeId))
             {
                 throw new InvalidOperationException($"itemRecipes has unknown recipe id '{key}'.");
             }
 
-            if (!Enum.TryParse<ItemId>(recipe.OutputItem, ignoreCase: true, out var outputItem))
+            if (!Enum.TryParse<ItemId>(recipe.OutputItem, ignoreCase: true, out var outputItem) || !Enum.IsDefined(outputItem))
             {
                 throw new InvalidOperationException($"itemRecipes '{recipeId}' has unknown outputItem '{recipe.OutputItem}'.");
             }
@@ -241,12 +237,25 @@ public static class GameplayTablesLoader
                 throw new InvalidOperationException($"entityStats '{kind}' must have maxHealth > 0.");
             }
 
-            var projectile = ProjectileKind.GroundToGround;
-            if (!string.IsNullOrWhiteSpace(stats.ProjectileKind)
-                && !Enum.TryParse(stats.ProjectileKind, ignoreCase: true, out projectile))
+            if (stats.AttackDamage < 0
+                || stats.AttackRange < 0
+                || stats.AttackCooldownTicks < 0
+                || stats.MoveEveryTicks < 0
+                || stats.VisionRadius < 0
+                || stats.Armor < 0
+                || stats.SplashRadius < 0)
             {
                 throw new InvalidOperationException(
-                    $"entityStats '{kind}' has unknown projectileKind '{stats.ProjectileKind}'.");
+                    $"entityStats '{kind}' combat/move fields must be >= 0 " +
+                    "(damage/range/cooldown/move/vision/armor/splash).");
+            }
+
+            var projectile = ProjectileKind.GroundToGround;
+            if (!string.IsNullOrWhiteSpace(stats.ProjectileKind))
+            {
+                projectile = ContentJsonOptions.ParseDefinedEnum<ProjectileKind>(
+                    stats.ProjectileKind,
+                    $"entityStats '{kind}' projectileKind");
             }
 
             var entityStats = new EntityStats(
@@ -280,12 +289,14 @@ public static class GameplayTablesLoader
         var seen = new HashSet<(ProjectileKind, CombatTargetCategory)>();
         foreach (var entry in source)
         {
-            if (!Enum.TryParse<ProjectileKind>(entry.Projectile, ignoreCase: true, out var projectile))
+            if (!Enum.TryParse<ProjectileKind>(entry.Projectile, ignoreCase: true, out var projectile)
+                || !Enum.IsDefined(projectile))
             {
                 throw new InvalidOperationException($"resistances has unknown projectile '{entry.Projectile}'.");
             }
 
-            if (!Enum.TryParse<CombatTargetCategory>(entry.Category, ignoreCase: true, out var category))
+            if (!Enum.TryParse<CombatTargetCategory>(entry.Category, ignoreCase: true, out var category)
+                || !Enum.IsDefined(category))
             {
                 throw new InvalidOperationException($"resistances has unknown category '{entry.Category}'.");
             }
@@ -318,7 +329,7 @@ public static class GameplayTablesLoader
         var parsed = new Dictionary<ItemId, int>();
         foreach (var line in cost)
         {
-            if (!Enum.TryParse<ItemId>(line.Item, ignoreCase: true, out var item))
+            if (!Enum.TryParse<ItemId>(line.Item, ignoreCase: true, out var item) || !Enum.IsDefined(item))
             {
                 throw new InvalidOperationException($"{label} has unknown item '{line.Item}'.");
             }
@@ -338,19 +349,7 @@ public static class GameplayTablesLoader
     }
 
     private static EntityKind ParseEntityKind(string raw, string section)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            throw new InvalidOperationException($"{section} entry is missing a kind.");
-        }
-
-        if (!Enum.TryParse<EntityKind>(raw, ignoreCase: true, out var kind))
-        {
-            throw new InvalidOperationException($"{section} has unknown entity kind '{raw}'.");
-        }
-
-        return kind;
-    }
+        => ContentJsonOptions.ParseDefinedEnum<EntityKind>(raw, $"{section} entity kind");
 
     private sealed class GameplayTablesDto
     {

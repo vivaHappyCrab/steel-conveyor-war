@@ -22,6 +22,10 @@ public abstract record SimulationCommandBase(PlayerId Actor, long Tick) : ISimul
     /// </summary>
     public SimulationCommandBase WithScheduling(long tick, long sequence)
         => this with { Tick = tick, Sequence = sequence };
+
+    /// <summary>H03: rebinds the authenticated session actor while preserving payload and scheduling.</summary>
+    public SimulationCommandBase WithActor(PlayerId actor)
+        => this with { Actor = actor };
 }
 
 public sealed record IssueMoveCommand(PlayerId Actor, long Tick, int EntityId, TilePosition Target)
@@ -87,9 +91,10 @@ public sealed record CancelResearchCommand(PlayerId Actor, long Tick, Technology
 public sealed record SetTrackAllocationCommand : SimulationCommandBase
 {
     /// <summary>
-    /// R12: freezes a deep copy of <paramref name="Allocations"/> so that mutating the caller's
+    /// R12 / M01: freezes a deep copy of <paramref name="Allocations"/> so that mutating the caller's
     /// dictionary after constructing (or enqueuing) the command cannot change the applied intent.
-    /// Positional parameter names are preserved for existing call sites.
+    /// <see cref="Allocations"/> is get-only (no init) so <c>with { Allocations = ... }</c> cannot
+    /// substitute a mutable dictionary. Positional parameter names are preserved for existing call sites.
     /// </summary>
     public SetTrackAllocationCommand(PlayerId Actor, long Tick, IReadOnlyDictionary<string, int> Allocations)
         : base(Actor, Tick)
@@ -99,7 +104,7 @@ public sealed record SetTrackAllocationCommand : SimulationCommandBase
             : Allocations.ToImmutableDictionary(StringComparer.Ordinal);
     }
 
-    public IReadOnlyDictionary<string, int> Allocations { get; init; }
+    public IReadOnlyDictionary<string, int> Allocations { get; }
 
     public override SimulationCommandKind Kind => SimulationCommandKind.SetTrackAllocation;
 }
@@ -114,6 +119,8 @@ public sealed record SetFactoryProductionCommand(
     public override SimulationCommandKind Kind => SimulationCommandKind.SetFactoryProduction;
 }
 
+/// <summary>Obsolete: factories no longer assign to bastions. Handler always returns false.</summary>
+[Obsolete("Factories no longer assign to bastions; spawn picks a deficit bastion automatically.")]
 public sealed record AssignFactoryBastionCommand(PlayerId Actor, long Tick, int FactoryId, int BastionId)
     : SimulationCommandBase(Actor, Tick)
 {
@@ -193,4 +200,18 @@ public sealed record SelectResearchCommand(
     string? PreferredTrackId = null) : SimulationCommandBase(Actor, Tick)
 {
     public override SimulationCommandKind Kind => SimulationCommandKind.SelectResearch;
+}
+
+/// <summary>
+/// M02: sets a parallel-track project weight for one technology (distinct from
+/// <see cref="SetTrackAllocationCommand"/> basis-point budgets across tracks).
+/// </summary>
+public sealed record SetProjectWeightCommand(
+    PlayerId Actor,
+    long Tick,
+    string TrackId,
+    TechnologyId Technology,
+    int Weight) : SimulationCommandBase(Actor, Tick)
+{
+    public override SimulationCommandKind Kind => SimulationCommandKind.SetProjectWeight;
 }

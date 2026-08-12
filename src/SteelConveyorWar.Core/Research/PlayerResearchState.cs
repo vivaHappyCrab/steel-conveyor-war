@@ -42,6 +42,12 @@ public sealed class PlayerResearchState
     private readonly Dictionary<string, int> _trackSelectionRemainder = new();
     private readonly Dictionary<TechnologyId, int> _projectSelectionRemainder = new();
 
+    /// <summary>
+    /// H04: bumps when unlocks/capabilities/modifiers/locks change so factory idle-skip cannot
+    /// freeze past a research outcome change. Derived caches compare this; it is not hashed.
+    /// </summary>
+    public int CapabilityEpoch { get; private set; }
+
     public IReadOnlySet<TechnologyId> CompletedTechnologies => _completedTechnologies.AsReadOnly();
 
     internal HashSet<TechnologyId> CompletedTechnologiesMutable => _completedTechnologies;
@@ -95,6 +101,8 @@ public sealed class PlayerResearchState
     internal Dictionary<string, int> TrackSelectionRemainder => _trackSelectionRemainder;
 
     internal Dictionary<TechnologyId, int> ProjectSelectionRemainder => _projectSelectionRemainder;
+
+    internal void BumpCapabilityEpoch() => CapabilityEpoch++;
 
     internal void EnsureTracks(ResearchProfileDefinition profile)
     {

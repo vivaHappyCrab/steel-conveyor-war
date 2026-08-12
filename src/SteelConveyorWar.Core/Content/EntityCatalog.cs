@@ -11,7 +11,14 @@ public sealed record EntityCatalog(
     int SchemaVersion,
     IReadOnlyDictionary<string, EntityDefinition> Entities)
 {
-    public static EntityCatalog Empty { get; } = new(1, new Dictionary<string, EntityDefinition>());
+    // H07: freeze at construction / `with` so public graphs cannot be cast-mutated.
+    public IReadOnlyDictionary<string, EntityDefinition> Entities
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value, StringComparer.Ordinal);
+    } = ContentFreeze.Dictionary(Entities, StringComparer.Ordinal);
+
+    public static EntityCatalog Empty { get; } = new(1, new Dictionary<string, EntityDefinition>(StringComparer.Ordinal));
 
     /// <summary>
     /// Entity kinds whose <see cref="EntityDefinition.LossCondition"/> is <c>Defeat</c>.

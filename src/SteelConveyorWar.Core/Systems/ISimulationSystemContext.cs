@@ -25,6 +25,12 @@ internal interface ISimulationSystemContext
     /// <summary>Presentation side-channel for combat tracers etc. (not hashed).</summary>
     SimulationPresentationSink Presentation { get; }
 
+    /// <summary>
+    /// H01: match-scoped gameplay tables (power/recipes/stats/footprints/collision/stacks/resistances).
+    /// Prefer this over <see cref="MvpDefinitions"/> Embedded accessors on production paths.
+    /// </summary>
+    GameplayTablesCatalog GameplayTables { get; }
+
     /// <summary>Looks up a player by id (throws if unknown).</summary>
     PlayerState GetPlayer(PlayerId playerId);
 

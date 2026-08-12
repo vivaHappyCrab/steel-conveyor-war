@@ -12,12 +12,10 @@ public sealed class Inventory
 
     public IReadOnlyDictionary<ItemId, int> Items => _items.AsReadOnly();
 
-    public int TotalStacks
+    public int GetTotalStacks(GameplayTablesCatalog tables)
     {
-        get
-        {
-            return _items.Sum(pair => GetStackCount(pair.Key, pair.Value));
-        }
+        ArgumentNullException.ThrowIfNull(tables);
+        return _items.Sum(pair => GetStackCount(pair.Key, pair.Value, tables));
     }
 
     public int Count(ItemId item)
@@ -132,9 +130,10 @@ public sealed class Inventory
         return false;
     }
 
-    internal bool TryAddWithinStackLimit(ItemId item, int amount)
+    internal bool TryAddWithinStackLimit(ItemId item, int amount, GameplayTablesCatalog tables)
     {
-        var maxStack = MvpDefinitions.GetMaxStackSize(item);
+        ArgumentNullException.ThrowIfNull(tables);
+        var maxStack = tables.GetMaxStackSize(item);
         if (amount < 0 || Count(item) + amount > maxStack)
         {
             return false;
@@ -144,16 +143,17 @@ public sealed class Inventory
         return true;
     }
 
-    internal bool TryAddWithinTotalStackLimit(ItemId item, int amount, int maxStacks)
+    internal bool TryAddWithinTotalStackLimit(ItemId item, int amount, int maxStacks, GameplayTablesCatalog tables)
     {
+        ArgumentNullException.ThrowIfNull(tables);
         if (amount < 0 || maxStacks <= 0)
         {
             return false;
         }
 
-        var beforeStacks = GetStackCount(item, Count(item));
-        var afterStacks = GetStackCount(item, Count(item) + amount);
-        if (TotalStacks - beforeStacks + afterStacks > maxStacks)
+        var beforeStacks = GetStackCount(item, Count(item), tables);
+        var afterStacks = GetStackCount(item, Count(item) + amount, tables);
+        if (GetTotalStacks(tables) - beforeStacks + afterStacks > maxStacks)
         {
             return false;
         }
@@ -173,14 +173,14 @@ public sealed class Inventory
         MutationVersion++;
     }
 
-    private static int GetStackCount(ItemId item, int amount)
+    private static int GetStackCount(ItemId item, int amount, GameplayTablesCatalog tables)
     {
         if (amount <= 0)
         {
             return 0;
         }
 
-        var maxStack = MvpDefinitions.GetMaxStackSize(item);
+        var maxStack = tables.GetMaxStackSize(item);
         return (amount + maxStack - 1) / maxStack;
     }
 }

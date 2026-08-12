@@ -8,10 +8,9 @@ namespace SteelConveyorWar.Core;
 /// </summary>
 public sealed class PlayerView : IPlayerView
 {
-    // R19: the full command vocabulary a bot may submit. Ownership/authority is still enforced per
-    // command at apply time; this only advertises the protocol surface so the bot need not hard-code it.
+    // M02: advertised vocabulary excludes obsolete always-false kinds (AssignFactoryBastion).
     private static readonly IReadOnlyList<SimulationCommandKind> AllCommandKinds =
-        Enum.GetValues<SimulationCommandKind>();
+        SimulationCommandVocabulary.AdvertisedKinds;
 
     private readonly GameSimulation _simulation;
 
@@ -141,18 +140,25 @@ public sealed class PlayerView : IPlayerView
         var events = new List<ObservedCombatEvent>();
         foreach (var shot in _simulation.CombatShotsThisTick)
         {
-            if (!IsShotObservable(shot))
+            var reveal = CombatShotVisibility.Classify(
+                _simulation,
+                ObserverId,
+                shot,
+                cheatMode: Mode == PlayerObservationMode.Cheat);
+            if (!CombatShotVisibility.IsVisible(reveal))
             {
                 continue;
             }
 
+            var (from, to) = CombatShotVisibility.SanitizeEndpoints(shot, reveal);
             events.Add(new ObservedCombatEvent(
                 tick,
                 shot.AttackerId,
                 shot.TargetId,
-                shot.From,
-                shot.To,
-                shot.ProjectileKind));
+                from,
+                to,
+                shot.ProjectileKind,
+                reveal));
         }
 
         return events;
@@ -171,39 +177,6 @@ public sealed class PlayerView : IPlayerView
             GetTechSignatures(),
             GetAvailableCommandKinds(),
             GetEventsThisTick());
-    }
-
-    // R19/R27: mirror SFML's tracer gate so the event stream cannot leak hidden movement/combat.
-    // Cheat mode sees everything; Fair mode requires either endpoint entity observable or an endpoint
-    // tile currently Visible.
-    private bool IsShotObservable(CombatShotEvent shot)
-    {
-        if (Mode == PlayerObservationMode.Cheat)
-        {
-            return true;
-        }
-
-        var attacker = _simulation.World.GetEntity(shot.AttackerId);
-        if (attacker is not null && IsShotEndpointVisible(attacker))
-        {
-            return true;
-        }
-
-        var target = _simulation.World.GetEntity(shot.TargetId);
-        if (target is not null && IsShotEndpointVisible(target))
-        {
-            return true;
-        }
-
-        return _simulation.GetVisibility(ObserverId, shot.From.ToTilePosition()) == VisibilityState.Visible
-            || _simulation.GetVisibility(ObserverId, shot.To.ToTilePosition()) == VisibilityState.Visible;
-    }
-
-    // Matches WorldRenderer.IsVisibleToLocalPlayer: owned entities always observe; others require Visible.
-    private bool IsShotEndpointVisible(WorldEntity entity)
-    {
-        return entity.OwnerId == ObserverId
-            || _simulation.GetVisibility(ObserverId, entity.Position) == VisibilityState.Visible;
     }
 
     private bool IsEntityObservable(WorldEntity entity)

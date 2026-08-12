@@ -3,8 +3,8 @@ using SteelConveyorWar.Core.Commands;
 namespace SteelConveyorWar.Core.Tests;
 
 /// <summary>
-/// R22: property-style round-trips over randomized payloads for every <see cref="SimulationCommandKind"/>.
-/// Complements the fixed fixtures in <see cref="CommandProtocolTests"/>.
+/// R22 / M02: property-style round-trips over randomized payloads for every advertised
+/// <see cref="SimulationCommandKind"/>. Compares full wire snapshots, not just headers.
 /// </summary>
 public sealed class CommandSerializerPropertyTests
 {
@@ -17,10 +17,10 @@ public sealed class CommandSerializerPropertyTests
     [InlineData(13)]
     [InlineData(21)]
     [InlineData(34)]
-    public void RandomizedCommands_RoundTrip_PreserveKindActorTickSequence(int seed)
+    public void RandomizedCommands_RoundTrip_PreserveFullPayload(int seed)
     {
         var rng = new Random(seed);
-        foreach (SimulationCommandKind kind in Enum.GetValues<SimulationCommandKind>())
+        foreach (var kind in SimulationCommandVocabulary.AdvertisedKinds)
         {
             var command = CreateRandomCommand(kind, rng);
             var roundTrip = SimulationCommandSerializer.Deserialize(SimulationCommandSerializer.Serialize(command));
@@ -29,6 +29,7 @@ public sealed class CommandSerializerPropertyTests
             Assert.Equal(command.Tick, roundTrip.Tick);
             Assert.Equal(command.Sequence, roundTrip.Sequence);
             Assert.IsType(command.GetType(), roundTrip);
+            Assert.True(CommandPayloadEquality.AreEqual(command, roundTrip));
         }
     }
 
@@ -57,7 +58,6 @@ public sealed class CommandSerializerPropertyTests
                 actor, tick, new Dictionary<string, int> { ["cycle"] = rng.Next(0, 5), ["burst"] = rng.Next(0, 5) }),
             SimulationCommandKind.SetFactoryProduction => new SetFactoryProductionCommand(
                 actor, tick, entityId, EntityKind.BasicTank, rng.Next(1, 20)),
-            SimulationCommandKind.AssignFactoryBastion => new AssignFactoryBastionCommand(actor, tick, entityId, rng.Next(1, 20)),
             SimulationCommandKind.SetBastionTemplate => new SetBastionTemplateCommand(
                 actor, tick, entityId, EntityKind.LightBot, rng.Next(1, 10)),
             SimulationCommandKind.IssueBastionOrder => new IssueBastionOrderCommand(
@@ -73,7 +73,9 @@ public sealed class CommandSerializerPropertyTests
                 actor, tick, entityId, rng.Next(1, 500), ItemId.CopperPlate),
             SimulationCommandKind.SelectResearch => new SelectResearchCommand(
                 actor, tick, tech, ConfirmExclusive: rng.Next(0, 2) == 0, PreferredTrackId: "cycle"),
-            _ => throw new InvalidOperationException($"Unhandled kind {kind}"),
+            SimulationCommandKind.SetProjectWeight => new SetProjectWeightCommand(
+                actor, tick, ResearchTrackIds.Cycle, tech, rng.Next(0, 500)),
+            _ => throw new InvalidOperationException($"Unhandled advertised kind {kind}"),
         };
 
         return command with { Sequence = sequence };

@@ -68,7 +68,7 @@ public static class ContentBootstrap
             "gameplay-tables catalog");
 
         // R34: reject dangling inter-catalog references before creating the match (fail-fast, all-or-nothing).
-        ContentCrossValidator.Validate(catalog, buildCosts, entities, tiles, gameplayTables);
+        ContentCrossValidator.Validate(catalog, buildCosts, entities, tiles, gameplayTables, map);
 
         var creation = new GameCreationOptions(
             gameSettings.DefaultRandomSeed,

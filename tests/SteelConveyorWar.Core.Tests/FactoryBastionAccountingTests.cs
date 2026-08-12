@@ -50,6 +50,47 @@ public sealed class FactoryBastionAccountingTests
         Assert.Equal(2, simulation.GetBastionUnitSupply(bastion.Id, EntityKind.BasicTank));
     }
 
+    [Fact]
+    public void SetFactoryProduction_RejectsLockedRecipe()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
+        AdvanceTicks(simulation, 30);
+
+        Assert.False(simulation.IsUnitProductionUnlocked(playerId, EntityKind.LightBot));
+        Assert.False(simulation.TrySetFactoryProduction(factoryId, playerId, EntityKind.LightBot));
+        Assert.Null(simulation.World.GetEntity(factoryId)!.ProductionTargetKind);
+    }
+
+    [Fact]
+    public void ManualLockedRecipe_UnlocksAndStarts()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var playerId = new PlayerId(1);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
+        Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
+        AdvanceTicks(simulation, 30);
+
+        // Template demand is allowed while locked; production set is gated (H04-C).
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, playerId, EntityKind.LightBot, 1));
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
+        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
+
+        // Inject sticky manual target the way a pre-gate client could leave it (H04 freeze repro).
+        var factory = simulation.World.GetEntity(factoryId)!;
+        factory.ProductionTargetKind = EntityKind.LightBot;
+        factory.IsManualProductionTarget = true;
+        AdvanceTicks(simulation, 5);
+        Assert.Equal(0, factory.WorkTicksRemaining);
+        Assert.False(simulation.IsUnitProductionUnlocked(playerId, EntityKind.LightBot));
+
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.LightBot, confirmExclusive: true));
+        Assert.True(simulation.IsUnitProductionUnlocked(playerId, EntityKind.LightBot));
+        simulation.AdvanceTick();
+        Assert.True(factory.WorkTicksRemaining > 0);
+    }
+
     private static string RunFactoryProductionScenario(int seed)
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: seed);

@@ -237,7 +237,7 @@ internal static class HudOverlay
                 markerKind = 2;
             }
 
-            var footprint = MvpDefinitions.GetFootprint(entity.Kind);
+            var footprint = simulation.GameplayTables.GetFootprint(entity.Kind);
             into.Add(new MinimapEntitySnapshot(
                 entity.Id,
                 entity.Position.X,
@@ -368,7 +368,7 @@ internal static class HudOverlay
                 buildingColor = new Color(220, 50, 50);
             }
 
-            var footprint = MvpDefinitions.GetFootprint(entity.Kind);
+            var footprint = simulation.GameplayTables.GetFootprint(entity.Kind);
             var w = Math.Max(pixelW, footprint.Width * scaleX);
             var h = Math.Max(pixelH, footprint.Height * scaleY);
             MinimapPixel.Size = new Vector2f(w, h);
@@ -474,14 +474,14 @@ internal static class HudOverlay
             lines.Add($"Selected: {selected.Kind} #{selected.Id}");
             lines.Add($"Owner: {(selected.OwnerId?.Value.ToString() ?? "-")}");
             lines.Add($"HP: {selected.Health}/{selected.MaxHealth}");
-            lines.Add($"Footprint: {MvpDefinitions.GetFootprint(selected.Kind).Width}x{MvpDefinitions.GetFootprint(selected.Kind).Height}");
+            lines.Add($"Footprint: {simulation.GameplayTables.GetFootprint(selected.Kind).Width}x{simulation.GameplayTables.GetFootprint(selected.Kind).Height}");
             if (selected.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter)
             {
                 lines.Add($"Direction: {selected.Direction}");
             }
 
-            var demand = MvpDefinitions.PowerDemand.GetValueOrDefault(selected.Kind);
-            var production = MvpDefinitions.PowerProduction.GetValueOrDefault(selected.Kind);
+            var demand = simulation.GameplayTables.PowerDemand.GetValueOrDefault(selected.Kind);
+            var production = simulation.GameplayTables.PowerProduction.GetValueOrDefault(selected.Kind);
             if (demand > 0)
             {
                 lines.Add($"Power demand: {demand}");
@@ -532,7 +532,7 @@ internal static class HudOverlay
 
             if (IsCombatHudKind(selected.Kind))
             {
-                var stats = MvpDefinitions.GetStats(selected.Kind);
+                var stats = simulation.GameplayTables.GetStats(selected.Kind);
                 lines.Add($"Projectile: {stats.ProjectileKind}");
                 lines.Add($"Vision: {stats.VisionRadius}");
                 lines.Add($"Damage: {stats.AttackDamage}");
@@ -598,11 +598,11 @@ internal static class HudOverlay
                 lines.Add("Inventory:");
                 if (selected.Kind == EntityKind.Hub)
                 {
-                    AddHubInventoryLinesWithHits(lines, lineItemTags, selected.Inventory, SidebarStorageKind.Input);
+                    AddHubInventoryLinesWithHits(lines, lineItemTags, selected.Inventory, SidebarStorageKind.Input, simulation.GameplayTables);
                 }
                 else
                 {
-                    AddInventoryLines(lines, selected.Inventory);
+                    AddInventoryLines(lines, selected.Inventory, simulation.GameplayTables);
                 }
             }
 
@@ -638,11 +638,11 @@ internal static class HudOverlay
                 }
                 else
                 {
-                    AddInventoryLinesWithHits(lines, lineItemTags, selected.InputBuffer, SidebarStorageKind.Input);
+                    AddInventoryLinesWithHits(lines, lineItemTags, selected.InputBuffer, SidebarStorageKind.Input, simulation.GameplayTables);
                 }
 
                 lines.Add("Output:");
-                AddInventoryLinesWithHits(lines, lineItemTags, selected.OutputBuffer, SidebarStorageKind.Output);
+                AddInventoryLinesWithHits(lines, lineItemTags, selected.OutputBuffer, SidebarStorageKind.Output, simulation.GameplayTables);
             }
         }
 
@@ -694,7 +694,8 @@ internal static class HudOverlay
         List<string> lines,
         Dictionary<int, (ItemId Item, SidebarStorageKind Kind)> lineItemTags,
         Inventory inventory,
-        SidebarStorageKind kind)
+        SidebarStorageKind kind,
+        GameplayTablesCatalog tables)
     {
         if (inventory.Items.Count == 0)
         {
@@ -705,7 +706,7 @@ internal static class HudOverlay
         foreach (var item in inventory.Items.OrderBy(pair => pair.Key).Take(8))
         {
             var lineIndex = lines.Count;
-            lines.Add($"  {item.Key}: {item.Value}/{MvpDefinitions.GetMaxStackSize(item.Key)}");
+            lines.Add($"  {item.Key}: {item.Value}/{tables.GetMaxStackSize(item.Key)}");
             lineItemTags[lineIndex] = (item.Key, kind);
         }
     }
@@ -714,7 +715,8 @@ internal static class HudOverlay
         List<string> lines,
         Dictionary<int, (ItemId Item, SidebarStorageKind Kind)> lineItemTags,
         Inventory inventory,
-        SidebarStorageKind kind)
+        SidebarStorageKind kind,
+        GameplayTablesCatalog tables)
     {
         if (inventory.Items.Count == 0)
         {
@@ -725,7 +727,7 @@ internal static class HudOverlay
         var lineBudget = 12;
         foreach (var item in inventory.Items.OrderBy(pair => pair.Key))
         {
-            var maxStack = MvpDefinitions.GetMaxStackSize(item.Key);
+            var maxStack = tables.GetMaxStackSize(item.Key);
             var remaining = item.Value;
             if (remaining <= 0)
             {
@@ -779,7 +781,7 @@ internal static class HudOverlay
         switch (selected.Kind)
         {
             case EntityKind.Assembler when selected.SelectedItemRecipe is not null
-                && MvpDefinitions.ItemRecipes.TryGetValue(selected.SelectedItemRecipe.Value, out var itemRecipe):
+                && simulation.GameplayTables.ItemRecipes.TryGetValue(selected.SelectedItemRecipe.Value, out var itemRecipe):
                 needs = itemRecipe.Inputs;
                 return true;
 
@@ -796,7 +798,7 @@ internal static class HudOverlay
             case EntityKind.TankFactory:
             case EntityKind.DroneCenter:
                 if (selected.ProductionTargetKind is not null
-                    && MvpDefinitions.ProductionRecipes.TryGetValue(selected.ProductionTargetKind.Value, out var unitRecipe))
+                    && simulation.GameplayTables.ProductionRecipes.TryGetValue(selected.ProductionTargetKind.Value, out var unitRecipe))
                 {
                     needs = unitRecipe.Inputs;
                     return true;
@@ -985,7 +987,7 @@ internal static class HudOverlay
         target.Draw(panel);
     }
 
-    internal static void AddInventoryLines(List<string> lines, Inventory inventory)
+    internal static void AddInventoryLines(List<string> lines, Inventory inventory, GameplayTablesCatalog tables)
     {
         if (inventory.Items.Count == 0)
         {
@@ -995,7 +997,7 @@ internal static class HudOverlay
 
         foreach (var item in inventory.Items.OrderBy(pair => pair.Key).Take(8))
         {
-            lines.Add($"  {item.Key}: {item.Value}/{MvpDefinitions.GetMaxStackSize(item.Key)}");
+            lines.Add($"  {item.Key}: {item.Value}/{tables.GetMaxStackSize(item.Key)}");
         }
     }
 
@@ -1066,7 +1068,7 @@ internal static class HudOverlay
         if (MvpDefinitions.FactoryKinds.Contains(selected.Kind))
         {
             var index = 1;
-            foreach (var recipe in GetFactoryRecipes(selected.Kind))
+            foreach (var recipe in GetFactoryRecipes(selected.Kind, simulation.GameplayTables))
             {
                 yield return $"  {index}: {recipe.OutputKind}: {FormatCost(recipe.Inputs)}";
                 index++;
@@ -1088,7 +1090,7 @@ internal static class HudOverlay
         else if (selected.Kind == EntityKind.Assembler)
         {
             yield return "Assembler recipes:";
-            foreach (var recipe in MvpDefinitions.ItemRecipes.Values)
+            foreach (var recipe in simulation.GameplayTables.ItemRecipes.Values)
             {
                 yield return $"  {recipe.Id}: {FormatCost(recipe.Inputs)} -> {recipe.OutputAmount} {recipe.OutputItem}";
             }
@@ -1124,9 +1126,9 @@ internal static class HudOverlay
             || kind is EntityKind.MachineGunTurret or EntityKind.CannonTurret or EntityKind.AntiAirTurret;
     }
 
-    internal static IEnumerable<ProductionRecipe> GetFactoryRecipes(EntityKind factoryKind)
+    internal static IEnumerable<ProductionRecipe> GetFactoryRecipes(EntityKind factoryKind, GameplayTablesCatalog tables)
     {
-        return MvpDefinitions.ProductionRecipes.Values
+        return tables.ProductionRecipes.Values
             .Where(recipe => factoryKind == EntityKind.DroneCenter
                 ? recipe.OutputKind == EntityKind.Scout
                 : recipe.OutputKind != EntityKind.Scout)

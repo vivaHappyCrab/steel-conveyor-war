@@ -653,7 +653,7 @@ public sealed class CombatBastionTests
 
     private static bool IsInsideBastionFootprint(WorldEntity bastion, TilePosition tile)
     {
-        return GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position).Contains(tile);
+        return GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position, GameplayTablesCatalog.Embedded).Contains(tile);
     }
 
     private static bool PlaceAdjacent(GameSimulation simulation, WorldEntity entity, TilePosition near)

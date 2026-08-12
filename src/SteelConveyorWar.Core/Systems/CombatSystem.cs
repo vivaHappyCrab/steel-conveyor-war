@@ -78,11 +78,12 @@ internal sealed class CombatSystem
     {
         _context.SyncResolvedMaxHealth(target);
         var attackDamage = ResolveAttackDamage(attacker, attackerStats);
-        var targetStats = MvpDefinitions.GetStats(target.Kind);
+        var targetStats = _context.GameplayTables.GetStats(target.Kind);
         var armor = ResolveArmor(target, targetStats);
         var resistance = CombatDamage.GetResistanceBasisPoints(
             attackerStats.ProjectileKind,
-            MvpDefinitions.GetCombatTargetCategory(target.Kind));
+            MvpDefinitions.GetCombatTargetCategory(target.Kind),
+            _context.GameplayTables);
         return CombatDamage.ComputeFinalDamage(attackDamage, armor, resistance);
     }
 
@@ -247,13 +248,14 @@ internal sealed class CombatSystem
         _context.Presentation.ClearCombatShots();
         // Per-pass spatial index keeps range/splash queries neighborhood-limited; GameWorld tile
         // occupancy (#66) does not replace position-radius combat scans yet.
-        _spatialQueryIndex.Rebuild(_context.World.Entities);
+        _spatialQueryIndex.Rebuild(_context.World.Entities, _context.GameplayTables);
         var spatial = _spatialQueryIndex;
+        var tables = _context.GameplayTables;
         _context.CollectSortedAliveEntities(
             _scratchEntities,
-            static entity => !entity.IsGarrisoned
+            entity => !entity.IsGarrisoned
                              && entity.OwnerId is not null
-                             && MvpDefinitions.GetStats(entity.Kind).AttackDamage > 0);
+                             && tables.GetStats(entity.Kind).AttackDamage > 0);
 
         for (var attackerIndex = 0; attackerIndex < _scratchEntities.Count; attackerIndex++)
         {
@@ -270,7 +272,7 @@ internal sealed class CombatSystem
                 continue;
             }
 
-            var stats = MvpDefinitions.GetStats(attacker.Kind);
+            var stats = tables.GetStats(attacker.Kind);
             var attackRange = stats.AttackRange;
             var target = FindNearestCombatTarget(attacker, attackRange, spatial);
             if (target is null)
@@ -278,7 +280,7 @@ internal sealed class CombatSystem
                 continue;
             }
 
-            if (MvpDefinitions.GetPowerDemand(attacker.Kind) > 0 && !_context.TryConsumeBuildingEnergy(attacker))
+            if (tables.GetPowerDemand(attacker.Kind) > 0 && !_context.TryConsumeBuildingEnergy(attacker))
             {
                 continue;
             }

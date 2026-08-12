@@ -89,17 +89,18 @@ public sealed record OwnResearchSnapshot(
 public sealed record TechSignatureObservation(int ZoneX, int ZoneY, int Intensity);
 
 /// <summary>
-/// R19/R27: Immutable, tick-stamped combat event the observer is allowed to see this tick. Filtered by
-/// the same fair-visibility gate SFML uses for tracers, so hidden movement/combat cannot leak through the
-/// event stream. Presentation-only (not part of the authoritative hash).
+/// R19/R27/H06: Immutable, tick-stamped combat event the observer is allowed to see this tick.
+/// Hidden endpoints are omitted or stubbed (<see cref="RevealMode"/>) so exact fog coordinates cannot leak.
+/// Presentation-only (not part of the authoritative hash).
 /// </summary>
 public sealed record ObservedCombatEvent(
     long ObservationTick,
     int AttackerId,
     int TargetId,
-    WorldPosition From,
-    WorldPosition To,
-    ProjectileKind ProjectileKind);
+    WorldPosition? From,
+    WorldPosition? To,
+    ProjectileKind ProjectileKind,
+    CombatShotRevealMode RevealMode);
 
 /// <summary>
 /// R04/R19: A whole-observation snapshot bound to a single tick. Everything a bot may read is frozen here

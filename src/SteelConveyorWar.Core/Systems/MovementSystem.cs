@@ -15,7 +15,7 @@ public sealed partial class GameSimulation
 
     private void ProcessMovement()
     {
-        _spatialQueryIndex.Rebuild(World.Entities);
+        _spatialQueryIndex.Rebuild(World.Entities, GameplayTables);
         CollectSortedAliveEntities(_scratchEntities, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
         for (var i = 0; i < _scratchEntities.Count; i++)
         {
@@ -51,7 +51,7 @@ public sealed partial class GameSimulation
             if (unit.Position.IsWithinEuclideanRange(waypoint, 0))
             {
                 var nextIndex = (index + 1) % waypoints.Count;
-                unit.Order = unit.Order with { WaypointIndex = nextIndex };
+                unit.Order = unit.Order.WithWaypointIndex(nextIndex);
                 return waypoints[nextIndex];
             }
 
@@ -352,7 +352,7 @@ public sealed partial class GameSimulation
             return false;
         }
 
-        var radius = MvpDefinitions.GetCollisionSize(mover.Kind).RadiusMilli;
+        var radius = GameplayTables.GetCollisionSize(mover.Kind).RadiusMilli;
         if (radius <= 0)
         {
             return true;
@@ -385,7 +385,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            var otherRadius = MvpDefinitions.GetCollisionSize(entity.Kind).RadiusMilli;
+            var otherRadius = GameplayTables.GetCollisionSize(entity.Kind).RadiusMilli;
             if (otherRadius <= 0)
             {
                 continue;
@@ -430,12 +430,12 @@ public sealed partial class GameSimulation
         return entity.MoveTarget is not null && entity.MoveTarget.Value != entity.Position;
     }
 
-    private static bool CircleIntersectsEntityFootprint(WorldPosition position, long radiusMilli, WorldEntity obstacle)
+    private bool CircleIntersectsEntityFootprint(WorldPosition position, long radiusMilli, WorldEntity obstacle)
     {
         return DistanceSquaredToEntityFootprint(position, obstacle) < radiusMilli * radiusMilli;
     }
 
-    private static bool MovesOutOfExistingOverlap(WorldEntity mover, WorldPosition nextPosition, long radiusMilli, WorldEntity obstacle)
+    private bool MovesOutOfExistingOverlap(WorldEntity mover, WorldPosition nextPosition, long radiusMilli, WorldEntity obstacle)
     {
         var currentDistanceSq = DistanceSquaredToEntityFootprint(mover.WorldPosition, obstacle);
         var radiusSq = radiusMilli * radiusMilli;
@@ -447,12 +447,12 @@ public sealed partial class GameSimulation
         return DistanceSquaredToEntityFootprint(nextPosition, obstacle) > currentDistanceSq;
     }
 
-    private static long DistanceSquaredToEntityFootprint(WorldPosition position, WorldEntity obstacle)
+    private long DistanceSquaredToEntityFootprint(WorldPosition position, WorldEntity obstacle)
     {
         var footprintKind = obstacle.Kind == EntityKind.GhostBuild && obstacle.BuildTargetKind is not null
             ? obstacle.BuildTargetKind.Value
             : obstacle.Kind;
-        var footprint = MvpDefinitions.GetFootprint(footprintKind);
+        var footprint = GameplayTables.GetFootprint(footprintKind);
         var minX = WorldUnits.TileToMilli(obstacle.Position.X);
         var maxX = WorldUnits.TileToMilli(obstacle.Position.X + footprint.Width);
         var minY = WorldUnits.TileToMilli(obstacle.Position.Y);

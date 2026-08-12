@@ -101,7 +101,7 @@ public sealed partial class GameSimulation
             var radius = ResolveStat(
                 ownerId,
                 ResearchStatIds.VisionRadius,
-                MvpDefinitions.GetStats(entity.Kind).VisionRadius,
+                GameplayTables.GetStats(entity.Kind).VisionRadius,
                 minValue: 0);
 
             var tiles = GetOrBuildVisionDisk(entity.Id, entity.Position, radius);
@@ -145,7 +145,7 @@ public sealed partial class GameSimulation
             var radius = ResolveStat(
                 ownerId,
                 ResearchStatIds.VisionRadius,
-                MvpDefinitions.GetStats(entity.Kind).VisionRadius,
+                GameplayTables.GetStats(entity.Kind).VisionRadius,
                 minValue: 0);
             var origin = entity.Position;
             destination.Add(new FogVisionSource(entity.Id, ownerId.Value, origin.X, origin.Y, radius));
@@ -268,7 +268,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            if (!MvpDefinitions.TechSignatureIntensity.TryGetValue(entity.Kind, out var intensity) || intensity <= 0)
+            if (!GameplayTables.TechSignatureIntensity.TryGetValue(entity.Kind, out var intensity) || intensity <= 0)
             {
                 continue;
             }

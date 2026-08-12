@@ -4,12 +4,7 @@ namespace SteelConveyorWar.Core;
 
 public static class MapSettingsLoader
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = ContentJsonOptions.CreateStrict();
 
     public static MapSettings Parse(string json)
     {
@@ -68,6 +63,10 @@ public static class MapSettingsLoader
                     throw new InvalidOperationException(
                         $"Map player '{player.Id}' must declare all of startCommander, startBastion, and startHub, or omit all three.");
                 }
+
+                EnsureInsideDefaultWorld(startCommander.Value, player.Id, "startCommander");
+                EnsureInsideDefaultWorld(startBastion.Value, player.Id, "startBastion");
+                EnsureInsideDefaultWorld(startHub.Value, player.Id, "startHub");
             }
             else
             {
@@ -103,6 +102,19 @@ public static class MapSettingsLoader
         }
 
         return new TilePosition(dto.X, dto.Y);
+    }
+
+    private static void EnsureInsideDefaultWorld(TilePosition tile, int playerId, string fieldName)
+    {
+        var world = new WorldSize(
+            MapPlayerDefinition.DefaultWorldWidth,
+            MapPlayerDefinition.DefaultWorldHeight);
+        if (tile.X < 0 || tile.Y < 0 || tile.X >= world.Width || tile.Y >= world.Height)
+        {
+            throw new InvalidOperationException(
+                $"Map player '{playerId}' {fieldName} ({tile.X},{tile.Y}) is outside world " +
+                $"{world.Width}x{world.Height}.");
+        }
     }
 
     private static string NormalizeColor(string color, int playerId)

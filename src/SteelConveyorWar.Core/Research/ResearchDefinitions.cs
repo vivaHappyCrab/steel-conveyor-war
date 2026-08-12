@@ -2,7 +2,14 @@ namespace SteelConveyorWar.Core;
 
 public sealed record SciencePackCost(ItemId Item, int Amount);
 
-public sealed record ResearchCostDefinition(int EffortUnits, IReadOnlyList<SciencePackCost> SciencePacks);
+public sealed record ResearchCostDefinition(int EffortUnits, IReadOnlyList<SciencePackCost> SciencePacks)
+{
+    public IReadOnlyList<SciencePackCost> SciencePacks
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(SciencePacks);
+}
 
 public sealed record TechnologyDefinition(
     TechnologyId Id,
@@ -11,51 +18,126 @@ public sealed record TechnologyDefinition(
     IReadOnlyList<ResearchEffect> Effects,
     IReadOnlyList<string> Tags,
     string DisplayName,
-    string Description);
+    string Description)
+{
+    public IReadOnlyList<ResearchEffect> Effects
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(Effects);
+
+    public IReadOnlyList<string> Tags
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(Tags);
+}
 
 public sealed record TierDefinition(
     string Id,
     ItemId SciencePackItem,
-    IReadOnlyList<ResearchEffect> UnlockContent);
+    IReadOnlyList<ResearchEffect> UnlockContent)
+{
+    public IReadOnlyList<ResearchEffect> UnlockContent
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(UnlockContent);
+}
 
 public sealed record GateRequirementDefinition(
     string Id,
     int MinimumCompleted,
-    IReadOnlyList<TechnologyId> CandidateTechnologyIds);
+    IReadOnlyList<TechnologyId> CandidateTechnologyIds)
+{
+    public IReadOnlyList<TechnologyId> CandidateTechnologyIds
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(CandidateTechnologyIds);
+}
 
 public sealed record TierGateDefinition(
     string Id,
     string FromTierId,
     string? TargetTierId,
     IReadOnlyList<GateRequirementDefinition> Requirements,
-    IReadOnlyList<ResearchEffect> CompletionEffects);
+    IReadOnlyList<ResearchEffect> CompletionEffects)
+{
+    public IReadOnlyList<GateRequirementDefinition> Requirements
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(Requirements);
+
+    public IReadOnlyList<ResearchEffect> CompletionEffects
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(CompletionEffects);
+}
 
 public sealed record ResearchTrackDefinition(
     string Id,
     ResearchTrackMode Mode,
     int MaximumActiveProjects,
     IReadOnlyList<string> SourceKinds,
-    int DefaultWeight);
+    int DefaultWeight)
+{
+    public IReadOnlyList<string> SourceKinds
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(SourceKinds);
+}
 
 public sealed record ExclusiveGroupDefinition(
     string Id,
     IReadOnlyList<TechnologyId> MemberTechnologyIds,
     int MaximumSelections,
     ExclusiveLockOn LockOn,
-    bool ConfirmationRequired);
+    bool ConfirmationRequired)
+{
+    public IReadOnlyList<TechnologyId> MemberTechnologyIds
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(MemberTechnologyIds);
+}
 
 public sealed record OptionalPoolDefinition(
     string Id,
-    IReadOnlyList<TechnologyId> TechnologyIds);
+    IReadOnlyList<TechnologyId> TechnologyIds)
+{
+    public IReadOnlyList<TechnologyId> TechnologyIds
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(TechnologyIds);
+}
 
 public sealed record ResearchBudgetDefinition(
     int Scale,
     IReadOnlyDictionary<string, int> DefaultAllocations,
-    bool PlayerAdjustable);
+    bool PlayerAdjustable)
+{
+    public IReadOnlyDictionary<string, int> DefaultAllocations
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value, StringComparer.Ordinal);
+    } = ContentFreeze.Dictionary(DefaultAllocations, StringComparer.Ordinal);
+}
 
 public sealed record ResearchScheduleDefinition(
     IReadOnlyList<ResearchTrackDefinition> Tracks,
-    ResearchBudgetDefinition Budget);
+    ResearchBudgetDefinition Budget)
+{
+    public IReadOnlyList<ResearchTrackDefinition> Tracks
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(Tracks);
+}
 
 public sealed record ResearchProfileDefinition(
     string Id,
@@ -63,14 +145,59 @@ public sealed record ResearchProfileDefinition(
     IReadOnlyDictionary<string, TierGateDefinition> GatesByFromTier,
     IReadOnlyList<ExclusiveGroupDefinition> ExclusiveGroups,
     IReadOnlyList<OptionalPoolDefinition> OptionalPools,
-    int CatchUpMultiplierBasisPoints);
+    int CatchUpMultiplierBasisPoints)
+{
+    public IReadOnlyDictionary<string, TierGateDefinition> GatesByFromTier
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value, StringComparer.Ordinal);
+    } = ContentFreeze.Dictionary(GatesByFromTier, StringComparer.Ordinal);
+
+    public IReadOnlyList<ExclusiveGroupDefinition> ExclusiveGroups
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(ExclusiveGroups);
+
+    public IReadOnlyList<OptionalPoolDefinition> OptionalPools
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(OptionalPools);
+}
 
 public sealed record ResearchCatalog(
     IReadOnlyDictionary<TechnologyId, TechnologyDefinition> Technologies,
     IReadOnlyDictionary<string, TierDefinition> Tiers,
     IReadOnlyDictionary<string, ResearchProfileDefinition> Profiles,
     IReadOnlyList<string> BaselineCapabilities,
-    string ContentHash);
+    string ContentHash)
+{
+    // H07: freeze top-level research graphs; nested collections freeze via definition property init.
+    public IReadOnlyDictionary<TechnologyId, TechnologyDefinition> Technologies
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value);
+    } = ContentFreeze.Dictionary(Technologies);
+
+    public IReadOnlyDictionary<string, TierDefinition> Tiers
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value, StringComparer.Ordinal);
+    } = ContentFreeze.Dictionary(Tiers, StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, ResearchProfileDefinition> Profiles
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value, StringComparer.Ordinal);
+    } = ContentFreeze.Dictionary(Profiles, StringComparer.Ordinal);
+
+    public IReadOnlyList<string> BaselineCapabilities
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(BaselineCapabilities);
+}
 
 public sealed record GameCreationOptions(
     int RandomSeed,

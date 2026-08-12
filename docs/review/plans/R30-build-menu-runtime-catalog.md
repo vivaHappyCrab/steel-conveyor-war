@@ -2,7 +2,7 @@
 
 **Severity:** High (gameplay/content) · **Домен:** SFML UI / content · **Roadmap:** P0/P1
 **Статус валидации:** ✅ Подтверждено по коду
-**Статус реализации:** ✅ Реализовано 2026-08-11 (`GameSimulation.cs`, `Ui/BuildMenuCatalog.cs`, `Ui/BuildBarModel.cs`, `Ui/BuildBarOverlay.cs`; тесты в `BuildAffordabilityQueryTests.cs`, `BuildMenuCatalogTests.cs`). ⚠️ Требуется прогон `dotnet build -c Release` + `dotnet test` (VM недоступна, изменения не скомпилированы).
+**Статус реализации:** ✅ Реализовано 2026-08-11; production session wiring completed in H05 (`ComposeFrom(simulation.BuildCostCatalog)` threaded into `SfmlPlaySession` / `InputCommandMapper` / overlays; static `BuildableKinds` obsolete).
 
 ### Что сделано
 - `GameSimulation.GetAffordableBuildCount(commander, kind)` — новый публичный non-mutating запрос: считает affordability по тем же источникам оплаты, что и `TryPayBuildCostFromCommanderOrNearbyHubs` (инвентарь коммандера + владеемые hubs в радиусе `CommanderInteractRadius`), возвращает floor(min доступного/потребности) по каждому item.

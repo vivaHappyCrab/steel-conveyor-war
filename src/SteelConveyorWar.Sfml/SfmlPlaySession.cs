@@ -44,13 +44,15 @@ internal sealed class SfmlPlaySession
         LocalPlayerBinding.EnsureSeatControllable(simulation, localPlayer);
         // R02: all gameplay mutations flow through the deferred command sink so local input takes the
         // same tick-scheduled, replayable path as remote input.
-        var commandSink = new DeferredCommandSink(simulation);
+        var commandSink = new BoundPlayerCommandSink(new DeferredCommandSink(simulation), localPlayer);
         var commands = new SfmlCommandGateway(commandSink);
         var initialSelectedId = simulation.World.Entities
             .First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander)
             .Id;
         var session = new SessionState(initialSelectedId);
-        var inputMapper = new InputCommandMapper(localPlayer, session, commands);
+        // H05: compose once from the match catalog so hotkeys/overlay track runtime costs, not Embedded.
+        var buildMenu = BuildMenuCatalog.ComposeFrom(simulation.BuildCostCatalog);
+        var inputMapper = new InputCommandMapper(localPlayer, session, commands, buildMenu);
         var researchClickClock = new Clock();
         var font = SfmlFontLoader.TryLoadFont();
 
@@ -197,7 +199,7 @@ internal sealed class SfmlPlaySession
             }
 
             if (button == "Left" && session.IsBuildMenuOpen
-                && BuildBarOverlay.TryPickBuildBarKind(mousePosition, windowWidth, windowHeight, panelX, out var barKind))
+                && BuildBarOverlay.TryPickBuildBarKind(mousePosition, windowWidth, windowHeight, panelX, buildMenu, out var barKind))
             {
                 session.SelectPendingBuildKind(barKind);
                 return;
@@ -424,7 +426,7 @@ internal sealed class SfmlPlaySession
         var clock = new Clock();
         var accumulator = 0f;
         var fixedDelta = 1f / display.TicksPerSecond;
-        var lingeringShots = new List<(CombatShotEvent Shot, float Remaining)>();
+        var lingeringShots = new List<(CombatShotEvent Shot, CombatShotRevealMode Reveal, float Remaining)>();
 
         var renderedFrames = 0;
 
@@ -452,11 +454,12 @@ internal sealed class SfmlPlaySession
                 simulation.AdvanceTick();
                 foreach (var shot in simulation.CombatShotsThisTick)
                 {
-                    // R27: only buffer tracers the local player can actually see, so hidden combat
-                    // cannot be inferred from tracer endpoints.
-                    if (WorldRenderer.IsShotVisibleToLocalPlayer(simulation, localPlayer, shot))
+                    // H06: buffer reveal mode at capture time so linger cannot later upgrade a
+                    // partial reveal into a full hidden-endpoint leak.
+                    var reveal = WorldRenderer.ClassifyShotForLocalPlayer(simulation, localPlayer, shot);
+                    if (CombatShotVisibility.IsVisible(reveal))
                     {
-                        lingeringShots.Add((shot, SfmlUiLayout.CombatShotLingerSeconds));
+                        lingeringShots.Add((shot, reveal, SfmlUiLayout.CombatShotLingerSeconds));
                     }
                 }
 
@@ -475,7 +478,7 @@ internal sealed class SfmlPlaySession
                 }
                 else
                 {
-                    lingeringShots[i] = (lingeringShots[i].Shot, remaining);
+                    lingeringShots[i] = (lingeringShots[i].Shot, lingeringShots[i].Reveal, remaining);
                 }
             }
 
@@ -503,7 +506,7 @@ internal sealed class SfmlPlaySession
                     else if (mousePosition.Y > windowHeight - SfmlUiLayout.EdgeScrollBand)
                     {
                         var overBuildBar = session.IsBuildMenuOpen
-                            && BuildBarOverlay.GetBuildBarBounds(windowWidth, windowHeight, panelX, out _, out _).Contains(new Vector2f(mousePosition.X, mousePosition.Y));
+                            && BuildBarOverlay.GetBuildBarBounds(windowWidth, windowHeight, panelX, buildMenu, out _, out _).Contains(new Vector2f(mousePosition.X, mousePosition.Y));
                         if (!overBuildBar) { dy += pan; }
                     }
                 }
@@ -517,7 +520,7 @@ internal sealed class SfmlPlaySession
                 window.SetView(worldView);
                 var hoverTile = TileFromScreen(mousePosition);
                 if (session.IsBuildMenuOpen
-                    && BuildBarOverlay.GetBuildBarBounds(windowWidth, windowHeight, panelX, out _, out _).Contains(new Vector2f(mousePosition.X, mousePosition.Y)))
+                    && BuildBarOverlay.GetBuildBarBounds(windowWidth, windowHeight, panelX, buildMenu, out _, out _).Contains(new Vector2f(mousePosition.X, mousePosition.Y)))
                 {
                     hoverTile = null;
                 }
@@ -531,7 +534,7 @@ internal sealed class SfmlPlaySession
                     session.PendingDirection,
                     hoverTile,
                     session.PatrolWaypoints,
-                    lingeringShots.Select(entry => entry.Shot).ToList(),
+                    lingeringShots.Select(entry => (entry.Shot, entry.Reveal)).ToList(),
                     camera.X,
                     camera.Y,
                     playfieldWidth,
@@ -601,7 +604,8 @@ internal sealed class SfmlPlaySession
                     windowWidth,
                     windowHeight,
                     panelX,
-                    mousePosition);
+                    mousePosition,
+                    buildMenu);
             }
             else if (!session.IsResearchOverlayOpen && !session.IsEnergyOverlayOpen)
             {

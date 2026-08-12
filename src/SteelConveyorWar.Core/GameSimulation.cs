@@ -178,7 +178,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         }
 
         var simulation = new GameSimulation(
-            new GameWorld(size, terrain, Array.Empty<WorldEntity>()),
+            new GameWorld(size, terrain, Array.Empty<WorldEntity>(), options.ResolvedGameplayTables),
             players,
             options.RandomSeed,
             options.Catalog,
@@ -295,6 +295,8 @@ public sealed partial class GameSimulation : ISimulationSystemContext
 
     // R06: explicit ISimulationSystemContext members forwarding to existing (differently-visible) surface.
     IReadOnlyList<PlayerState> ISimulationSystemContext.Players => _players;
+
+    GameplayTablesCatalog ISimulationSystemContext.GameplayTables => GameplayTables;
 
     void ISimulationSystemContext.SyncResolvedMaxHealth(WorldEntity entity) => SyncResolvedMaxHealth(entity);
 
@@ -704,7 +706,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
                 continue;
             }
 
-            var commanderRoom = MvpDefinitions.GetMaxStackSize(pair.Key) - commander.Inventory.Count(pair.Key);
+            var commanderRoom = GameplayTables.GetMaxStackSize(pair.Key) - commander.Inventory.Count(pair.Key);
             if (commanderRoom > 0)
             {
                 var toCommander = Math.Min(commanderRoom, left);
@@ -725,7 +727,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
                     break;
                 }
 
-                while (left > 0 && hub.Inventory.TryAddWithinTotalStackLimit(pair.Key, 1, hubStacks))
+                while (left > 0 && hub.Inventory.TryAddWithinTotalStackLimit(pair.Key, 1, hubStacks, GameplayTables))
                 {
                     left--;
                 }
@@ -840,8 +842,9 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             return true;
         }
 
-        if (!MvpDefinitions.ProductionRecipes.ContainsKey(outputKind.Value)
-            || !CanFactoryProduce(factory.Kind, outputKind.Value))
+        if (!GameplayTables.ProductionRecipes.TryGetValue(outputKind.Value, out var recipe)
+            || !CanFactoryProduce(factory.Kind, outputKind.Value)
+            || !IsRecipeUnlockedForOwner(actorPlayerId, recipe))
         {
             return false;
         }
@@ -919,7 +922,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             return false;
         }
 
-        _spatialQueryIndex.Rebuild(World.Entities);
+        _spatialQueryIndex.Rebuild(World.Entities, GameplayTables);
         return CanOccupyWorldPosition(entity, position, _spatialQueryIndex);
     }
 
@@ -1016,7 +1019,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             return 0;
         }
 
-        return _combatSystem.ComputeDamageForTests(attacker, MvpDefinitions.GetStats(attacker.Kind), target);
+        return _combatSystem.ComputeDamageForTests(attacker, GameplayTables.GetStats(attacker.Kind), target);
     }
 
     public bool TrySetBastionTemplate(int bastionId, PlayerId actorPlayerId, EntityKind unitKind, int count)
@@ -1084,7 +1087,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     /// </summary>
     public bool IsUnitProductionUnlocked(PlayerId playerId, EntityKind unitKind)
     {
-        if (!MvpDefinitions.ProductionRecipes.TryGetValue(unitKind, out var recipe))
+        if (!GameplayTables.ProductionRecipes.TryGetValue(unitKind, out var recipe))
         {
             return false;
         }
@@ -1125,7 +1128,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         if (assembler is null
             || assembler.OwnerId != actorPlayerId
             || assembler.Kind != EntityKind.Assembler
-            || !MvpDefinitions.ItemRecipes.ContainsKey(recipeId))
+            || !GameplayTables.ItemRecipes.ContainsKey(recipeId))
         {
             return false;
         }
@@ -1151,7 +1154,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             return false;
         }
 
-        var normalized = order with { WaypointIndex = 0 };
+        var normalized = order.WithWaypointIndex(0);
         bastion.Order = normalized;
         foreach (var unit in World.Entities.Where(entity =>
                      entity.IsAlive
@@ -1232,7 +1235,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
 
         if (entity.Kind == EntityKind.Hub)
         {
-            return entity.Inventory.TryAddWithinTotalStackLimit(item, amount, GetHubStorageStacks(entity.OwnerId));
+            return entity.Inventory.TryAddWithinTotalStackLimit(item, amount, GetHubStorageStacks(entity.OwnerId), GameplayTables);
         }
 
         if (IsBuildingWithBuffers(entity.Kind))
@@ -1255,7 +1258,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         }
 
         return entity.Kind == EntityKind.Hub
-            ? entity.Inventory.TryAddWithinTotalStackLimit(item, amount, GetHubStorageStacks(entity.OwnerId))
+            ? entity.Inventory.TryAddWithinTotalStackLimit(item, amount, GetHubStorageStacks(entity.OwnerId), GameplayTables)
             : TryAddToBuffer(entity.OutputBuffer, item, amount);
     }
 
@@ -1426,13 +1429,13 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     /// Items currently accepted into this building's input (empty = no recipe / refuse Ctrl+deposit).
     /// Hub is not handled here.
     /// </summary>
-    public static IReadOnlySet<ItemId> GetAcceptedInputItems(WorldEntity entity)
+    public IReadOnlySet<ItemId> GetAcceptedInputItems(WorldEntity entity)
     {
         switch (entity.Kind)
         {
             case EntityKind.Assembler:
                 if (entity.SelectedItemRecipe is null
-                    || !MvpDefinitions.ItemRecipes.TryGetValue(entity.SelectedItemRecipe.Value, out var itemRecipe))
+                    || !GameplayTables.ItemRecipes.TryGetValue(entity.SelectedItemRecipe.Value, out var itemRecipe))
                 {
                     return EmptyItemSet;
                 }
@@ -1454,7 +1457,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             case EntityKind.TankFactory:
             case EntityKind.DroneCenter:
                 if (entity.ProductionTargetKind is null
-                    || !MvpDefinitions.ProductionRecipes.TryGetValue(entity.ProductionTargetKind.Value, out var unitRecipe))
+                    || !GameplayTables.ProductionRecipes.TryGetValue(entity.ProductionTargetKind.Value, out var unitRecipe))
                 {
                     return EmptyItemSet;
                 }
@@ -1492,7 +1495,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     private static readonly HashSet<ItemId> ShellOnly = new() { ItemId.Shell };
     private static readonly HashSet<ItemId> AntiAirShellOnly = new() { ItemId.AntiAirShell };
 
-    private static void DepositAllMatching(
+    private void DepositAllMatching(
         WorldEntity commander,
         Inventory destination,
         Func<ItemId, bool> accept,
@@ -1509,11 +1512,11 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             var remaining = item.Value;
             while (remaining > 0)
             {
-                var chunk = Math.Min(remaining, MvpDefinitions.GetMaxStackSize(item.Key));
+                var chunk = Math.Min(remaining, GameplayTables.GetMaxStackSize(item.Key));
                 while (chunk > 0)
                 {
                     var ok = hubMode
-                        ? destination.TryAddWithinTotalStackLimit(item.Key, chunk, hubStackLimit!.Value)
+                        ? destination.TryAddWithinTotalStackLimit(item.Key, chunk, hubStackLimit!.Value, GameplayTables)
                         : TryAddToBuffer(destination, item.Key, chunk);
                     if (ok)
                     {
@@ -1534,7 +1537,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         }
     }
 
-    private static bool TryValidateCommanderInteract(WorldEntity? commander, WorldEntity? target)
+    private bool TryValidateCommanderInteract(WorldEntity? commander, WorldEntity? target)
     {
         if (commander is null
             || target is null
@@ -1665,7 +1668,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
 
     private TilePosition ChooseStartingSolarTile(WorldEntity bastion)
     {
-        var bastionTiles = GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position).ToHashSet();
+        var bastionTiles = GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position, GameplayTables).ToHashSet();
         var candidates = new List<TilePosition>();
         foreach (var tile in bastionTiles)
         {
@@ -1709,7 +1712,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             return false;
         }
 
-        var bastionTiles = GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position).ToHashSet();
+        var bastionTiles = GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position, GameplayTables).ToHashSet();
         if (bastionTiles.Contains(candidate))
         {
             return false;
@@ -1754,9 +1757,9 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         return entity;
     }
 
-    private static void ConfigureEntityDefaults(WorldEntity entity)
+    private void ConfigureEntityDefaults(WorldEntity entity)
     {
-        entity.EnergyBufferCapacity = MvpDefinitions.GetEnergyBufferCapacity(entity.Kind);
+        entity.EnergyBufferCapacity = GameplayTables.GetEnergyBufferCapacity(entity.Kind);
         entity.EnergyBuffer = 0;
         // Assembler / factory default recipe is none until the player (or autofill) selects one.
     }
@@ -1771,7 +1774,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             return;
         }
 
-        var baseline = MvpDefinitions.GetStats(entity.Kind).MaxHealth;
+        var baseline = GameplayTables.GetStats(entity.Kind).MaxHealth;
         var resolved = ResolveStat(
             entity.OwnerId.Value,
             ResearchStatIds.MaxHealth,
@@ -1909,7 +1912,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
 
     private bool CanPlaceBuilding(EntityKind targetKind, TilePosition anchor)
     {
-        var tiles = GameWorld.GetFootprintTiles(targetKind, anchor).ToList();
+        var tiles = GameWorld.GetFootprintTiles(targetKind, anchor, GameplayTables).ToList();
         if (tiles.Any(tile => !World.IsInside(tile)))
         {
             return false;
@@ -1945,7 +1948,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         return kind is EntityKind.Mine or EntityKind.CoalMine or EntityKind.OilWell;
     }
 
-    private static bool IsWithinBuildRadius(WorldEntity commander, EntityKind targetKind, TilePosition anchor)
+    private bool IsWithinBuildRadius(WorldEntity commander, EntityKind targetKind, TilePosition anchor)
     {
         return DistanceSquaredToFootprint(commander.WorldPosition, targetKind, anchor)
             <= Square(MvpDefinitions.CommanderBuildRadius * WorldUnits.MilliPerTile);
@@ -2121,15 +2124,15 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         return BuildCostCatalog.Costs.ContainsKey(kind) && IsBuildUnlocked(playerId, kind);
     }
 
-    private static int DistanceToFootprint(TilePosition from, EntityKind targetKind, TilePosition anchor)
+    private int DistanceToFootprint(TilePosition from, EntityKind targetKind, TilePosition anchor)
     {
-        return GameWorld.GetFootprintTiles(targetKind, anchor)
+        return GameWorld.GetFootprintTiles(targetKind, anchor, GameplayTables)
             .Min(tile => from.ManhattanDistance(tile));
     }
 
-    private static long DistanceSquaredToFootprint(WorldPosition from, EntityKind targetKind, TilePosition anchor)
+    private long DistanceSquaredToFootprint(WorldPosition from, EntityKind targetKind, TilePosition anchor)
     {
-        var footprint = MvpDefinitions.GetFootprint(targetKind);
+        var footprint = GameplayTables.GetFootprint(targetKind);
         var minX = WorldUnits.TileToMilli(anchor.X);
         var maxX = WorldUnits.TileToMilli(anchor.X + footprint.Width);
         var minY = WorldUnits.TileToMilli(anchor.Y);

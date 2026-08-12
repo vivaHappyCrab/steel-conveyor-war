@@ -252,7 +252,11 @@ public sealed class ConfigContentLoaderTests
             }
             """;
         var ex = Assert.Throws<InvalidOperationException>(() => GameplayTablesLoader.Parse(json));
-        Assert.Contains("unknown entity kind", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("entityStats", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            ex.Message.Contains("unknown", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("undefined", StringComparison.OrdinalIgnoreCase),
+            ex.Message);
     }
 
     [Fact]
@@ -291,6 +295,10 @@ public sealed class ConfigContentLoaderTests
             GameCreationOptions.Default with { RandomSeed = 11, GameplayTables = overridden });
 
         Assert.Equal(999, simulation.GameplayTables.GetStats(EntityKind.Commander).MaxHealth);
+        var commander = simulation.World.Entities.Single(
+            entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        Assert.Equal(999, commander.MaxHealth);
+        Assert.Equal(999, commander.Health);
         // Static MvpDefinitions fallback stays on Embedded (parity for call sites without a match catalog).
         Assert.Equal(300, MvpDefinitions.GetStats(EntityKind.Commander).MaxHealth);
     }
