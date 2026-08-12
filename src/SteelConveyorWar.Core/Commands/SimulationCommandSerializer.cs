@@ -23,12 +23,16 @@ namespace SteelConveyorWar.Core.Commands;
 public static class SimulationCommandSerializer
 {
     /// <summary>
-    /// R11: current command wire protocol version. Bump on any breaking envelope/payload change and
+    /// R11/M02: current command wire protocol version. Bump on any breaking envelope/payload change and
     /// widen <see cref="MinSupportedProtocolVersion"/> only when older shapes remain decodable.
+    /// v2: <c>SetProjectWeight</c> added; <c>AssignFactoryBastion</c> removed from wire vocabulary.
     /// </summary>
-    public const int ProtocolVersion = 1;
+    public const int ProtocolVersion = 2;
 
-    /// <summary>Oldest protocol version this build can still decode.</summary>
+    /// <summary>
+    /// Oldest protocol version this build can still decode. v1 envelopes remain decodable for kinds
+    /// that still exist; obsolete kinds are rejected by kind regardless of version.
+    /// </summary>
     public const int MinSupportedProtocolVersion = 1;
 
     private static readonly JsonSerializerOptions Options = CreateOptions();

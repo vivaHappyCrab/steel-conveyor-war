@@ -175,7 +175,22 @@ public sealed class CommandProtocolTests
         var json = SimulationCommandSerializer.Serialize(
             new IssueMoveCommand(new PlayerId(1), 5, 3, new TilePosition(1, 1)));
 
-        Assert.Contains("\"protocolVersion\":1", json);
+        Assert.Contains($"\"protocolVersion\":{SimulationCommandSerializer.ProtocolVersion}", json);
+        Assert.Equal(2, SimulationCommandSerializer.ProtocolVersion);
+    }
+
+    [Fact]
+    public void ObsoleteAssignFactoryBastion_CannotBeEnqueued()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 5);
+#pragma warning disable CS0618
+        var obsolete = new AssignFactoryBastionCommand(new PlayerId(1), simulation.Tick + 1, FactoryId: 1, BastionId: 2);
+#pragma warning restore CS0618
+
+        Assert.Throws<ArgumentException>(() => simulation.EnqueueCommand(obsolete));
+        Assert.Empty(simulation.PendingCommands);
+        // Pending hash must remain callable (no Serialize throw from obsolete kind in buffer).
+        _ = simulation.ComputePendingCommandsHash();
     }
 
     [Fact]

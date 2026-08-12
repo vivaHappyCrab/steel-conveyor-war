@@ -46,6 +46,15 @@ public sealed partial class GameSimulation
                 $"Command tick {command.Tick} must be greater than current simulation tick {Tick}.");
         }
 
+        // M02/H03: obsolete kinds are not wire-serializable — keep them out of the pending buffer so
+        // canonical sort / pending-command hash never call Serialize on a rejected vocabulary entry.
+        if (SimulationCommandVocabulary.IsObsolete(command.Kind))
+        {
+            throw new ArgumentException(
+                $"Command kind '{command.Kind}' is obsolete and cannot be enqueued (M02).",
+                nameof(command));
+        }
+
         if (command is SimulationCommandBase baseCommand && baseCommand.Sequence <= 0)
         {
             command = baseCommand.WithScheduling(baseCommand.Tick, NextEnqueueSequence(baseCommand.Actor));
