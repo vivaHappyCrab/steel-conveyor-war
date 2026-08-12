@@ -17,7 +17,7 @@ public static class HeadlessHostRunner
         ArgumentNullException.ThrowIfNull(options);
 
         var playerId = new PlayerId(options.PlayerId);
-        var sink = new DeferredCommandSink(simulation);
+        var sink = new BoundPlayerCommandSink(new DeferredCommandSink(simulation), playerId);
         // R19: the bot observes only through the fair observation contract — it never reads World/GetPlayer.
         var view = simulation.CreatePlayerView(playerId, PlayerObservationMode.Fair);
         var commandsIssued = 0;
@@ -46,15 +46,17 @@ public static class HeadlessHostRunner
     /// Real bot policy belongs in a follow-up (see issue #60).
     /// R02: enqueues an <see cref="IssueMoveCommand"/> through <paramref name="sink"/> instead of
     /// mutating the simulation immediately.
-    /// R19: reads exclusively through the fair <see cref="IPlayerView"/> observation contract — it does
-    /// not touch <c>GameSimulation.World</c>/<c>GetPlayer</c>, so the stub can never cheat past fog.
+    /// R19/M10: reads exclusively through one fair <see cref="IPlayerView.CaptureFrame"/> call —
+    /// it does not touch <c>GameSimulation.World</c>/<c>GetPlayer</c>, so the stub can never cheat past fog.
     /// </summary>
     internal static bool TryApplyStubAiStep(IPlayerView view, IPlayerCommandSink sink, PlayerId playerId)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(sink);
 
-        var commander = view.GetVisibleEntities()
+        // M10: one atomic frame per decision (entities + fog board share ObservationTick).
+        var frame = view.CaptureFrame();
+        var commander = frame.VisibleEntities
             .FirstOrDefault(entity => entity.IsOwn && entity.Kind == EntityKind.Commander);
 
         if (commander is null)
@@ -69,7 +71,7 @@ public static class HeadlessHostRunner
         }
 
         var target = new TilePosition(commander.Position.X, Math.Max(0, commander.Position.Y - 2));
-        if (target == commander.Position || !IsInside(target, view.WorldSize))
+        if (target == commander.Position || !IsInside(target, frame.WorldSize))
         {
             return false;
         }

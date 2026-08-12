@@ -45,22 +45,36 @@ internal readonly record struct InputMapResult(
 }
 
 /// <summary>
-/// R21: maps input intents + <see cref="SessionState"/> into gateway enqueues / state transitions.
+/// R21/M08: maps input intents + <see cref="SessionState"/> into gateway enqueues / state transitions.
 /// No SFML window APIs — hover tiles, modifiers, and overlay hit outcomes are injected by the host.
 /// Pure <c>Map*</c> helpers build command DTOs (tick placeholder 0) for tests and gateway enqueue.
+/// Still consults live simulation for selection/hover validation; full snapshot→intent purity is partial.
 /// </summary>
 internal sealed class InputCommandMapper
 {
     private readonly PlayerId _localPlayer;
     private readonly SessionState _state;
     private readonly SfmlCommandGateway _commands;
+    private readonly IReadOnlyList<EntityKind> _buildMenuKinds;
 
-    internal InputCommandMapper(PlayerId localPlayer, SessionState state, SfmlCommandGateway commands)
+    /// <param name="buildMenuKinds">
+    /// H05: match-scoped menu from <see cref="BuildMenuCatalog.ComposeFrom"/> —
+    /// not <c>MvpBuildCostCatalog.Embedded</c>.
+    /// </param>
+    internal InputCommandMapper(
+        PlayerId localPlayer,
+        SessionState state,
+        SfmlCommandGateway commands,
+        IReadOnlyList<EntityKind> buildMenuKinds)
     {
+        ArgumentNullException.ThrowIfNull(buildMenuKinds);
         _localPlayer = localPlayer;
         _state = state;
         _commands = commands;
+        _buildMenuKinds = buildMenuKinds;
     }
+
+    internal IReadOnlyList<EntityKind> BuildMenuKinds => _buildMenuKinds;
 
     internal static IssueMoveCommand MapMoveIntent(PlayerId actor, int entityId, TilePosition targetTile)
         => new(actor, 0, entityId, targetTile);
@@ -137,7 +151,11 @@ internal sealed class InputCommandMapper
         if (key == "F1")
         {
             var selectedId = _state.SelectedEntityId;
-            SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, _localPlayer, ref selectedId);
+            if (!SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, _localPlayer, ref selectedId))
+            {
+                return InputMapResult.Handled;
+            }
+
             _state.SetSelectedEntityId(selectedId);
             _state.ClearTransientUiKeepingSelection();
             return InputMapResult.CenterSelected;
@@ -148,10 +166,19 @@ internal sealed class InputCommandMapper
             if (hover.Tile is not null
                 && hover.Entity is not null
                 && hover.EntityVisibleToLocalPlayer
-                && BuildBarModel.TryCopyFromWorldEntity(hover.Entity, out var copyKind, out var copyDirection, out var copyRecipe))
+                && BuildBarModel.TryCopyFromWorldEntity(
+                    hover.Entity,
+                    simulation.BuildCostCatalog,
+                    out var copyKind,
+                    out var copyDirection,
+                    out var copyRecipe))
             {
                 var selectedId = _state.SelectedEntityId;
-                SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, _localPlayer, ref selectedId);
+                if (!SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, _localPlayer, ref selectedId))
+                {
+                    return InputMapResult.Handled;
+                }
+
                 _state.SetSelectedEntityId(selectedId);
                 _state.OpenBuildMenuWithCopy(copyKind, copyDirection, copyRecipe);
             }
@@ -161,7 +188,11 @@ internal sealed class InputCommandMapper
 
         if (key == "B" && selectedEntity?.Kind == EntityKind.Commander && selectedEntity.OwnerId == _localPlayer)
         {
-            _state.ToggleBuildMenu(BuildMenuCatalog.BuildableKinds[0]);
+            if (_buildMenuKinds.Count > 0)
+            {
+                _state.ToggleBuildMenu(_buildMenuKinds[0]);
+            }
+
             return InputMapResult.Handled;
         }
 
@@ -282,7 +313,7 @@ internal sealed class InputCommandMapper
         {
             if (SfmlInputHelpers.TryGetNumberShortcut(key, out var factoryRecipeIndex))
             {
-                var recipes = HudOverlay.GetFactoryRecipes(selectedEntity.Kind).ToList();
+                var recipes = HudOverlay.GetFactoryRecipes(selectedEntity.Kind, simulation.GameplayTables).ToList();
                 if (factoryRecipeIndex < recipes.Count)
                 {
                     _commands.SetFactoryProduction(selectedEntity.Id, _localPlayer, recipes[factoryRecipeIndex].OutputKind);
@@ -322,9 +353,9 @@ internal sealed class InputCommandMapper
             return InputMapResult.Ignored;
         }
 
-        if (SfmlInputHelpers.TryGetNumberShortcut(key, out var buildIndex) && buildIndex < BuildMenuCatalog.BuildableKinds.Length)
+        if (SfmlInputHelpers.TryGetNumberShortcut(key, out var buildIndex) && buildIndex < _buildMenuKinds.Count)
         {
-            _state.SelectPendingBuildKind(BuildMenuCatalog.BuildableKinds[buildIndex]);
+            _state.SelectPendingBuildKind(_buildMenuKinds[buildIndex]);
         }
 
         return InputMapResult.Handled;

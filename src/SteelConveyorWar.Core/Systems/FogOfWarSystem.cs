@@ -39,6 +39,11 @@ public sealed partial class GameSimulation
     private readonly List<TechSignatureHotspot> _techHotspotScratch = new();
     private readonly List<int> _techHotspotOrderScratch = new();
     private readonly List<int> _fogStaleDiskIdScratch = new();
+    private readonly HashSet<long> _fogDirtyTileKeys = new();
+    private readonly List<TilePosition> _fogDirtyTileScratch = new();
+    private readonly HashSet<int> _fogChangedVisionIds = new();
+    private readonly Dictionary<int, FogVisionSource> _fogPreviousById = new();
+    private readonly Dictionary<int, FogVisionSource> _fogCurrentById = new();
 
     private sealed class CachedVisionDisk
     {
@@ -55,8 +60,6 @@ public sealed partial class GameSimulation
         if (_fogVisionFingerprintReady
             && FogVisionSourcesEqual(_fogVisionSourcesPrevious, _fogVisionSourcesCurrent))
         {
-            // Vision sources (positions, radii, ownership, set) unchanged: Visible/Explored
-            // already match a full decay+repaint, so skip work and report no dirty tiles.
             for (var playerIndex = 0; playerIndex < _players.Count; playerIndex++)
             {
                 _players[playerIndex].ClearFogDirty();
@@ -65,6 +68,17 @@ public sealed partial class GameSimulation
             return;
         }
 
+        if (!_fogVisionFingerprintReady)
+        {
+            RepaintFogFull();
+            return;
+        }
+
+        RepaintFogDirtyRegions();
+    }
+
+    private void RepaintFogFull()
+    {
         for (var playerIndex = 0; playerIndex < _players.Count; playerIndex++)
         {
             var player = _players[playerIndex];
@@ -72,6 +86,169 @@ public sealed partial class GameSimulation
             player.DecayVisibility();
         }
 
+        PaintAllVisionSources();
+        FinishFogPass();
+    }
+
+    /// <summary>
+    /// M06: when vision sources move, decay/paint only old∪new disks of changed sources.
+    /// Static sources keep Visible without a full-map decay.
+    /// </summary>
+    private void RepaintFogDirtyRegions()
+    {
+        _fogChangedVisionIds.Clear();
+        _fogDirtyTileKeys.Clear();
+        _fogDirtyTileScratch.Clear();
+        _fogPreviousById.Clear();
+        _fogCurrentById.Clear();
+
+        for (var i = 0; i < _fogVisionSourcesPrevious.Count; i++)
+        {
+            var source = _fogVisionSourcesPrevious[i];
+            _fogPreviousById[source.EntityId] = source;
+        }
+
+        for (var i = 0; i < _fogVisionSourcesCurrent.Count; i++)
+        {
+            var source = _fogVisionSourcesCurrent[i];
+            _fogCurrentById[source.EntityId] = source;
+        }
+
+        foreach (var pair in _fogPreviousById)
+        {
+            if (!_fogCurrentById.TryGetValue(pair.Key, out var current) || current != pair.Value)
+            {
+                _fogChangedVisionIds.Add(pair.Key);
+                // Cache still holds the previous disk until GetOrBuild refreshes it.
+                if (_fogVisionDiskByEntityId.TryGetValue(pair.Key, out var oldDisk))
+                {
+                    AddDirtyTiles(oldDisk.Tiles);
+                }
+            }
+        }
+
+        foreach (var pair in _fogCurrentById)
+        {
+            if (!_fogPreviousById.ContainsKey(pair.Key))
+            {
+                _fogChangedVisionIds.Add(pair.Key);
+            }
+        }
+
+        // Refresh disks for current sources; union new disks of changed ids into dirty set.
+        _fogActiveVisionEntityIds.Clear();
+        var entities = World.Entities;
+        for (var entityIndex = 0; entityIndex < entities.Count; entityIndex++)
+        {
+            var entity = entities[entityIndex];
+            if (!entity.IsAlive || entity.IsGarrisoned || entity.OwnerId is null)
+            {
+                continue;
+            }
+
+            var ownerId = entity.OwnerId.Value;
+            var radius = ResolveStat(
+                ownerId,
+                ResearchStatIds.VisionRadius,
+                GameplayTables.GetStats(entity.Kind).VisionRadius,
+                minValue: 0);
+
+            var tiles = GetOrBuildVisionDisk(entity.Id, entity.Position, radius);
+            _fogActiveVisionEntityIds.Add(entity.Id);
+            if (_fogChangedVisionIds.Contains(entity.Id))
+            {
+                AddDirtyTiles(tiles);
+            }
+        }
+
+        PruneStaleVisionDisks();
+
+        for (var playerIndex = 0; playerIndex < _players.Count; playerIndex++)
+        {
+            _players[playerIndex].BeginFogDirtyTracking();
+        }
+
+        for (var i = 0; i < _fogDirtyTileScratch.Count; i++)
+        {
+            var tile = _fogDirtyTileScratch[i];
+            for (var playerIndex = 0; playerIndex < _players.Count; playerIndex++)
+            {
+                _players[playerIndex].DecayVisibilityAt(tile);
+            }
+        }
+
+        // Re-paint dirty tiles covered by any current vision source.
+        for (var entityIndex = 0; entityIndex < entities.Count; entityIndex++)
+        {
+            var entity = entities[entityIndex];
+            if (!entity.IsAlive || entity.IsGarrisoned || entity.OwnerId is null)
+            {
+                continue;
+            }
+
+            if (!_fogVisionDiskByEntityId.TryGetValue(entity.Id, out var disk))
+            {
+                continue;
+            }
+
+            _fogAlliedScratch.Clear();
+            var ownerId = entity.OwnerId.Value;
+            for (var playerIndex = 0; playerIndex < _players.Count; playerIndex++)
+            {
+                var player = _players[playerIndex];
+                if (AreAllied(ownerId, player.Id))
+                {
+                    _fogAlliedScratch.Add(player);
+                }
+            }
+
+            if (_fogAlliedScratch.Count == 0)
+            {
+                continue;
+            }
+
+            for (var tileIndex = 0; tileIndex < disk.Tiles.Count; tileIndex++)
+            {
+                var position = disk.Tiles[tileIndex];
+                if (!_fogDirtyTileKeys.Contains(PackFogTile(position)))
+                {
+                    continue;
+                }
+
+                for (var allyIndex = 0; allyIndex < _fogAlliedScratch.Count; allyIndex++)
+                {
+                    _fogAlliedScratch[allyIndex].SetVisible(position);
+                }
+            }
+        }
+
+        for (var playerIndex = 0; playerIndex < _players.Count; playerIndex++)
+        {
+            _players[playerIndex].EndFogDirtyTracking();
+        }
+
+        _fogVisionSourcesPrevious.Clear();
+        _fogVisionSourcesPrevious.AddRange(_fogVisionSourcesCurrent);
+        _fogVisionFingerprintReady = true;
+    }
+
+    private void AddDirtyTiles(List<TilePosition> tiles)
+    {
+        for (var i = 0; i < tiles.Count; i++)
+        {
+            var tile = tiles[i];
+            if (_fogDirtyTileKeys.Add(PackFogTile(tile)))
+            {
+                _fogDirtyTileScratch.Add(tile);
+            }
+        }
+    }
+
+    private static long PackFogTile(TilePosition position)
+        => ((long)position.X << 32) | (uint)position.Y;
+
+    private void PaintAllVisionSources()
+    {
         _fogActiveVisionEntityIds.Clear();
         var entities = World.Entities;
         for (var entityIndex = 0; entityIndex < entities.Count; entityIndex++)
@@ -101,7 +278,7 @@ public sealed partial class GameSimulation
             var radius = ResolveStat(
                 ownerId,
                 ResearchStatIds.VisionRadius,
-                MvpDefinitions.GetStats(entity.Kind).VisionRadius,
+                GameplayTables.GetStats(entity.Kind).VisionRadius,
                 minValue: 0);
 
             var tiles = GetOrBuildVisionDisk(entity.Id, entity.Position, radius);
@@ -118,7 +295,10 @@ public sealed partial class GameSimulation
         }
 
         PruneStaleVisionDisks();
+    }
 
+    private void FinishFogPass()
+    {
         for (var playerIndex = 0; playerIndex < _players.Count; playerIndex++)
         {
             _players[playerIndex].EndFogDirtyTracking();
@@ -145,7 +325,7 @@ public sealed partial class GameSimulation
             var radius = ResolveStat(
                 ownerId,
                 ResearchStatIds.VisionRadius,
-                MvpDefinitions.GetStats(entity.Kind).VisionRadius,
+                GameplayTables.GetStats(entity.Kind).VisionRadius,
                 minValue: 0);
             var origin = entity.Position;
             destination.Add(new FogVisionSource(entity.Id, ownerId.Value, origin.X, origin.Y, radius));
@@ -268,7 +448,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            if (!MvpDefinitions.TechSignatureIntensity.TryGetValue(entity.Kind, out var intensity) || intensity <= 0)
+            if (!GameplayTables.TechSignatureIntensity.TryGetValue(entity.Kind, out var intensity) || intensity <= 0)
             {
                 continue;
             }

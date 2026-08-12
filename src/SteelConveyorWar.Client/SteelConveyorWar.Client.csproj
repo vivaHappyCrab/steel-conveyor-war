@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SteelConveyorWar.Core\SteelConveyorWar.Core.csproj" />
+    <ProjectReference Include="..\SteelConveyorWar.Hosting\SteelConveyorWar.Hosting.csproj" />
     <ProjectReference Include="..\SteelConveyorWar.Sfml\SteelConveyorWar.Sfml.csproj" />
   </ItemGroup>
 

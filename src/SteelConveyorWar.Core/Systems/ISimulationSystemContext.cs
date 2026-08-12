@@ -25,6 +25,12 @@ internal interface ISimulationSystemContext
     /// <summary>Presentation side-channel for combat tracers etc. (not hashed).</summary>
     SimulationPresentationSink Presentation { get; }
 
+    /// <summary>
+    /// H01: match-scoped gameplay tables (power/recipes/stats/footprints/collision/stacks/resistances).
+    /// Prefer this over <see cref="MvpDefinitions"/> Embedded accessors on production paths.
+    /// </summary>
+    GameplayTablesCatalog GameplayTables { get; }
+
     /// <summary>Looks up a player by id (throws if unknown).</summary>
     PlayerState GetPlayer(PlayerId playerId);
 
@@ -51,4 +57,10 @@ internal interface ISimulationSystemContext
     /// id for deterministic iteration. Reuses the caller's buffer to avoid per-tick allocations.
     /// </summary>
     void CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate);
+
+    /// <summary>
+    /// M06: shared spatial index rebuilt at most twice per tick (post-commands, post-factory).
+    /// Combat/movement share this instance; mid-pass movers use Relocate, spawns use InsertAlive.
+    /// </summary>
+    SpatialQueryIndex SharedSpatialIndex { get; }
 }

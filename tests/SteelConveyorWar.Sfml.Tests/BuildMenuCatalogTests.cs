@@ -5,11 +5,15 @@ namespace SteelConveyorWar.Sfml.Tests;
 
 public class BuildMenuCatalogTests
 {
+    private static EntityKind[] DefaultMenu() =>
+        BuildMenuCatalog.ComposeFrom(MvpBuildCostCatalog.Embedded);
+
     [Fact]
-    public void BuildMenuCatalog_ContainsHubOnQuickPage()
+    public void ComposeFrom_ContainsHubOnQuickPage()
     {
-        Assert.Contains(EntityKind.Hub, BuildMenuCatalog.BuildableKinds.Take(10));
-        Assert.Equal(EntityKind.Hub, BuildMenuCatalog.BuildableKinds[9]);
+        var menu = DefaultMenu();
+        Assert.Contains(EntityKind.Hub, menu.Take(10));
+        Assert.Equal(EntityKind.Hub, menu[9]);
     }
 
     [Fact]
@@ -35,12 +39,12 @@ public class BuildMenuCatalogTests
         Assert.Equal("H", BuildBarModel.Glyph(EntityKind.Hub));
     }
 
-    // R30: composition is derived from the authoritative catalog, not a hardcoded list.
+    // R30/H05: composition is derived from the provided catalog, not a hardcoded list.
     [Fact]
-    public void BuildableKinds_ContainEveryCatalogEntity()
+    public void ComposeFrom_ContainsEveryCatalogEntity()
     {
         var catalogKinds = MvpBuildCostCatalog.Embedded.Costs.Keys.ToHashSet();
-        var menuKinds = BuildMenuCatalog.BuildableKinds.ToHashSet();
+        var menuKinds = DefaultMenu().ToHashSet();
 
         Assert.Equal(catalogKinds, menuKinds);
     }
@@ -50,23 +54,22 @@ public class BuildMenuCatalogTests
     [InlineData(EntityKind.SteelWall)]
     [InlineData(EntityKind.CannonTurret)]
     [InlineData(EntityKind.AntiAirTurret)]
-    public void BuildableKinds_IncludePreviouslyMissingEntities(EntityKind kind)
+    public void ComposeFrom_IncludesPreviouslyMissingEntities(EntityKind kind)
     {
-        Assert.Contains(kind, BuildMenuCatalog.BuildableKinds);
+        Assert.Contains(kind, DefaultMenu());
     }
 
     [Fact]
-    public void BuildableKinds_HaveNoDuplicates()
+    public void ComposeFrom_HasNoDuplicates()
     {
-        Assert.Equal(
-            BuildMenuCatalog.BuildableKinds.Length,
-            BuildMenuCatalog.BuildableKinds.Distinct().Count());
+        var menu = DefaultMenu();
+        Assert.Equal(menu.Length, menu.Distinct().Count());
     }
 
     [Fact]
-    public void EveryBuildableKind_HasAGlyph()
+    public void EveryComposeFromKind_HasAGlyph()
     {
-        foreach (var kind in BuildMenuCatalog.BuildableKinds)
+        foreach (var kind in DefaultMenu())
         {
             Assert.NotEqual("?", BuildBarModel.Glyph(kind));
         }
@@ -79,6 +82,71 @@ public class BuildMenuCatalogTests
         var second = BuildMenuCatalog.ComposeFrom(MvpBuildCostCatalog.Embedded);
 
         Assert.Equal(first, second);
+    }
+
+    // H05: custom catalog divergence — extra kind appears; removed default kind is absent.
+    [Fact]
+    public void ComposeFrom_UsesProvidedCatalogNotEmbedded()
+    {
+        var costs = new Dictionary<EntityKind, IReadOnlyDictionary<ItemId, int>>
+        {
+            [EntityKind.Mine] = new Dictionary<ItemId, int> { [ItemId.IronPlate] = 1 },
+            [EntityKind.Conveyor] = new Dictionary<ItemId, int> { [ItemId.IronPlate] = 1 },
+            // Hub is in Embedded PreferredOrder but intentionally omitted here.
+        };
+        var ticks = costs.Keys.ToDictionary(k => k, _ => 30);
+        var custom = new BuildCostCatalog(1, costs, ticks, new Dictionary<EntityKind, TechnologyId>());
+
+        var menu = BuildMenuCatalog.ComposeFrom(custom);
+
+        Assert.Equal([EntityKind.Mine, EntityKind.Conveyor], menu);
+        Assert.DoesNotContain(EntityKind.Hub, menu);
+        Assert.DoesNotContain(EntityKind.Assembler, menu);
+        Assert.NotEqual(DefaultMenu().Length, menu.Length);
+    }
+
+    [Fact]
+    public void ComposeFrom_SessionCatalog_MatchesSimulationNotEmbeddedStatic()
+    {
+        var costs = MvpBuildCostCatalog.Embedded.Costs.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value);
+        costs.Remove(EntityKind.AntiAirTurret);
+        costs[EntityKind.Scout] = new Dictionary<ItemId, int> { [ItemId.IronPlate] = 5 };
+        var ticks = costs.Keys.ToDictionary(k => k, _ => 30);
+        var custom = new BuildCostCatalog(
+            1,
+            costs,
+            ticks,
+            MvpBuildCostCatalog.Embedded.Requirements);
+
+        var simulation = GameSimulation.CreateNewGame(
+            GameCreationOptions.Default with { RandomSeed = 7, BuildCosts = custom });
+        var menu = BuildMenuCatalog.ComposeFrom(simulation.BuildCostCatalog);
+
+        Assert.Contains(EntityKind.Scout, menu);
+        Assert.DoesNotContain(EntityKind.AntiAirTurret, menu);
+        Assert.Equal(simulation.BuildCostCatalog.Costs.Keys.ToHashSet(), menu.ToHashSet());
+#pragma warning disable CS0618 // obsolete Embedded helper — assert production path diverges
+        Assert.NotEqual(BuildMenuCatalog.BuildableKinds.ToHashSet(), menu.ToHashSet());
+#pragma warning restore CS0618
+    }
+
+    [Fact]
+    public void BuildBarModel_TryCopyFromWorldEntity_RequiresCatalogMembership()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 3);
+        var hub = simulation.World.Entities.First(e => e.Kind == EntityKind.Hub);
+        var empty = BuildCostCatalog.Empty;
+
+        Assert.False(BuildBarModel.TryCopyFromWorldEntity(hub, empty, out _, out _, out _));
+        Assert.True(BuildBarModel.TryCopyFromWorldEntity(
+            hub,
+            simulation.BuildCostCatalog,
+            out var kind,
+            out _,
+            out _));
+        Assert.Equal(EntityKind.Hub, kind);
     }
 
     [Fact]

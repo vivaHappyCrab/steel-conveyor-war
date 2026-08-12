@@ -3,14 +3,13 @@ using SteelConveyorWar.Core.Commands;
 namespace SteelConveyorWar.Core.Tests;
 
 /// <summary>
-/// R11: the command wire format is protocol-grade — versioned envelope, canonical sequence carried over
-/// the wire, round-trip coverage for every <see cref="SimulationCommandKind"/>, predictable rejection of
-/// unknown protocol versions, and logged (not silently dropped) command rejections.
+/// R11 / M02: the command wire format is protocol-grade — versioned envelope, canonical sequence,
+/// full payload equality round-trips for every advertised kind, obsolete kinds filtered/rejected,
+/// and batch serialize/deserialize coverage.
 /// </summary>
 public sealed class CommandProtocolTests
 {
-    // One representative instance per command kind, each stamped with a non-zero sequence so we also
-    // prove the R03 ordering key survives serialization.
+    // One representative instance per advertised command kind, each stamped with a non-zero sequence.
     public static IEnumerable<object[]> AllCommandKinds()
     {
         var actor = new PlayerId(1);
@@ -31,7 +30,6 @@ public sealed class CommandProtocolTests
             new SetTrackAllocationCommand(actor, tick, new Dictionary<string, int> { ["cycle"] = 2, ["burst"] = 1 })
                 { Sequence = 19 },
             new SetFactoryProductionCommand(actor, tick, 5, EntityKind.BasicTank, 9) { Sequence = 20 },
-            new AssignFactoryBastionCommand(actor, tick, 5, 9) { Sequence = 21 },
             new SetBastionTemplateCommand(actor, tick, 9, EntityKind.BasicTank, 3) { Sequence = 22 },
             new IssueBastionOrderCommand(actor, tick, 9, new BastionOrder(
                 BastionOrderKind.Patrol,
@@ -46,6 +44,8 @@ public sealed class CommandProtocolTests
             new WithdrawItemTypeFromHubOrOutputCommand(actor, tick, 3, 5, ItemId.Steel) { Sequence = 29 },
             new SelectResearchCommand(actor, tick, new TechnologyId("logistics-1"),
                 ConfirmExclusive: true, PreferredTrackId: "cycle") { Sequence = 30 },
+            new SetProjectWeightCommand(actor, tick, ResearchTrackIds.Cycle,
+                new TechnologyId("technology.t1.automated-base"), Weight: 150) { Sequence = 31 },
         };
 
         return commands.Select(command => new object[] { command });
@@ -53,24 +53,120 @@ public sealed class CommandProtocolTests
 
     [Theory]
     [MemberData(nameof(AllCommandKinds))]
-    public void EveryKind_RoundTripsThroughSerializer_PreservingHeader(SimulationCommandBase command)
+    public void EveryKind_RoundTripsThroughSerializer_PreservingFullPayload(SimulationCommandBase command)
     {
         var roundTrip = SimulationCommandSerializer.Deserialize(SimulationCommandSerializer.Serialize(command));
 
         Assert.Equal(command.Kind, roundTrip.Kind);
         Assert.Equal(command.Actor, roundTrip.Actor);
         Assert.Equal(command.Tick, roundTrip.Tick);
-        // R11: canonical (R03) sequence must travel over the wire, not reset to 0.
         Assert.Equal(command.Sequence, roundTrip.Sequence);
         Assert.IsType(command.GetType(), roundTrip);
+        // M02: full payload equality, not just header/runtime type.
+        Assert.True(CommandPayloadEquality.AreEqual(command, roundTrip), CommandPayloadEquality.Snapshot(command));
     }
 
     [Fact]
-    public void AllTwentyKinds_AreExercised()
+    public void AllAdvertisedKinds_AreExercised()
     {
-        // Guards against a new SimulationCommandKind being added without a round-trip case here.
-        var covered = AllCommandKinds().Select(row => ((SimulationCommandBase)row[0]).Kind).Distinct().Count();
-        Assert.Equal(Enum.GetValues<SimulationCommandKind>().Length, covered);
+        // Guards against a new advertised kind being added without a round-trip case here.
+        var covered = AllCommandKinds().Select(row => ((SimulationCommandBase)row[0]).Kind).Distinct().ToHashSet();
+        Assert.Equal(SimulationCommandVocabulary.AdvertisedKinds.Count, covered.Count);
+        foreach (var kind in SimulationCommandVocabulary.AdvertisedKinds)
+        {
+            Assert.Contains(kind, covered);
+        }
+    }
+
+    [Fact]
+    public void AvailableKinds_NeverContainObsoleteAlwaysFalseCommands()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 5);
+        var view = simulation.CreatePlayerView(new PlayerId(1), PlayerObservationMode.Fair);
+
+#pragma warning disable CS0618
+        Assert.DoesNotContain(SimulationCommandKind.AssignFactoryBastion, view.GetAvailableCommandKinds());
+#pragma warning restore CS0618
+        Assert.Equal(SimulationCommandVocabulary.AdvertisedKinds, view.GetAvailableCommandKinds());
+    }
+
+    [Fact]
+    public void ObsoleteAssignFactoryBastion_IsRejectedOnDeserialize()
+    {
+        const string json =
+            "{\"kind\":\"assignFactoryBastion\",\"actor\":1,\"tick\":5,\"protocolVersion\":1," +
+            "\"payload\":{\"factoryId\":5,\"bastionId\":9}}";
+
+        Assert.Throws<NotSupportedException>(() => SimulationCommandSerializer.Deserialize(json));
+        Assert.False(SimulationCommandSerializer.TryDeserialize(json, out var command));
+        Assert.Null(command);
+    }
+
+    [Fact]
+    public void SetProjectWeight_Apply_UpdatesParallelTrackWeight_AndRejectsWrongActor()
+    {
+        var simulation = GameSimulation.CreateNewGame(
+            new GameCreationOptions(5, ResearchProfileIds.MvpC, MvpResearchCatalog.CreateEmbedded()));
+        var actor = new PlayerId(1);
+        var tech = new TechnologyId("technology.t1.automated-base");
+        Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(actor, tech));
+
+        Assert.True(simulation.ApplyCommand(
+            new SetProjectWeightCommand(actor, simulation.Tick, ResearchTrackIds.Cycle, tech, Weight: 250)));
+
+        var cycle = simulation.GetResearchSnapshot(actor).Tracks
+            .Single(track => track.Id == ResearchTrackIds.Cycle);
+        Assert.Equal(250, cycle.ProjectWeights[tech]);
+
+        // Other player's SetProjectWeight must not change this player's weights.
+        Assert.True(simulation.ApplyCommand(
+            new SetProjectWeightCommand(new PlayerId(2), simulation.Tick, ResearchTrackIds.Cycle, tech, Weight: 1)));
+        Assert.Equal(250, simulation.GetResearchSnapshot(actor).Tracks
+            .Single(track => track.Id == ResearchTrackIds.Cycle).ProjectWeights[tech]);
+    }
+
+    [Fact]
+    public void SerializeMany_DeserializeMany_RoundTripsPayloadEquality()
+    {
+        var batch = AllCommandKinds()
+            .Select(row => (SimulationCommandBase)row[0])
+            .Take(5)
+            .Cast<ISimulationCommand>()
+            .ToArray();
+
+        var roundTrip = SimulationCommandSerializer.DeserializeMany(
+            SimulationCommandSerializer.SerializeMany(batch));
+
+        Assert.Equal(batch.Length, roundTrip.Count);
+        for (var i = 0; i < batch.Length; i++)
+        {
+            Assert.True(CommandPayloadEquality.AreEqual(batch[i], roundTrip[i]));
+        }
+    }
+
+    [Fact]
+    public void TryDeserializeMany_ReturnsFalse_OnMalformedOrTruncatedJson()
+    {
+        Assert.False(SimulationCommandSerializer.TryDeserializeMany(null, out var empty));
+        Assert.Empty(empty);
+
+        Assert.False(SimulationCommandSerializer.TryDeserializeMany("", out _));
+        Assert.False(SimulationCommandSerializer.TryDeserializeMany("[", out _));
+        Assert.False(SimulationCommandSerializer.TryDeserializeMany(
+            "[{\"kind\":\"issueMove\",\"actor\":1,\"tick\":5,\"payload\":{}}]", out _));
+    }
+
+    [Fact]
+    public void TryDeserializeMany_Succeeds_OnValidBatch()
+    {
+        var json = SimulationCommandSerializer.SerializeMany(new ISimulationCommand[]
+        {
+            new IssueMoveCommand(new PlayerId(1), 5, 3, new TilePosition(1, 1)) { Sequence = 1 },
+            new StopCommanderCommand(new PlayerId(1), 5, 3) { Sequence = 2 },
+        });
+
+        Assert.True(SimulationCommandSerializer.TryDeserializeMany(json, out var commands));
+        Assert.Equal(2, commands.Count);
     }
 
     [Fact]
@@ -79,13 +175,27 @@ public sealed class CommandProtocolTests
         var json = SimulationCommandSerializer.Serialize(
             new IssueMoveCommand(new PlayerId(1), 5, 3, new TilePosition(1, 1)));
 
-        Assert.Contains("\"protocolVersion\":1", json);
+        Assert.Contains($"\"protocolVersion\":{SimulationCommandSerializer.ProtocolVersion}", json);
+        Assert.Equal(2, SimulationCommandSerializer.ProtocolVersion);
+    }
+
+    [Fact]
+    public void ObsoleteAssignFactoryBastion_CannotBeEnqueued()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 5);
+#pragma warning disable CS0618
+        var obsolete = new AssignFactoryBastionCommand(new PlayerId(1), simulation.Tick + 1, FactoryId: 1, BastionId: 2);
+#pragma warning restore CS0618
+
+        Assert.Throws<ArgumentException>(() => simulation.EnqueueCommand(obsolete));
+        Assert.Empty(simulation.PendingCommands);
+        // Pending hash must remain callable (no Serialize throw from obsolete kind in buffer).
+        _ = simulation.ComputePendingCommandsHash();
     }
 
     [Fact]
     public void UnknownFutureProtocolVersion_IsRejectedPredictably()
     {
-        // A future-versioned envelope must fail closed rather than silently mis-decode.
         var future = SimulationCommandSerializer.ProtocolVersion + 1;
         var json =
             $"{{\"kind\":\"issueMove\",\"actor\":1,\"tick\":5,\"protocolVersion\":{future}," +
@@ -99,7 +209,6 @@ public sealed class CommandProtocolTests
     [Fact]
     public void LegacyEnvelope_WithoutProtocolVersion_IsAccepted()
     {
-        // Pre-versioning envelopes (no protocolVersion field) remain decodable at the current version.
         const string json = "{\"kind\":\"issueMove\",\"actor\":1,\"tick\":5,\"payload\":{\"entityId\":3,\"x\":1,\"y\":1}}";
 
         Assert.True(SimulationCommandSerializer.TryDeserialize(json, out var command));
@@ -112,7 +221,6 @@ public sealed class CommandProtocolTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 5);
         var actor = new PlayerId(1);
-        // Move a non-existent entity id: the handler rejects (returns false) rather than throwing.
         simulation.EnqueueForNextTick(tick => new IssueMoveCommand(actor, tick, EntityId: 999_999, new TilePosition(3, 3)));
 
         simulation.AdvanceTick();

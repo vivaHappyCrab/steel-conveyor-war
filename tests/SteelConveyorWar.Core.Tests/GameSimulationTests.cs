@@ -515,6 +515,7 @@ public class GameSimulationTests
         Assert.Null(factory.AssignedBastionId);
         Assert.True(factory.IsManualProductionTarget);
 
+        Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.LightBot, confirmExclusive: true));
         Assert.True(simulation.TrySetFactoryProduction(factoryId, new PlayerId(1), EntityKind.LightBot));
         factory = simulation.World.GetEntity(factoryId)!;
         Assert.Equal(EntityKind.LightBot, factory.ProductionTargetKind);
@@ -945,7 +946,7 @@ public class GameSimulationTests
 
         foreach (var bastion in bastions)
         {
-            foreach (var tile in GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position))
+            foreach (var tile in GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position, simulation.GameplayTables))
             {
                 Assert.Equal(TerrainType.Grass, simulation.World.GetTerrain(tile));
             }
@@ -955,7 +956,7 @@ public class GameSimulationTests
         {
             Assert.Equal(TerrainType.Grass, simulation.World.GetTerrain(solar.Position));
             var bastion = bastions.Single(entity => entity.OwnerId == solar.OwnerId);
-            var bastionTiles = GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position).ToHashSet();
+            var bastionTiles = GameWorld.GetFootprintTiles(bastion.Kind, bastion.Position, simulation.GameplayTables).ToHashSet();
             var adjacent = bastionTiles.Any(tile =>
                 Math.Max(Math.Abs(tile.X - solar.Position.X), Math.Abs(tile.Y - solar.Position.Y)) == 1);
             Assert.True(adjacent);
@@ -1014,7 +1015,7 @@ public class GameSimulationTests
         var maxIronStack = MvpDefinitions.GetMaxStackSize(ItemId.IronPlate);
 
         Assert.True(simulation.AddItemToEntity(hub.Id, ItemId.IronPlate, maxIronStack * MvpDefinitions.HubStorageStacks));
-        Assert.Equal(MvpDefinitions.HubStorageStacks, hub.Inventory.TotalStacks);
+        Assert.Equal(MvpDefinitions.HubStorageStacks, hub.Inventory.GetTotalStacks(simulation.GameplayTables));
         Assert.False(simulation.AddItemToEntity(hub.Id, ItemId.CopperPlate, 1));
     }
 
@@ -1500,10 +1501,10 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         foreach (var hub in simulation.World.Entities.Where(entity => entity.Kind == EntityKind.Hub))
         {
-            var hubTiles = GameWorld.GetFootprintTiles(hub.Kind, hub.Position).ToHashSet();
+            var hubTiles = GameWorld.GetFootprintTiles(hub.Kind, hub.Position, simulation.GameplayTables).ToHashSet();
             foreach (var other in simulation.World.Entities.Where(entity => entity.Id != hub.Id && entity.IsAlive))
             {
-                var otherTiles = GameWorld.GetFootprintTiles(other.Kind, other.Position);
+                var otherTiles = GameWorld.GetFootprintTiles(other.Kind, other.Position, simulation.GameplayTables);
                 Assert.Empty(hubTiles.Intersect(otherTiles));
             }
         }

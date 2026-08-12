@@ -29,9 +29,18 @@ public sealed partial class GameSimulation
 
         // R31: victory is decided per team/side, not per surviving player. A team is alive while
         // at least one of its players is undefeated; the match ends when a single team remains.
+        // M11: zero active teams (mutual elimination) terminates as Draw instead of eternal InProgress.
         var activePlayers = _players.Where(player => !player.IsDefeated).ToList();
         var activeTeams = activePlayers.Select(player => player.TeamId).Distinct().ToList();
         var totalTeams = _players.Select(player => player.TeamId).Distinct().Count();
+
+        if (totalTeams > 1 && activeTeams.Count == 0)
+        {
+            Status = GameStatus.Draw;
+            WinnerTeamId = null;
+            WinnerId = null;
+            return;
+        }
 
         // The multi-team guard prevents a degenerate single-team roster from declaring an instant
         // winner. For the default 1v1 (two single-player teams) this fires exactly when one player

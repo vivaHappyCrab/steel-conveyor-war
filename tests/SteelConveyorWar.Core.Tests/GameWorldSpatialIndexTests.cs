@@ -57,7 +57,7 @@ public sealed class GameWorldSpatialIndexTests
         var hub = new WorldEntity(7, EntityKind.Hub, new TilePosition(1, 1));
         var world = CreateWorld(hub);
 
-        foreach (var tile in GameWorld.GetFootprintTiles(EntityKind.Hub, hub.Position))
+        foreach (var tile in GameWorld.GetFootprintTiles(EntityKind.Hub, hub.Position, GameplayTablesCatalog.Embedded))
         {
             Assert.Contains(world.GetEntitiesAt(tile), entity => entity.Id == hub.Id);
         }
@@ -75,7 +75,7 @@ public sealed class GameWorldSpatialIndexTests
         };
         var world = CreateWorld(ghost);
 
-        foreach (var tile in GameWorld.GetFootprintTiles(EntityKind.Hub, ghost.Position))
+        foreach (var tile in GameWorld.GetFootprintTiles(EntityKind.Hub, ghost.Position, GameplayTablesCatalog.Embedded))
         {
             Assert.Contains(world.GetEntitiesAt(tile), entity => entity.Id == ghost.Id);
         }

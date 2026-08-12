@@ -192,6 +192,35 @@ public sealed class MinimapDirtyTrackerTests
     }
 
     [Fact]
+    public void AccumulateFogDirty_MultiTickCatchup_RetainsIntermediateDirty()
+    {
+        // M07: dirty only on tick N, empty on N+1 — frame union must still include N's tiles.
+        var frameKeys = new HashSet<(int X, int Y)>();
+        var frameTiles = new List<TilePosition>();
+        var entities = new[] { new MinimapEntitySnapshot(1, 0, 0, 1, 1, 0) };
+
+        MinimapDirtyTracker.AccumulateFogDirty(
+            frameKeys,
+            new[] { new TilePosition(3, 4), new TilePosition(5, 6) });
+        MinimapDirtyTracker.AccumulateFogDirty(
+            frameKeys,
+            Array.Empty<TilePosition>());
+        MinimapDirtyTracker.CopyFogDirty(frameKeys, frameTiles);
+
+        var plan = MinimapDirtyTracker.Plan(
+            needsFullRebuild: false,
+            fogDirtyTiles: frameTiles,
+            previousEntities: entities,
+            currentEntities: entities);
+
+        Assert.Equal(MinimapRedrawKind.PatchTiles, plan.Kind);
+        var set = plan.TilesToRedraw.Select(t => (t.X, t.Y)).ToHashSet();
+        Assert.Contains((3, 4), set);
+        Assert.Contains((5, 6), set);
+        Assert.Equal(2, set.Count);
+    }
+
+    [Fact]
     public void EntitiesEqual_DetectsMarkerKindChange()
     {
         var a = new[] { new MinimapEntitySnapshot(1, 0, 0, 1, 1, 0) };

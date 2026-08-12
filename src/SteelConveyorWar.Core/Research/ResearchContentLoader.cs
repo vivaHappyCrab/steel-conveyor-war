@@ -7,13 +7,7 @@ namespace SteelConveyorWar.Core;
 
 public static class ResearchContentLoader
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-    };
+    private static readonly JsonSerializerOptions JsonOptions = ContentJsonOptions.CreateStrict(includeStringEnums: true);
 
     public static string Serialize(ResearchCatalog catalog)
     {
@@ -31,6 +25,8 @@ public static class ResearchContentLoader
     {
         var dto = JsonSerializer.Deserialize<ResearchCatalogDto>(json, JsonOptions)
             ?? throw new InvalidOperationException("Research catalog JSON deserialized to null.");
+
+        ContentSchema.RequireSupportedVersion("research", dto.SchemaVersion);
 
         var technologies = dto.Technologies.ToDictionary(
             tech => new TechnologyId(tech.Id),
@@ -149,9 +145,7 @@ public static class ResearchContentLoader
     }
 
     private static ItemId ParseItemId(string value)
-    {
-        return Enum.Parse<ItemId>(value, ignoreCase: true);
-    }
+        => ContentJsonOptions.ParseDefinedEnum<ItemId>(value, "science pack item");
 
     private static Exception Missing(string name) => new InvalidOperationException($"Missing effect field '{name}'.");
 
@@ -159,6 +153,7 @@ public static class ResearchContentLoader
     {
         return new ResearchCatalogDto
         {
+            SchemaVersion = ContentSchema.CurrentVersion,
             Technologies = catalog.Technologies.Values
                 .OrderBy(tech => tech.Id.Value, StringComparer.Ordinal)
                 .Select(tech => new TechnologyDto
@@ -284,6 +279,7 @@ public static class ResearchContentLoader
 
     private sealed class ResearchCatalogDto
     {
+        public int SchemaVersion { get; set; }
         public List<TechnologyDto> Technologies { get; set; } = new();
         public List<TierDto> Tiers { get; set; } = new();
         public List<ProfileDto> Profiles { get; set; } = new();

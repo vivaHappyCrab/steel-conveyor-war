@@ -7,10 +7,15 @@ public sealed class GameWorld
     private readonly Dictionary<int, WorldEntity> _byId = new();
     private readonly Dictionary<TilePosition, List<WorldEntity>> _occupancy = new();
 
-    public GameWorld(WorldSize size, TerrainType[,] terrain, IEnumerable<WorldEntity> entities)
+    public GameWorld(
+        WorldSize size,
+        TerrainType[,] terrain,
+        IEnumerable<WorldEntity> entities,
+        GameplayTablesCatalog? gameplayTables = null)
     {
         Size = size;
         _terrain = terrain;
+        GameplayTables = gameplayTables ?? GameplayTablesCatalog.Embedded;
         foreach (var entity in entities)
         {
             AddEntity(entity);
@@ -18,6 +23,9 @@ public sealed class GameWorld
     }
 
     public WorldSize Size { get; }
+
+    /// <summary>H01: match-scoped footprint/collision tables used for occupancy indexing.</summary>
+    public GameplayTablesCatalog GameplayTables { get; }
 
     // R05: expose a ReadOnlyCollection wrapper so callers cannot downcast to List<WorldEntity>
     // and add/remove behind the _byId / _occupancy indexes (which would desync the world).
@@ -129,19 +137,24 @@ public sealed class GameWorld
         return false;
     }
 
-    public static bool ContainsTile(WorldEntity entity, TilePosition position)
+    public static bool ContainsTile(WorldEntity entity, TilePosition position, GameplayTablesCatalog tables)
     {
+        ArgumentNullException.ThrowIfNull(tables);
         var footprintKind = ResolveFootprintKind(entity);
-        var footprint = MvpDefinitions.GetFootprint(footprintKind);
+        var footprint = tables.GetFootprint(footprintKind);
         return position.X >= entity.Position.X
             && position.X < entity.Position.X + footprint.Width
             && position.Y >= entity.Position.Y
             && position.Y < entity.Position.Y + footprint.Height;
     }
 
-    public static IEnumerable<TilePosition> GetFootprintTiles(EntityKind kind, TilePosition anchor)
+    public static IEnumerable<TilePosition> GetFootprintTiles(
+        EntityKind kind,
+        TilePosition anchor,
+        GameplayTablesCatalog tables)
     {
-        var footprint = MvpDefinitions.GetFootprint(kind);
+        ArgumentNullException.ThrowIfNull(tables);
+        var footprint = tables.GetFootprint(kind);
         for (var y = 0; y < footprint.Height; y++)
         {
             for (var x = 0; x < footprint.Width; x++)
@@ -225,9 +238,9 @@ public sealed class GameWorld
         }
     }
 
-    private static IEnumerable<TilePosition> GetOccupiedTiles(WorldEntity entity)
+    private IEnumerable<TilePosition> GetOccupiedTiles(WorldEntity entity)
     {
-        return GetFootprintTiles(ResolveFootprintKind(entity), entity.Position);
+        return GetFootprintTiles(ResolveFootprintKind(entity), entity.Position, GameplayTables);
     }
 
     private static EntityKind ResolveFootprintKind(WorldEntity entity)

@@ -34,7 +34,7 @@ public sealed partial class GameSimulation
             }
 
             // Full output = idle (clear / don't advance ticks).
-            if (entity.OutputBuffer.Count(product.Value) >= MvpDefinitions.GetMaxStackSize(product.Value))
+            if (entity.OutputBuffer.Count(product.Value) >= GameplayTables.GetMaxStackSize(product.Value))
             {
                 entity.WorkTicksRemaining = 0;
                 entity.WorkTicksTotal = 0;
@@ -224,7 +224,7 @@ public sealed partial class GameSimulation
 
     private void StartAssemblerRecipe(WorldEntity assembler)
     {
-        if (assembler.SelectedItemRecipe is null || !MvpDefinitions.ItemRecipes.TryGetValue(assembler.SelectedItemRecipe.Value, out var recipe))
+        if (assembler.SelectedItemRecipe is null || !GameplayTables.ItemRecipes.TryGetValue(assembler.SelectedItemRecipe.Value, out var recipe))
         {
             return;
         }
@@ -252,7 +252,7 @@ public sealed partial class GameSimulation
         assembler.WorkTicksRemaining = workTicks;
     }
 
-    private static bool TryCompletePendingOutput(WorldEntity building)
+    private bool TryCompletePendingOutput(WorldEntity building)
     {
         if (building.PendingOutputItem is null || !TryAddToBuffer(building.OutputBuffer, building.PendingOutputItem.Value, building.PendingOutputAmount))
         {

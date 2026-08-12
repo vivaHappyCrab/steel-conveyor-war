@@ -48,9 +48,9 @@ Correctness equivalence к per-unit algorithm закрыта; performance DoD �
 
 ## Definition of Done
 
-- [ ] Equal-ratio high-energy case not per-unit in practice (bench proof).
-- [ ] Equivalence tests still green.
-- [ ] R15 performance residual closed.
+- [x] Equal-ratio high-energy case not per-unit in practice (bench proof).
+- [x] Equivalence tests still green.
+- [x] R15 performance residual closed.
 
 ## Специалисты
 

@@ -15,7 +15,6 @@ public sealed partial class GameSimulation
 
     private void ProcessMovement()
     {
-        _spatialQueryIndex.Rebuild(World.Entities);
         CollectSortedAliveEntities(_scratchEntities, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
         for (var i = 0; i < _scratchEntities.Count; i++)
         {
@@ -51,7 +50,7 @@ public sealed partial class GameSimulation
             if (unit.Position.IsWithinEuclideanRange(waypoint, 0))
             {
                 var nextIndex = (index + 1) % waypoints.Count;
-                unit.Order = unit.Order with { WaypointIndex = nextIndex };
+                unit.Order = unit.Order.WithWaypointIndex(nextIndex);
                 return waypoints[nextIndex];
             }
 
@@ -187,7 +186,7 @@ public sealed partial class GameSimulation
         }
 
         var workspace = _pathfindingWorkspace;
-        workspace.Clear();
+        workspace.ClearSearch();
         var open = workspace.Open;
         var previous = workspace.Previous;
         var costSoFar = workspace.CostSoFar;
@@ -199,7 +198,7 @@ public sealed partial class GameSimulation
         {
             if (current == target)
             {
-                return ReconstructPath(previous, target);
+                return ReconstructPath(workspace, target);
             }
 
             foreach (var next in GetNeighborTiles(current))
@@ -233,10 +232,11 @@ public sealed partial class GameSimulation
             yield break;
         }
 
+        var candidates = _pathfindingWorkspace.CandidateScratch;
         var maxRadius = Math.Max(World.Size.Width, World.Size.Height);
         for (var radius = 1; radius <= maxRadius; radius++)
         {
-            var candidates = new List<TilePosition>();
+            candidates.Clear();
             for (var y = target.Y - radius; y <= target.Y + radius; y++)
             {
                 for (var x = target.X - radius; x <= target.X + radius; x++)
@@ -254,20 +254,41 @@ public sealed partial class GameSimulation
                 }
             }
 
-            foreach (var candidate in candidates
-                .OrderBy(candidate => OctileDistance(start, candidate))
-                .ThenBy(candidate => candidate.ManhattanDistance(target))
-                .ThenBy(candidate => candidate.Y)
-                .ThenBy(candidate => candidate.X))
+            if (candidates.Count == 0)
             {
-                yield return candidate;
+                continue;
+            }
+
+            candidates.Sort((left, right) =>
+            {
+                var distCmp = OctileDistance(start, left).CompareTo(OctileDistance(start, right));
+                if (distCmp != 0)
+                {
+                    return distCmp;
+                }
+
+                var manCmp = left.ManhattanDistance(target).CompareTo(right.ManhattanDistance(target));
+                if (manCmp != 0)
+                {
+                    return manCmp;
+                }
+
+                var yCmp = left.Y.CompareTo(right.Y);
+                return yCmp != 0 ? yCmp : left.X.CompareTo(right.X);
+            });
+
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                yield return candidates[i];
             }
         }
     }
 
-    private static List<TilePosition> ReconstructPath(Dictionary<TilePosition, TilePosition?> previous, TilePosition target)
+    private static List<TilePosition> ReconstructPath(PathfindingWorkspace workspace, TilePosition target)
     {
-        var path = new List<TilePosition>();
+        var previous = workspace.Previous;
+        var path = workspace.PathScratch;
+        path.Clear();
         var current = target;
         while (previous[current] is not null)
         {
@@ -276,6 +297,7 @@ public sealed partial class GameSimulation
         }
 
         path.Reverse();
+        // Scratch buffer: caller must AddRange immediately before the next pathfind.
         return path;
     }
 
@@ -352,7 +374,7 @@ public sealed partial class GameSimulation
             return false;
         }
 
-        var radius = MvpDefinitions.GetCollisionSize(mover.Kind).RadiusMilli;
+        var radius = GameplayTables.GetCollisionSize(mover.Kind).RadiusMilli;
         if (radius <= 0)
         {
             return true;
@@ -385,7 +407,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            var otherRadius = MvpDefinitions.GetCollisionSize(entity.Kind).RadiusMilli;
+            var otherRadius = GameplayTables.GetCollisionSize(entity.Kind).RadiusMilli;
             if (otherRadius <= 0)
             {
                 continue;
@@ -430,12 +452,12 @@ public sealed partial class GameSimulation
         return entity.MoveTarget is not null && entity.MoveTarget.Value != entity.Position;
     }
 
-    private static bool CircleIntersectsEntityFootprint(WorldPosition position, long radiusMilli, WorldEntity obstacle)
+    private bool CircleIntersectsEntityFootprint(WorldPosition position, long radiusMilli, WorldEntity obstacle)
     {
         return DistanceSquaredToEntityFootprint(position, obstacle) < radiusMilli * radiusMilli;
     }
 
-    private static bool MovesOutOfExistingOverlap(WorldEntity mover, WorldPosition nextPosition, long radiusMilli, WorldEntity obstacle)
+    private bool MovesOutOfExistingOverlap(WorldEntity mover, WorldPosition nextPosition, long radiusMilli, WorldEntity obstacle)
     {
         var currentDistanceSq = DistanceSquaredToEntityFootprint(mover.WorldPosition, obstacle);
         var radiusSq = radiusMilli * radiusMilli;
@@ -447,12 +469,12 @@ public sealed partial class GameSimulation
         return DistanceSquaredToEntityFootprint(nextPosition, obstacle) > currentDistanceSq;
     }
 
-    private static long DistanceSquaredToEntityFootprint(WorldPosition position, WorldEntity obstacle)
+    private long DistanceSquaredToEntityFootprint(WorldPosition position, WorldEntity obstacle)
     {
         var footprintKind = obstacle.Kind == EntityKind.GhostBuild && obstacle.BuildTargetKind is not null
             ? obstacle.BuildTargetKind.Value
             : obstacle.Kind;
-        var footprint = MvpDefinitions.GetFootprint(footprintKind);
+        var footprint = GameplayTables.GetFootprint(footprintKind);
         var minX = WorldUnits.TileToMilli(obstacle.Position.X);
         var maxX = WorldUnits.TileToMilli(obstacle.Position.X + footprint.Width);
         var minY = WorldUnits.TileToMilli(obstacle.Position.Y);

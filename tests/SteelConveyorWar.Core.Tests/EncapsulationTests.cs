@@ -21,8 +21,8 @@ public sealed class EncapsulationTests
         AssertAssemblyOnly(typeof(Inventory), "TryRemove", typeof(ItemId), typeof(int));
         AssertAssemblyOnly(typeof(Inventory), "TryRemoveAll", typeof(IReadOnlyDictionary<ItemId, int>));
         AssertAssemblyOnly(typeof(Inventory), "TryTakeFirst", typeof(Func<ItemId, bool>), typeof(ItemId).MakeByRefType());
-        AssertAssemblyOnly(typeof(Inventory), "TryAddWithinStackLimit", typeof(ItemId), typeof(int));
-        AssertAssemblyOnly(typeof(Inventory), "TryAddWithinTotalStackLimit", typeof(ItemId), typeof(int), typeof(int));
+        AssertAssemblyOnly(typeof(Inventory), "TryAddWithinStackLimit", typeof(ItemId), typeof(int), typeof(GameplayTablesCatalog));
+        AssertAssemblyOnly(typeof(Inventory), "TryAddWithinTotalStackLimit", typeof(ItemId), typeof(int), typeof(int), typeof(GameplayTablesCatalog));
     }
 
     [Fact]

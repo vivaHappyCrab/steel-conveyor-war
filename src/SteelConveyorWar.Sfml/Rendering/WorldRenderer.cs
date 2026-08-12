@@ -1,3 +1,4 @@
+using System.Linq;
 using SFML.Graphics;
 using SFML.System;
 using SteelConveyorWar.Core;
@@ -15,14 +16,14 @@ internal static class WorldRenderer
         Direction pendingDirection,
         TilePosition? hoverTile,
         IReadOnlyList<TilePosition> patrolWaypoints,
-        IReadOnlyList<CombatShotEvent> combatShots,
+        IReadOnlyList<(CombatShotEvent Shot, CombatShotRevealMode Reveal)> combatShots,
         float cameraX,
         float cameraY,
         float playfieldWidth,
         float playfieldHeight)
     {
         var world = simulation.World;
-        var tile = new RectangleShape(new Vector2f(SfmlUiLayout.TileSize - 1f, SfmlUiLayout.TileSize - 1f));
+        using var tile = new RectangleShape(new Vector2f(SfmlUiLayout.TileSize - 1f, SfmlUiLayout.TileSize - 1f));
         var minX = Math.Max(0, (int)(cameraX / SfmlUiLayout.TileSize) - 1);
         var minY = Math.Max(0, (int)(cameraY / SfmlUiLayout.TileSize) - 1);
         var maxX = Math.Min(world.Size.Width - 1, (int)((cameraX + playfieldWidth) / SfmlUiLayout.TileSize) + 1);
@@ -87,22 +88,33 @@ internal static class WorldRenderer
 
         if (pendingBuildKind is not null && hoverTile is not null && world.IsInside(hoverTile.Value))
         {
-            DrawGhostPreview(target, pendingBuildKind.Value, hoverTile.Value, pendingDirection);
+            DrawGhostPreview(target, simulation, pendingBuildKind.Value, hoverTile.Value, pendingDirection);
         }
     }
 
-    internal static void DrawCombatShots(IRenderTarget target, IReadOnlyList<CombatShotEvent> combatShots)
+    internal static void DrawCombatShots(IRenderTarget target, IReadOnlyList<(CombatShotEvent Shot, CombatShotRevealMode Reveal)> combatShots)
     {
-        foreach (var shot in combatShots)
+        foreach (var (shot, reveal) in combatShots)
         {
+            if (!CombatShotVisibility.IsVisible(reveal))
+            {
+                continue;
+            }
+
             var color = shot.ProjectileKind switch
             {
                 ProjectileKind.Ballistic => new Color(255, 200, 80),
                 ProjectileKind.AirToGround => new Color(120, 220, 255),
                 _ => new Color(255, 240, 160)
             };
-            var from = ToScreen(shot.From);
-            var to = ToScreen(shot.To);
+            var (fromPos, toPos) = CombatShotVisibility.SanitizeEndpoints(shot, reveal);
+            if (fromPos is null || toPos is null)
+            {
+                continue;
+            }
+
+            var from = ToScreen(fromPos.Value);
+            var to = ToScreen(toPos.Value);
             var line = new[]
             {
                 new Vertex(from, color),
@@ -110,6 +122,14 @@ internal static class WorldRenderer
             };
             target.Draw(line, PrimitiveType.Lines);
         }
+    }
+
+    // Overload kept for tests/callers that already filtered to full shots.
+    internal static void DrawCombatShots(IRenderTarget target, IReadOnlyList<CombatShotEvent> combatShots)
+    {
+        DrawCombatShots(
+            target,
+            combatShots.Select(shot => (shot, CombatShotRevealMode.Full)).ToList());
     }
 
     internal static Color GetTerrainColor(TerrainType terrain, VisibilityState visibility)
@@ -152,26 +172,15 @@ internal static class WorldRenderer
         return entity.OwnerId == localPlayer || simulation.GetVisibility(localPlayer, entity.Position) == VisibilityState.Visible;
     }
 
-    // R27: a combat tracer may only be shown when the observer already sees it — otherwise the
-    // endpoint positions leak hidden movement/combat. A shot is visible if either the attacker or
-    // target is currently observable, or either endpoint tile is Visible to the local player.
+    // H06: classify reveal mode (Policy B) — never draw exact hidden endpoint coordinates.
+    internal static CombatShotRevealMode ClassifyShotForLocalPlayer(
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        CombatShotEvent shot)
+        => CombatShotVisibility.Classify(simulation, localPlayer, shot);
+
     internal static bool IsShotVisibleToLocalPlayer(GameSimulation simulation, PlayerId localPlayer, CombatShotEvent shot)
-    {
-        var attacker = simulation.World.GetEntity(shot.AttackerId);
-        if (attacker is not null && IsVisibleToLocalPlayer(simulation, localPlayer, attacker))
-        {
-            return true;
-        }
-
-        var targetEntity = simulation.World.GetEntity(shot.TargetId);
-        if (targetEntity is not null && IsVisibleToLocalPlayer(simulation, localPlayer, targetEntity))
-        {
-            return true;
-        }
-
-        return simulation.GetVisibility(localPlayer, shot.From.ToTilePosition()) == VisibilityState.Visible
-            || simulation.GetVisibility(localPlayer, shot.To.ToTilePosition()) == VisibilityState.Visible;
-    }
+        => CombatShotVisibility.IsVisible(ClassifyShotForLocalPlayer(simulation, localPlayer, shot));
 
     internal static void DrawEntity(
         IRenderTarget target,
@@ -183,7 +192,7 @@ internal static class WorldRenderer
         var drawKind = entity.Kind == EntityKind.GhostBuild && entity.BuildTargetKind is not null
             ? entity.BuildTargetKind.Value
             : entity.Kind;
-        var footprint = MvpDefinitions.GetFootprint(drawKind);
+        var footprint = simulation.GameplayTables.GetFootprint(drawKind);
         var isMobile = MvpDefinitions.UnitKinds.Contains(entity.Kind) || entity.Kind == EntityKind.Commander;
         var center = isMobile
             ? ToScreen(entity.WorldPosition)
@@ -195,10 +204,10 @@ internal static class WorldRenderer
 
         if (isMobile)
         {
-            DrawMobileUnit(target, entity, localPlayer, center, color, ink);
+            DrawMobileUnit(target, simulation, entity, localPlayer, center, color, ink);
             if (isSelected)
             {
-                DrawMobileSelection(target, entity);
+                DrawMobileSelection(target, simulation, entity);
             }
 
             return;
@@ -245,13 +254,14 @@ internal static class WorldRenderer
 
     internal static void DrawMobileUnit(
         IRenderTarget target,
+        GameSimulation simulation,
         WorldEntity entity,
         PlayerId localPlayer,
         Vector2f center,
         Color color,
         Color ink)
     {
-        var radius = (float)(MvpDefinitions.GetCollisionSize(entity.Kind).RadiusMilli / (double)WorldUnits.MilliPerTile * SfmlUiLayout.TileSize);
+        var radius = (float)(simulation.GameplayTables.GetCollisionSize(entity.Kind).RadiusMilli / (double)WorldUnits.MilliPerTile * SfmlUiLayout.TileSize);
         if (radius < SfmlUiLayout.TileSize * 0.2f)
         {
             radius = SfmlUiLayout.TileSize * 0.2f;
@@ -301,9 +311,14 @@ internal static class WorldRenderer
         EntityPictograms.DrawUnitMark(target, entity.Kind, center, radius, ink);
     }
 
-    internal static void DrawGhostPreview(IRenderTarget target, EntityKind kind, TilePosition anchor, Direction pendingDirection)
+    internal static void DrawGhostPreview(
+        IRenderTarget target,
+        GameSimulation simulation,
+        EntityKind kind,
+        TilePosition anchor,
+        Direction pendingDirection)
     {
-        var footprint = MvpDefinitions.GetFootprint(kind);
+        var footprint = simulation.GameplayTables.GetFootprint(kind);
         using var preview = new RectangleShape(new Vector2f(SfmlUiLayout.TileSize * footprint.Width - 2f, SfmlUiLayout.TileSize * footprint.Height - 2f))
         {
             Position = new Vector2f(anchor.X * SfmlUiLayout.TileSize + 1f, anchor.Y * SfmlUiLayout.TileSize + 1f),
@@ -331,10 +346,10 @@ internal static class WorldRenderer
         target.Draw(outline);
     }
 
-    internal static void DrawMobileSelection(IRenderTarget target, WorldEntity entity)
+    internal static void DrawMobileSelection(IRenderTarget target, GameSimulation simulation, WorldEntity entity)
     {
         var center = ToScreen(entity.WorldPosition);
-        var radius = (float)(MvpDefinitions.GetCollisionSize(entity.Kind).RadiusMilli / (double)WorldUnits.MilliPerTile * SfmlUiLayout.TileSize) + SfmlUiLayout.TileSize * 0.1f;
+        var radius = (float)(simulation.GameplayTables.GetCollisionSize(entity.Kind).RadiusMilli / (double)WorldUnits.MilliPerTile * SfmlUiLayout.TileSize) + SfmlUiLayout.TileSize * 0.1f;
         if (radius < SfmlUiLayout.TileSize * 0.3f)
         {
             radius = SfmlUiLayout.TileSize * 0.3f;

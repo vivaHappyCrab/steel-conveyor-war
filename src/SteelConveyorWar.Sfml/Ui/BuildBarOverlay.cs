@@ -6,15 +6,29 @@ namespace SteelConveyorWar.Sfml;
 
 internal static class BuildBarOverlay
 {
-    internal static FloatRect GetBuildBarBounds(uint windowWidth, uint windowHeight, float panelX, out float startX, out float barY)
+    internal static FloatRect GetBuildBarBounds(
+        uint windowWidth,
+        uint windowHeight,
+        float panelX,
+        IReadOnlyList<EntityKind> buildMenuKinds,
+        out float startX,
+        out float barY)
     {
-        return BastionUiOverlay.GetOrderBarBounds(windowWidth, windowHeight, panelX, BuildMenuCatalog.BuildableKinds.Length, out startX, out barY);
+        ArgumentNullException.ThrowIfNull(buildMenuKinds);
+        return BastionUiOverlay.GetOrderBarBounds(windowWidth, windowHeight, panelX, buildMenuKinds.Count, out startX, out barY);
     }
 
-    internal static bool TryPickBuildBarKind(Vector2i mousePosition, uint windowWidth, uint windowHeight, float panelX, out EntityKind kind)
+    internal static bool TryPickBuildBarKind(
+        Vector2i mousePosition,
+        uint windowWidth,
+        uint windowHeight,
+        float panelX,
+        IReadOnlyList<EntityKind> buildMenuKinds,
+        out EntityKind kind)
     {
+        ArgumentNullException.ThrowIfNull(buildMenuKinds);
         kind = default;
-        var bounds = GetBuildBarBounds(windowWidth, windowHeight, panelX, out var startX, out var barY);
+        var bounds = GetBuildBarBounds(windowWidth, windowHeight, panelX, buildMenuKinds, out var startX, out var barY);
         if (mousePosition.X < bounds.Position.X
             || mousePosition.Y < bounds.Position.Y
             || mousePosition.X >= bounds.Position.X + bounds.Size.X
@@ -24,12 +38,12 @@ internal static class BuildBarOverlay
         }
 
         var index = (int)((mousePosition.X - startX) / SfmlUiLayout.BuildBarSlotSize);
-        if (index < 0 || index >= BuildMenuCatalog.BuildableKinds.Length)
+        if (index < 0 || index >= buildMenuKinds.Count)
         {
             return false;
         }
 
-        kind = BuildMenuCatalog.BuildableKinds[index];
+        kind = buildMenuKinds[index];
         return true;
     }
 
@@ -45,15 +59,17 @@ internal static class BuildBarOverlay
         uint windowWidth,
         uint windowHeight,
         float panelX,
-        Vector2i mousePosition)
+        Vector2i mousePosition,
+        IReadOnlyList<EntityKind> buildMenuKinds)
     {
+        ArgumentNullException.ThrowIfNull(buildMenuKinds);
         var commander = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
         if (commander?.Kind != EntityKind.Commander || commander.OwnerId != localPlayer)
         {
             commander = simulation.World.Entities.FirstOrDefault(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander && entity.IsAlive);
         }
 
-        var bounds = GetBuildBarBounds(windowWidth, windowHeight, panelX, out var startX, out var barY);
+        var bounds = GetBuildBarBounds(windowWidth, windowHeight, panelX, buildMenuKinds, out var startX, out var barY);
         using var backdrop = new RectangleShape(new Vector2f(bounds.Size.X + 8f, bounds.Size.Y + 8f))
         {
             Position = new Vector2f(bounds.Position.X - 4f, bounds.Position.Y - 4f),
@@ -64,9 +80,9 @@ internal static class BuildBarOverlay
         target.Draw(backdrop);
 
         string? tooltip = null;
-        for (var i = 0; i < BuildMenuCatalog.BuildableKinds.Length; i++)
+        for (var i = 0; i < buildMenuKinds.Count; i++)
         {
-            var kind = BuildMenuCatalog.BuildableKinds[i];
+            var kind = buildMenuKinds[i];
             var slotX = startX + i * SfmlUiLayout.BuildBarSlotSize;
             var affordable = BuildBarModel.AffordableBuilds(simulation, commander, kind);
             var selected = pendingBuildKind == kind;

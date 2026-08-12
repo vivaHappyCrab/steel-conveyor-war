@@ -119,6 +119,8 @@ internal sealed class ResearchSystem
         if (exclusiveGroup is not null && exclusiveGroup.LockOn == ExclusiveLockOn.Start)
         {
             ApplyExclusiveLock(research, exclusiveGroup, technologyId);
+            // H04: exclusive start-locks change available research/content outcomes.
+            research.BumpCapabilityEpoch();
         }
 
         if (exclusiveGroup is not null && confirmExclusive)
@@ -647,6 +649,8 @@ internal sealed class ResearchSystem
         }
 
         ApplyEffects(research, definition.Effects);
+        // H04: completion changes unlocks/modifiers/locks — invalidate factory idle-skip keys.
+        research.BumpCapabilityEpoch();
     }
 
     private void EvaluateGates(PlayerResearchState research)
@@ -676,6 +680,9 @@ internal sealed class ResearchSystem
             research.CurrentTierId = gate.TargetTierId;
             ApplyTierBaselineUnlocks(research, gate.TargetTierId);
         }
+
+        // H04: gate/tier unlocks change production capability.
+        research.BumpCapabilityEpoch();
     }
 
     private void ApplyExclusiveLock(

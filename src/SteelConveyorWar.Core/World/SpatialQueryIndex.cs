@@ -2,7 +2,9 @@ namespace SteelConveyorWar.Core;
 
 /// <summary>
 /// Transient spatial helpers for combat, movement collision, and threat search.
-/// Call <see cref="Rebuild"/> once per pass so range queries avoid O(callers × entities) scans.
+/// Call <see cref="Rebuild"/> once per spatial phase (M06: post-commands and post-factory) so range
+/// queries avoid O(callers × entities) scans. Mid-pass movers use <see cref="Relocate"/>; mid-pass
+/// spawns use <see cref="InsertAlive"/>.
 /// Keyed by entity <see cref="WorldEntity.Position"/> (anchor), matching Euclidean range rules.
 /// Dead / garrisoned entities may remain stale until the next rebuild; callers must re-check liveness.
 /// </summary>
@@ -18,8 +20,9 @@ internal sealed class SpatialQueryIndex
     private readonly Dictionary<long, List<WorldEntity>> _wallsByTile = new();
     private readonly Stack<List<WorldEntity>> _listPool = new();
 
-    public void Rebuild(IReadOnlyList<WorldEntity> entities)
+    public void Rebuild(IReadOnlyList<WorldEntity> entities, GameplayTablesCatalog tables)
     {
+        ArgumentNullException.ThrowIfNull(tables);
         Clear();
         foreach (var entity in entities)
         {
@@ -35,7 +38,7 @@ internal sealed class SpatialQueryIndex
                 continue;
             }
 
-            foreach (var tile in GameWorld.GetFootprintTiles(entity.Kind, entity.Position))
+            foreach (var tile in GameWorld.GetFootprintTiles(entity.Kind, entity.Position, tables))
             {
                 Add(_wallsByTile, tile, entity);
             }
@@ -45,10 +48,10 @@ internal sealed class SpatialQueryIndex
         SortBuckets(_wallsByTile);
     }
 
-    public static SpatialQueryIndex Build(IReadOnlyList<WorldEntity> entities)
+    public static SpatialQueryIndex Build(IReadOnlyList<WorldEntity> entities, GameplayTablesCatalog? tables = null)
     {
         var index = new SpatialQueryIndex();
-        index.Rebuild(entities);
+        index.Rebuild(entities, tables ?? GameplayTablesCatalog.Embedded);
         return index;
     }
 
@@ -131,6 +134,38 @@ internal sealed class SpatialQueryIndex
         if (_entitiesByPosition.TryGetValue(Pack(to), out var atTo) && atTo.Count > 1)
         {
             atTo.Sort(static (left, right) => left.Id.CompareTo(right.Id));
+        }
+    }
+
+    /// <summary>
+    /// Indexes a newly spawned alive entity mid-pass without a full rebuild (M06).
+    /// </summary>
+    public void InsertAlive(WorldEntity entity, GameplayTablesCatalog tables)
+    {
+        ArgumentNullException.ThrowIfNull(tables);
+        if (!entity.IsAlive || entity.IsGarrisoned)
+        {
+            return;
+        }
+
+        Add(_entitiesByPosition, entity.Position, entity);
+        if (_entitiesByPosition.TryGetValue(Pack(entity.Position), out var atPos) && atPos.Count > 1)
+        {
+            atPos.Sort(static (left, right) => left.Id.CompareTo(right.Id));
+        }
+
+        if (entity.OwnerId is null || !MvpDefinitions.IsWallKind(entity.Kind))
+        {
+            return;
+        }
+
+        foreach (var tile in GameWorld.GetFootprintTiles(entity.Kind, entity.Position, tables))
+        {
+            Add(_wallsByTile, tile, entity);
+            if (_wallsByTile.TryGetValue(Pack(tile), out var walls) && walls.Count > 1)
+            {
+                walls.Sort(static (left, right) => left.Id.CompareTo(right.Id));
+            }
         }
     }
 

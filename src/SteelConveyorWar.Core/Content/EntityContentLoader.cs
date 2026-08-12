@@ -4,12 +4,7 @@ namespace SteelConveyorWar.Core;
 
 public static class EntityContentLoader
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = ContentJsonOptions.CreateStrict();
 
     public static EntityCatalog Parse(string json)
     {

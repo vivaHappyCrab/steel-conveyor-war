@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SteelConveyorWar.Hosting</RootNamespace>
+    <AssemblyName>SteelConveyorWar.Hosting</AssemblyName>
+    <Description>Shared host bootstrap: config path resolution and content file I/O (no SFML).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SteelConveyorWar.Core\SteelConveyorWar.Core.csproj" />
+  </ItemGroup>
+
+</Project>

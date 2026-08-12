@@ -11,11 +11,13 @@
 
 ## Module boundaries
 
-- `src/SteelConveyorWar.Core` — headless deterministic simulation only (no SFML)
+- `src/SteelConveyorWar.Core` — headless deterministic simulation only (no SFML, no config file I/O)
+- `src/SteelConveyorWar.Hosting` — shared host bootstrap: config path resolution + content file I/O (no SFML)
 - `src/SteelConveyorWar.Sfml` — window, render, input → core commands
 - `src/SteelConveyorWar.Client` — SFML composition root / executable
-- `src/SteelConveyorWar.Headless` — Core-only bot/CI host (no window)
+- `src/SteelConveyorWar.Headless` — Core+Hosting bot/CI host (no window)
 - `tests/SteelConveyorWar.Core.Tests` — headless core tests (no SFML reference)
+- `tests/SteelConveyorWar.Hosting.Tests` — shared bootstrap I/O tests
 - `tests/SteelConveyorWar.Sfml.Tests` — SFML adapter tests
 - `config/` — runtime content (`game`/`research`/`tiles`/`entities`/`build-costs` JSON); remaining recipes/combat/footprints/stacks/power in `MvpDefinitions.cs`
 - `resources/` — presentation assets only

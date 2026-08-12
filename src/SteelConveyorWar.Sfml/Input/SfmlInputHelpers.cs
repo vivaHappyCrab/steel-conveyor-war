@@ -46,17 +46,27 @@ internal static class SfmlInputHelpers
         return success;
     }
 
-    internal static void EnsureLocalCommanderSelected(GameSimulation simulation, PlayerId localPlayer, ref int? selectedEntityId)
+    /// <summary>
+    /// Ensures the local living commander is selected. Returns false when none exists (e.g. after
+    /// defeat) so callers can no-op without throwing (L02).
+    /// </summary>
+    internal static bool EnsureLocalCommanderSelected(GameSimulation simulation, PlayerId localPlayer, ref int? selectedEntityId)
     {
         var selected = selectedEntityId is null ? null : simulation.World.GetEntity(selectedEntityId.Value);
-        if (selected?.Kind == EntityKind.Commander && selected.OwnerId == localPlayer)
+        if (selected?.Kind == EntityKind.Commander && selected.OwnerId == localPlayer && selected.IsAlive)
         {
-            return;
+            return true;
         }
 
-        selectedEntityId = simulation.World.Entities
-            .First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander && entity.IsAlive)
-            .Id;
+        var commander = simulation.World.Entities
+            .FirstOrDefault(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander && entity.IsAlive);
+        if (commander is null)
+        {
+            return false;
+        }
+
+        selectedEntityId = commander.Id;
+        return true;
     }
 
     internal static bool TrySelectOwnedBastionByIndex(

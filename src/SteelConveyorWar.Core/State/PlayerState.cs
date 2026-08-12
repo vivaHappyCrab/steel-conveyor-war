@@ -163,6 +163,25 @@ public sealed class PlayerState
         _visibleTiles.Clear();
     }
 
+    /// <summary>M06: decay a single tile without scanning the full visible set.</summary>
+    internal void DecayVisibilityAt(TilePosition position)
+    {
+        if (_visibility[position.X, position.Y] != VisibilityState.Visible)
+        {
+            return;
+        }
+
+        _visibility[position.X, position.Y] = VisibilityState.Explored;
+        for (var i = _visibleTiles.Count - 1; i >= 0; i--)
+        {
+            if (_visibleTiles[i].X == position.X && _visibleTiles[i].Y == position.Y)
+            {
+                _visibleTiles.RemoveAt(i);
+                break;
+            }
+        }
+    }
+
     internal void SetTechSignatures(IEnumerable<TechSignatureHotspot> hotspots)
     {
         _techSignatures.Clear();

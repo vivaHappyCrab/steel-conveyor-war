@@ -4,12 +4,7 @@ namespace SteelConveyorWar.Core;
 
 public static class BuildCostContentLoader
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = ContentJsonOptions.CreateStrict();
 
     public static BuildCostCatalog Parse(string json)
     {
@@ -34,7 +29,7 @@ public static class BuildCostContentLoader
                 throw new InvalidOperationException("Build entry is missing a kind.");
             }
 
-            if (!Enum.TryParse<EntityKind>(entry.Kind, ignoreCase: true, out var kind))
+            if (!Enum.TryParse<EntityKind>(entry.Kind, ignoreCase: true, out var kind) || !Enum.IsDefined(kind))
             {
                 throw new InvalidOperationException($"Unknown build entity kind '{entry.Kind}'.");
             }
@@ -57,8 +52,8 @@ public static class BuildCostContentLoader
             }
         }
 
-        // R05: hand the catalog ReadOnlyDictionary wrappers so callers cannot downcast to Dictionary and mutate.
-        return new BuildCostCatalog(dto.SchemaVersion, costs.AsReadOnly(), ticks.AsReadOnly(), requirements.AsReadOnly());
+        // H07: BuildCostCatalog compact ctor deep-freezes root + nested cost maps.
+        return new BuildCostCatalog(dto.SchemaVersion, costs, ticks, requirements);
     }
 
     private static IReadOnlyDictionary<ItemId, int> ParseCost(Dictionary<string, int>? cost, EntityKind kind)
@@ -71,7 +66,7 @@ public static class BuildCostContentLoader
         var parsed = new Dictionary<ItemId, int>();
         foreach (var (itemName, amount) in cost)
         {
-            if (!Enum.TryParse<ItemId>(itemName, ignoreCase: true, out var item))
+            if (!Enum.TryParse<ItemId>(itemName, ignoreCase: true, out var item) || !Enum.IsDefined(item))
             {
                 throw new InvalidOperationException($"Build kind '{kind}' has unknown item '{itemName}'.");
             }

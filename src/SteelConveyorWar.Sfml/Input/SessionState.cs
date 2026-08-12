@@ -3,6 +3,18 @@ using SteelConveyorWar.Core;
 namespace SteelConveyorWar.Sfml;
 
 /// <summary>
+/// L03: mutually exclusive SFML UI modes. Patrol waypoint entry stays orthogonal to these overlays.
+/// </summary>
+internal enum ExclusiveUiMode
+{
+    None = 0,
+    Build = 1,
+    Research = 2,
+    Energy = 3,
+    BastionCompose = 4
+}
+
+/// <summary>
 /// R21: explicit SFML play-session UI state (selection, build menu, overlays, demolish hold,
 /// bastion pending input). Transitions live here so <see cref="SfmlPlaySession"/> stays a thin
 /// pump → map → sink → advance → render loop and unit tests can exercise modes without a window.
@@ -31,6 +43,35 @@ internal sealed class SessionState
     public float DemolishHoldElapsed { get; private set; }
     public bool DemolishHoldCommitted { get; private set; }
 
+    /// <summary>At most one exclusive overlay/mode is active (L03).</summary>
+    public ExclusiveUiMode ActiveExclusiveMode
+    {
+        get
+        {
+            if (IsBuildMenuOpen)
+            {
+                return ExclusiveUiMode.Build;
+            }
+
+            if (IsResearchOverlayOpen)
+            {
+                return ExclusiveUiMode.Research;
+            }
+
+            if (IsEnergyOverlayOpen)
+            {
+                return ExclusiveUiMode.Energy;
+            }
+
+            if (IsBastionCompositionOpen)
+            {
+                return ExclusiveUiMode.BastionCompose;
+            }
+
+            return ExclusiveUiMode.None;
+        }
+    }
+
     public SessionState(int? initialSelectedEntityId = null)
     {
         SelectedEntityId = initialSelectedEntityId;
@@ -55,6 +96,14 @@ internal sealed class SessionState
     public void AdvanceDemolishHold(float frameDt) => DemolishHoldElapsed += frameDt;
 
     public void MarkDemolishHoldCommitted() => DemolishHoldCommitted = true;
+
+    public void CloseBuildMenu()
+    {
+        IsBuildMenuOpen = false;
+        PendingBuildKind = null;
+        PendingDirection = Direction.East;
+        PendingRecipe = null;
+    }
 
     public void CloseResearchOverlay()
     {
@@ -152,10 +201,7 @@ internal sealed class SessionState
     /// <summary>F1 / focus-commander: keep selection, clear build/demolish/bastion UI.</summary>
     public void ClearTransientUiKeepingSelection()
     {
-        IsBuildMenuOpen = false;
-        PendingBuildKind = null;
-        PendingDirection = Direction.East;
-        PendingRecipe = null;
+        CloseBuildMenu();
         ClearDemolishHold();
         CloseBastionComposition();
         ClearBastionPending();
@@ -163,6 +209,11 @@ internal sealed class SessionState
 
     public void ToggleBuildMenu(EntityKind defaultBuildKind)
     {
+        if (!IsBuildMenuOpen)
+        {
+            CloseExclusiveModesExcept(ExclusiveUiMode.Build);
+        }
+
         IsBuildMenuOpen = !IsBuildMenuOpen;
         PendingBuildKind = IsBuildMenuOpen ? defaultBuildKind : null;
         PendingDirection = Direction.East;
@@ -173,6 +224,7 @@ internal sealed class SessionState
 
     public void OpenBuildMenuWithCopy(EntityKind kind, Direction direction, ItemRecipeId? recipe)
     {
+        CloseExclusiveModesExcept(ExclusiveUiMode.Build);
         IsBuildMenuOpen = true;
         PendingBuildKind = kind;
         PendingDirection = direction;
@@ -206,10 +258,7 @@ internal sealed class SessionState
 
         RecipePage = 0;
         TemplateUnitIndex = 0;
-        IsBuildMenuOpen = false;
-        PendingBuildKind = null;
-        PendingDirection = Direction.East;
-        PendingRecipe = null;
+        CloseBuildMenu();
         ClearDemolishHold();
         ClearBastionPending();
     }
@@ -221,24 +270,36 @@ internal sealed class SessionState
         ClearBastionPending();
     }
 
-    /// <summary>Mutual-exclusion when opening research (closes energy + bastion composition).</summary>
-    public void PrepareOpenResearchExclusive()
-    {
-        CloseEnergyOverlay();
-        CloseBastionComposition();
-    }
+    /// <summary>Mutual-exclusion when opening research (closes build/energy/bastion composition).</summary>
+    public void PrepareOpenResearchExclusive() => CloseExclusiveModesExcept(ExclusiveUiMode.Research);
 
-    /// <summary>Mutual-exclusion when opening energy (closes research + bastion composition).</summary>
-    public void PrepareOpenEnergyExclusive()
-    {
-        CloseResearchOverlay();
-        CloseBastionComposition();
-    }
+    /// <summary>Mutual-exclusion when opening energy (closes build/research/bastion composition).</summary>
+    public void PrepareOpenEnergyExclusive() => CloseExclusiveModesExcept(ExclusiveUiMode.Energy);
 
-    /// <summary>Mutual-exclusion when toggling bastion composition (closes research + energy).</summary>
-    public void PrepareToggleBastionCompositionExclusive()
+    /// <summary>Mutual-exclusion when toggling bastion composition (closes build/research/energy).</summary>
+    public void PrepareToggleBastionCompositionExclusive() =>
+        CloseExclusiveModesExcept(ExclusiveUiMode.BastionCompose);
+
+    private void CloseExclusiveModesExcept(ExclusiveUiMode keep)
     {
-        CloseResearchOverlay();
-        CloseEnergyOverlay();
+        if (keep != ExclusiveUiMode.Build)
+        {
+            CloseBuildMenu();
+        }
+
+        if (keep != ExclusiveUiMode.Research)
+        {
+            CloseResearchOverlay();
+        }
+
+        if (keep != ExclusiveUiMode.Energy)
+        {
+            CloseEnergyOverlay();
+        }
+
+        if (keep != ExclusiveUiMode.BastionCompose)
+        {
+            CloseBastionComposition();
+        }
     }
 }

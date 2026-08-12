@@ -64,7 +64,8 @@ public sealed class WorldEntity
 
     /// <summary>
     /// R17: last seen army-accounting epoch when this idle factory was fully evaluated.
-    /// Combined with <see cref="IdleFactoryInputVersion"/> to skip unchanged idle factories.
+    /// Combined with <see cref="IdleFactoryInputVersion"/> and <see cref="IdleFactoryResearchEpoch"/>
+    /// to skip unchanged idle factories.
     /// </summary>
     internal int IdleFactorySupplyEpoch { get; set; } = -1;
 
@@ -72,6 +73,11 @@ public sealed class WorldEntity
     /// R17: <see cref="Inventory.MutationVersion"/> of <see cref="InputBuffer"/> at last idle evaluation.
     /// </summary>
     internal int IdleFactoryInputVersion { get; set; } = -1;
+
+    /// <summary>
+    /// H04: owner <see cref="PlayerResearchState.CapabilityEpoch"/> at last idle evaluation.
+    /// </summary>
+    internal int IdleFactoryResearchEpoch { get; set; } = -1;
 
     public ItemId? PendingOutputItem { get; internal set; }
 

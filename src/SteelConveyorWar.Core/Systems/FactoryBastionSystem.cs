@@ -54,10 +54,14 @@ public sealed partial class GameSimulation
             }
 
             // Idle skip (manual only): autofill must re-resolve deficits every tick.
-            // Same inputs + army accounting epoch ⇒ capacity/start outcome unchanged.
+            // Same inputs + army epoch + owner research capability epoch ⇒ start outcome unchanged.
+            var ownerResearchEpoch = factory.OwnerId is null
+                ? 0
+                : GetPlayer(factory.OwnerId.Value).Research.CapabilityEpoch;
             if (factory.IsManualProductionTarget
                 && factory.IdleFactorySupplyEpoch == _armyAccountingEpoch
-                && factory.IdleFactoryInputVersion == factory.InputBuffer.MutationVersion)
+                && factory.IdleFactoryInputVersion == factory.InputBuffer.MutationVersion
+                && factory.IdleFactoryResearchEpoch == ownerResearchEpoch)
             {
                 continue;
             }
@@ -68,7 +72,7 @@ public sealed partial class GameSimulation
                 factory.ProductionTargetKind = ChooseBastionDeficit(factory);
             }
 
-            if (factory.ProductionTargetKind is null || !MvpDefinitions.ProductionRecipes.TryGetValue(factory.ProductionTargetKind.Value, out var recipe))
+            if (factory.ProductionTargetKind is null || !GameplayTables.ProductionRecipes.TryGetValue(factory.ProductionTargetKind.Value, out var recipe))
             {
                 RememberIdleFactorySkip(factory);
                 continue;
@@ -76,7 +80,7 @@ public sealed partial class GameSimulation
 
             if (!IsRecipeUnlockedForOwner(factory.OwnerId, recipe))
             {
-                RememberIdleFactorySkip(factory);
+                // H04 Variant B: waiting on unlock must re-check every tick (do not arm idle skip).
                 continue;
             }
 
@@ -110,6 +114,9 @@ public sealed partial class GameSimulation
     {
         factory.IdleFactorySupplyEpoch = _armyAccountingEpoch;
         factory.IdleFactoryInputVersion = factory.InputBuffer.MutationVersion;
+        factory.IdleFactoryResearchEpoch = factory.OwnerId is null
+            ? 0
+            : GetPlayer(factory.OwnerId.Value).Research.CapabilityEpoch;
     }
 
     private void RefreshArmyAccountingEpochForDeaths()
@@ -158,7 +165,7 @@ public sealed partial class GameSimulation
                     continue;
                 }
 
-                if (!MvpDefinitions.ProductionRecipes.TryGetValue(desiredKind, out var recipe)
+                if (!GameplayTables.ProductionRecipes.TryGetValue(desiredKind, out var recipe)
                     || !IsRecipeUnlockedForOwner(factory.OwnerId, recipe))
                 {
                     continue;
@@ -409,6 +416,7 @@ public sealed partial class GameSimulation
         }
 
         World.AddEntity(unit);
+        _spatialQueryIndex.InsertAlive(unit, GameplayTables);
         // Live mid-tick accounting: later factories in this tick must see the new living unit.
         InsertSortedById(_scratchUnits, unit);
         _armyAccountingAliveUnits++;
@@ -448,8 +456,7 @@ public sealed partial class GameSimulation
 
     private bool TryFindSpawnTileNear(WorldEntity factory, EntityKind unitKind, out TilePosition spawnTile)
     {
-        _spatialQueryIndex.Rebuild(World.Entities);
-        var footprint = MvpDefinitions.GetFootprint(factory.Kind);
+        var footprint = GameplayTables.GetFootprint(factory.Kind);
         for (var ring = 1; ring <= 6; ring++)
         {
             _scratchSpawnCandidates.Clear();
@@ -508,7 +515,6 @@ public sealed partial class GameSimulation
     {
         CollectSortedAliveEntities(_scratchBastions, static entity => entity.Kind == EntityKind.Bastion);
         CollectSortedAliveEntities(_scratchUnits, static entity => MvpDefinitions.UnitKinds.Contains(entity.Kind));
-        _spatialQueryIndex.Rebuild(World.Entities);
 
         for (var bastionIndex = 0; bastionIndex < _scratchBastions.Count; bastionIndex++)
         {
@@ -598,9 +604,9 @@ public sealed partial class GameSimulation
     /// True when <paramref name="unitPosition"/> is on or Chebyshev-adjacent to the bastion footprint
     /// (units cannot occupy building tiles, so they garrison from the perimeter ring).
     /// </summary>
-    private static bool IsWithinBastionGarrisonRange(WorldEntity bastion, TilePosition unitPosition)
+    private bool IsWithinBastionGarrisonRange(WorldEntity bastion, TilePosition unitPosition)
     {
-        var footprint = MvpDefinitions.GetFootprint(bastion.Kind);
+        var footprint = GameplayTables.GetFootprint(bastion.Kind);
         var minX = bastion.Position.X - 1;
         var maxX = bastion.Position.X + footprint.Width;
         var minY = bastion.Position.Y - 1;
@@ -685,7 +691,7 @@ public sealed partial class GameSimulation
 
     private int GetBastionVisionRadius(WorldEntity bastion)
     {
-        var radius = MvpDefinitions.GetStats(EntityKind.Bastion).VisionRadius;
+        var radius = GameplayTables.GetStats(EntityKind.Bastion).VisionRadius;
         if (bastion.OwnerId is not null)
         {
             radius = ResolveStat(bastion.OwnerId.Value, ResearchStatIds.VisionRadius, radius, minValue: 0);

@@ -191,6 +191,8 @@ public sealed class ExtractedSystemsTests
             World = world;
             _players = players.ToList();
             Tick = tick;
+            SharedSpatialIndex = new SpatialQueryIndex();
+            SharedSpatialIndex.Rebuild(world.Entities, GameplayTables);
         }
 
         public GameWorld World { get; }
@@ -200,6 +202,10 @@ public sealed class ExtractedSystemsTests
         public IReadOnlyList<PlayerState> Players => _players;
 
         public SimulationPresentationSink Presentation { get; } = new();
+
+        public GameplayTablesCatalog GameplayTables { get; init; } = GameplayTablesCatalog.Embedded;
+
+        public SpatialQueryIndex SharedSpatialIndex { get; }
 
         public int CascadeBastionDeathsCalls { get; private set; }
 

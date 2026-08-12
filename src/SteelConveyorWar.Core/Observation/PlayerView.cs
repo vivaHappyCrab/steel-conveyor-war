@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using SteelConveyorWar.Core.Commands;
 
 namespace SteelConveyorWar.Core;
@@ -5,13 +6,14 @@ namespace SteelConveyorWar.Core;
 /// <summary>
 /// FoW-aware (or cheat) read model over a live <see cref="GameSimulation"/>.
 /// Entity gating matches SFML: owned entities always observe; others require <see cref="VisibilityState.Visible"/>.
+/// M10: nested snapshot collections are hard-immutable; <see cref="CaptureFrame"/> freezes fog/terrain
+/// at the same tick as entities/economy.
 /// </summary>
 public sealed class PlayerView : IPlayerView
 {
-    // R19: the full command vocabulary a bot may submit. Ownership/authority is still enforced per
-    // command at apply time; this only advertises the protocol surface so the bot need not hard-code it.
-    private static readonly IReadOnlyList<SimulationCommandKind> AllCommandKinds =
-        Enum.GetValues<SimulationCommandKind>();
+    // M02/M10: advertised vocabulary is a frozen ImmutableArray (cast-mutation throws / no shared mutate).
+    private static readonly ImmutableArray<SimulationCommandKind> AllCommandKinds =
+        SimulationCommandVocabulary.AdvertisedKinds.ToImmutableArray();
 
     private readonly GameSimulation _simulation;
 
@@ -68,7 +70,7 @@ public sealed class PlayerView : IPlayerView
             : _simulation.World.Entities.Where(IsFairEntityVisible);
 
         var tick = _simulation.Tick;
-        return source.Select(entity => CaptureEntity(entity, tick)).ToList();
+        return ContentFreeze.List(source.Select(entity => CaptureEntity(entity, tick)));
     }
 
     public VisibleEntitySnapshot? GetVisibleEntity(int entityId)
@@ -94,7 +96,7 @@ public sealed class PlayerView : IPlayerView
         return new OwnEconomySnapshot(
             _simulation.Tick,
             player.Id,
-            new Dictionary<ItemId, int>(player.Inventory.Items),
+            player.Inventory.Items,
             player.PowerProduced,
             player.PowerDemand,
             player.IsDefeated);
@@ -104,33 +106,33 @@ public sealed class PlayerView : IPlayerView
     {
         var tick = _simulation.Tick;
         var research = _simulation.GetPlayer(ObserverId).Research;
-        var tracks = research.Tracks.Values
-            .OrderBy(track => track.TrackId, StringComparer.Ordinal)
-            .Select(track => new TrackObservation(
-                track.TrackId,
-                track.AllocationBasisPoints,
-                track.ActiveSerialTarget,
-                new Dictionary<TechnologyId, int>(track.ProjectWeights)))
-            .ToList();
+        var tracks = ContentFreeze.List(
+            research.Tracks.Values
+                .OrderBy(track => track.TrackId, StringComparer.Ordinal)
+                .Select(track => new TrackObservation(
+                    track.TrackId,
+                    track.AllocationBasisPoints,
+                    track.ActiveSerialTarget,
+                    track.ProjectWeights)));
 
         return new OwnResearchSnapshot(
             tick,
             research.CurrentTierId,
-            new HashSet<TechnologyId>(research.CompletedTechnologies),
-            new Dictionary<TechnologyId, int>(research.ProgressWorkUnits),
+            research.CompletedTechnologies,
+            research.ProgressWorkUnits,
             tracks,
-            new HashSet<string>(research.AppliedCapabilities, StringComparer.Ordinal),
-            new HashSet<string>(research.UnlockedEntityKinds, StringComparer.Ordinal),
-            new HashSet<string>(research.UnlockedRecipes, StringComparer.Ordinal),
-            new HashSet<string>(research.UnlockedItemRecipes, StringComparer.Ordinal),
-            new HashSet<string>(research.Milestones, StringComparer.Ordinal));
+            research.AppliedCapabilities,
+            research.UnlockedEntityKinds,
+            research.UnlockedRecipes,
+            research.UnlockedItemRecipes,
+            research.Milestones);
     }
 
     public IReadOnlyList<TechSignatureObservation> GetTechSignatures()
     {
-        return _simulation.GetTechSignatureHotspots(ObserverId)
-            .Select(hotspot => new TechSignatureObservation(hotspot.ZoneX, hotspot.ZoneY, hotspot.Intensity))
-            .ToList();
+        return ContentFreeze.List(
+            _simulation.GetTechSignatureHotspots(ObserverId)
+                .Select(hotspot => new TechSignatureObservation(hotspot.ZoneX, hotspot.ZoneY, hotspot.Intensity)));
     }
 
     public IReadOnlyList<SimulationCommandKind> GetAvailableCommandKinds() => AllCommandKinds;
@@ -141,27 +143,35 @@ public sealed class PlayerView : IPlayerView
         var events = new List<ObservedCombatEvent>();
         foreach (var shot in _simulation.CombatShotsThisTick)
         {
-            if (!IsShotObservable(shot))
+            var reveal = CombatShotVisibility.Classify(
+                _simulation,
+                ObserverId,
+                shot,
+                cheatMode: Mode == PlayerObservationMode.Cheat);
+            if (!CombatShotVisibility.IsVisible(reveal))
             {
                 continue;
             }
 
+            var (from, to) = CombatShotVisibility.SanitizeEndpoints(shot, reveal);
             events.Add(new ObservedCombatEvent(
                 tick,
                 shot.AttackerId,
                 shot.TargetId,
-                shot.From,
-                shot.To,
-                shot.ProjectileKind));
+                from,
+                to,
+                shot.ProjectileKind,
+                reveal));
         }
 
-        return events;
+        return ContentFreeze.List(events);
     }
 
-    public PlayerObservationSnapshot CaptureSnapshot()
+    public PlayerObservationSnapshot CaptureFrame()
     {
+        var tick = _simulation.Tick;
         return new PlayerObservationSnapshot(
-            _simulation.Tick,
+            tick,
             ObserverId,
             Mode,
             WorldSize,
@@ -170,40 +180,36 @@ public sealed class PlayerView : IPlayerView
             GetOwnResearch(),
             GetTechSignatures(),
             GetAvailableCommandKinds(),
-            GetEventsThisTick());
+            GetEventsThisTick(),
+            CaptureFogBoard(tick));
     }
 
-    // R19/R27: mirror SFML's tracer gate so the event stream cannot leak hidden movement/combat.
-    // Cheat mode sees everything; Fair mode requires either endpoint entity observable or an endpoint
-    // tile currently Visible.
-    private bool IsShotObservable(CombatShotEvent shot)
+    public PlayerObservationSnapshot CaptureSnapshot() => CaptureFrame();
+
+    private FogBoardView CaptureFogBoard(long tick)
     {
-        if (Mode == PlayerObservationMode.Cheat)
+        var size = WorldSize;
+        var visibility = new VisibilityState[size.Width * size.Height];
+        var terrainBuilder = ImmutableDictionary.CreateBuilder<long, TerrainType>();
+
+        for (var y = 0; y < size.Height; y++)
         {
-            return true;
+            for (var x = 0; x < size.Width; x++)
+            {
+                var tile = new TilePosition(x, y);
+                var state = Mode == PlayerObservationMode.Cheat
+                    ? VisibilityState.Visible
+                    : _simulation.GetVisibility(ObserverId, tile);
+                visibility[(y * size.Width) + x] = state;
+
+                if (Mode == PlayerObservationMode.Cheat || state != VisibilityState.Unknown)
+                {
+                    terrainBuilder[FogBoardView.Pack(tile)] = _simulation.World.GetTerrain(tile);
+                }
+            }
         }
 
-        var attacker = _simulation.World.GetEntity(shot.AttackerId);
-        if (attacker is not null && IsShotEndpointVisible(attacker))
-        {
-            return true;
-        }
-
-        var target = _simulation.World.GetEntity(shot.TargetId);
-        if (target is not null && IsShotEndpointVisible(target))
-        {
-            return true;
-        }
-
-        return _simulation.GetVisibility(ObserverId, shot.From.ToTilePosition()) == VisibilityState.Visible
-            || _simulation.GetVisibility(ObserverId, shot.To.ToTilePosition()) == VisibilityState.Visible;
-    }
-
-    // Matches WorldRenderer.IsVisibleToLocalPlayer: owned entities always observe; others require Visible.
-    private bool IsShotEndpointVisible(WorldEntity entity)
-    {
-        return entity.OwnerId == ObserverId
-            || _simulation.GetVisibility(ObserverId, entity.Position) == VisibilityState.Visible;
+        return new FogBoardView(tick, size, visibility, terrainBuilder.ToImmutable());
     }
 
     private bool IsEntityObservable(WorldEntity entity)
@@ -231,9 +237,9 @@ public sealed class PlayerView : IPlayerView
     private static OwnEntityDetail CaptureOwnDetail(WorldEntity entity)
     {
         return new OwnEntityDetail(
-            new Dictionary<ItemId, int>(entity.Inventory.Items),
-            new Dictionary<ItemId, int>(entity.InputBuffer.Items),
-            new Dictionary<ItemId, int>(entity.OutputBuffer.Items),
+            entity.Inventory.Items,
+            entity.InputBuffer.Items,
+            entity.OutputBuffer.Items,
             entity.EnergyBuffer,
             entity.EnergyBufferCapacity,
             entity.WorkTicksRemaining,
@@ -245,7 +251,7 @@ public sealed class PlayerView : IPlayerView
             entity.QueuedDemolishOrder,
             entity.MoveTarget,
             entity.Order,
-            new Dictionary<EntityKind, int>(entity.BastionTemplate));
+            entity.BastionTemplate);
     }
 
     private bool IsFairEntityVisible(WorldEntity entity)

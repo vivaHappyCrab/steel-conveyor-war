@@ -93,18 +93,21 @@ public static class BuildBarModel
             : entity.Kind;
     }
 
+    /// <summary>
+    /// H05: requires the match <paramref name="buildCosts"/> — no Embedded fallback in production.
+    /// </summary>
     public static bool TryCopyFromWorldEntity(
         WorldEntity entity,
+        BuildCostCatalog buildCosts,
         out EntityKind kind,
         out Direction direction,
-        out ItemRecipeId? recipe,
-        BuildCostCatalog? buildCosts = null)
+        out ItemRecipeId? recipe)
     {
+        ArgumentNullException.ThrowIfNull(buildCosts);
         kind = ResolveCopyKind(entity);
         direction = Direction.East;
         recipe = null;
-        var costs = (buildCosts ?? MvpBuildCostCatalog.Embedded).Costs;
-        if (!costs.ContainsKey(kind))
+        if (!buildCosts.Costs.ContainsKey(kind))
         {
             return false;
         }

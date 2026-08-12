@@ -68,9 +68,9 @@ Dirty overwrite details: idle skip clears (`FogOfWarSystem.cs:55-63`); repaint c
 
 ## Definition of Done
 
-- [ ] No FoW dirty from intermediate catch-up ticks is lost before draw.
-- [ ] Test covers multi-tick case.
-- [ ] R33 residual for catch-up invalidation closed.
+- [x] No FoW dirty from intermediate catch-up ticks is lost before draw.
+- [x] Test covers multi-tick case.
+- [x] R33 residual for catch-up invalidation closed.
 
 ## Специалисты
 

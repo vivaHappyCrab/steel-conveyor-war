@@ -1,8 +1,11 @@
-namespace SteelConveyorWar.Core.Tests;
+using SteelConveyorWar.Core;
+using SteelConveyorWar.Hosting;
+
+namespace SteelConveyorWar.Hosting.Tests;
 
 /// <summary>
-/// R25: both hosts (Client, Headless) load content through one shared bootstrap, so config
-/// composition is defined in a single place and cannot drift between hosts.
+/// R25 / M09: both hosts (Client, Headless) load content through one shared Hosting bootstrap, so
+/// config I/O is defined in a single place and cannot drift between hosts. Core stays parse-only.
 /// </summary>
 public sealed class ContentBootstrapTests
 {

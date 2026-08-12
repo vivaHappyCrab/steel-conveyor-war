@@ -119,7 +119,7 @@ dotnet run --project tests/SteelConveyorWar.Benchmarks -c Release --no-build -- 
 | R27 | 🟡 Частично | Hidden selection закрыт; полный tracer раскрывает скрытый противоположный endpoint |
 | R28 | ✅ Закрыто по исходному scope | Non-positive/duplicate packs, allocations и target tiers проверяются |
 | R29 | 🟡 Частично | Fair allocation реализован; remainder state отсутствует в hash |
-| R30 | 🟡 Частично | Runtime affordability есть; production menu/hotkeys используют embedded catalog |
+| R30 | ✅ Закрыто | Production menu/hotkeys compose from match `BuildCostCatalog` (H05); Embedded helper obsolete |
 | R31 | 🟡 Частично | Roster/team happy paths есть; start bounds/overlap и zero-team result не закрыты |
 | R32 | 🟡 Частично | TPS прокинут в hosts/history; часть tick semantics и session identity остаётся фиксированной |
 | R33 | 🟡 Частично | Minimap cache есть; catch-up invalidation, native resource и render benchmark остаются |

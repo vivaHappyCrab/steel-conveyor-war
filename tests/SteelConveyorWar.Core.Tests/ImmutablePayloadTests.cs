@@ -74,4 +74,64 @@ public sealed class ImmutablePayloadTests
 
         Assert.Empty(command.Allocations);
     }
+
+    [Fact]
+    public void BastionOrder_WithWaypointIndex_PreservesFrozenWaypoints()
+    {
+        var source = new List<TilePosition> { new(1, 1), new(2, 2), new(3, 3) };
+        var order = new BastionOrder(BastionOrderKind.Patrol, Waypoints: source, WaypointIndex: 0);
+
+        var advanced = order.WithWaypointIndex(2);
+        source.Clear();
+
+        Assert.Equal(2, advanced.WaypointIndex);
+        Assert.Equal(3, advanced.WaypointList.Count);
+        Assert.Equal(new TilePosition(1, 1), advanced.WaypointList[0]);
+        Assert.Equal(0, order.WaypointIndex);
+    }
+
+    [Fact]
+    public void BastionOrder_With_CannotReplaceWaypointListWithMutableList()
+    {
+        // M01: WaypointList is get-only — compile-time proof that illicit with-replacement is impossible.
+        // If this property regained an init setter, this assignment would compile and reopen the bypass.
+        var order = new BastionOrder(
+            BastionOrderKind.Patrol,
+            Waypoints: new[] { new TilePosition(1, 1), new TilePosition(2, 2) });
+
+        Assert.Empty(
+            typeof(BastionOrder)
+                .GetProperty(nameof(BastionOrder.WaypointList))!
+                .GetSetMethod(nonPublic: true) is null
+                ? Array.Empty<string>()
+                : new[] { "WaypointList must not expose a setter (init or otherwise)" });
+
+        // Scalar with still works and keeps the frozen snapshot.
+        var scaled = order with { WaypointIndex = 1 };
+        Assert.Equal(1, scaled.WaypointIndex);
+        Assert.Equal(2, scaled.WaypointList.Count);
+        Assert.Same(order.WaypointList, scaled.WaypointList);
+    }
+
+    [Fact]
+    public void SetTrackAllocationCommand_With_CannotReplaceAllocationsWithMutableDictionary()
+    {
+        var command = new SetTrackAllocationCommand(
+            new PlayerId(1),
+            5,
+            new Dictionary<string, int> { ["cycle"] = 2 });
+
+        Assert.Empty(
+            typeof(SetTrackAllocationCommand)
+                .GetProperty(nameof(SetTrackAllocationCommand.Allocations))!
+                .GetSetMethod(nonPublic: true) is null
+                ? Array.Empty<string>()
+                : new[] { "Allocations must not expose a setter (init or otherwise)" });
+
+        // Scheduling with copies the frozen allocations; mutating a source dict cannot affect them.
+        var stamped = command with { Sequence = 99 };
+        Assert.Equal(99, stamped.Sequence);
+        Assert.Equal(2, stamped.Allocations["cycle"]);
+        Assert.Same(command.Allocations, stamped.Allocations);
+    }
 }

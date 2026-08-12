@@ -20,8 +20,12 @@ public static class CombatDamage
         return (int)((long)afterArmor * resistanceBasisPoints / ModifierResolver.BasisPointsScale);
     }
 
-    public static int GetResistanceBasisPoints(ProjectileKind projectileKind, CombatTargetCategory targetCategory)
+    public static int GetResistanceBasisPoints(
+        ProjectileKind projectileKind,
+        CombatTargetCategory targetCategory,
+        GameplayTablesCatalog tables)
     {
-        return MvpDefinitions.GetResistanceBasisPoints(projectileKind, targetCategory);
+        ArgumentNullException.ThrowIfNull(tables);
+        return tables.GetResistanceBasisPoints(projectileKind, targetCategory);
     }
 }

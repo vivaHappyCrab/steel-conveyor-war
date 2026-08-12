@@ -11,6 +11,7 @@ public sealed class EnergyBatchedWaterfillTests
     [InlineData(7)]
     [InlineData(100)]
     [InlineData(1000)]
+    [InlineData(50_000)]
     public void BatchedFill_MatchesPerUnit_EqualRatiosAlternateById(int energy)
     {
         AssertBuffersMatch(
@@ -18,6 +19,26 @@ public sealed class EnergyBatchedWaterfillTests
             (1, 0, 10),
             (2, 0, 10),
             (3, 0, 10));
+    }
+
+    [Fact]
+    public void BatchedFill_EqualCapacities_LargeEnergy_PartialByAscendingId()
+    {
+        var specs = new (int Id, int Buffer, int Capacity)[200];
+        for (var i = 0; i < specs.Length; i++)
+        {
+            specs[i] = (i + 1, 0, 50);
+        }
+
+        const int energy = 2_050; // 10 full levels + 50 partial by Id (cap 50)
+        AssertBuffersMatch(energy, specs);
+
+        var filled = CreateConsumers(specs);
+        PowerSystem.DistributeEnergyEmptiestFirstBatchedForTests(filled, energy);
+        Assert.Equal(11, filled[0].EnergyBuffer);
+        Assert.Equal(11, filled[49].EnergyBuffer);
+        Assert.Equal(10, filled[50].EnergyBuffer);
+        Assert.Equal(10, filled[^1].EnergyBuffer);
     }
 
     [Theory]
