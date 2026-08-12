@@ -172,7 +172,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             map);
 
         var size = new WorldSize(MapPlayerDefinition.DefaultWorldWidth, MapPlayerDefinition.DefaultWorldHeight);
-        var terrain = CreateStartingTerrain(size, options.RandomSeed);
+        var terrain = CreateStartingTerrain(size, options.RandomSeed, map, options.ResolvedGameplayTables);
         var players = map.Players
             .OrderBy(player => player.Id)
             .Select(player => new PlayerState(
@@ -1837,7 +1837,11 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     }
 
 
-    private static TerrainType[,] CreateStartingTerrain(WorldSize size, int randomSeed)
+    private static TerrainType[,] CreateStartingTerrain(
+        WorldSize size,
+        int randomSeed,
+        MapSettings map,
+        GameplayTablesCatalog tables)
     {
         // Local RNG only — not retained for later ticks (determinism stays seed → layout).
         var rng = new Random(randomSeed);
@@ -1876,7 +1880,8 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         FillOrePatchLeftHalf(terrain, coalCenter, TerrainType.Coal, maxDistance: 2 + rng.Next(0, 2), halfWidth);
         FillOrePatchLeftHalf(terrain, oilCenter, TerrainType.Oil, maxDistance: 2 + rng.Next(0, 2), halfWidth);
 
-        MirrorResourceTilesLeftToRight(terrain, halfWidth);
+        PlaceMountainChunksLeftHalf(terrain, rng, map, tables);
+        MirrorNonGrassTilesLeftToRight(terrain, halfWidth);
         return terrain;
     }
 
@@ -1915,7 +1920,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         }
     }
 
-    private static void MirrorResourceTilesLeftToRight(TerrainType[,] terrain, int halfWidth)
+    private static void MirrorNonGrassTilesLeftToRight(TerrainType[,] terrain, int halfWidth)
     {
         var width = terrain.GetLength(0);
         var height = terrain.GetLength(1);
@@ -1932,10 +1937,324 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         }
     }
 
+    private const int MountainResourceClearance = 10;
+    private const int MountainMinShortAxis = 2;
+    private const int MountainMinLongAxis = 5;
+    private const int MountainMaxMapPercent = 5;
+    private const int MountainPlacementAttempts = 240;
+
+    private static void PlaceMountainChunksLeftHalf(
+        TerrainType[,] terrain,
+        Random rng,
+        MapSettings map,
+        GameplayTablesCatalog tables)
+    {
+        var width = terrain.GetLength(0);
+        var height = terrain.GetLength(1);
+        var halfWidth = width / 2;
+        var maxTotal = width * height * MountainMaxMapPercent / 100;
+        var maxLeft = maxTotal / 2;
+        var minChunkArea = MountainMinShortAxis * MountainMinLongAxis;
+        if (maxLeft < minChunkArea)
+        {
+            return;
+        }
+
+        var world = new WorldSize(width, height);
+        var forbidden = BuildMountainForbiddenMask(terrain, map, tables, world);
+        var placed = 0;
+        var commander = ResolveSeatCommander(map, world, playerId: 1);
+
+        for (var attempt = 0; attempt < MountainPlacementAttempts && placed + minChunkArea <= maxLeft; attempt++)
+        {
+            var remaining = maxLeft - placed;
+            var horizontal = rng.Next(2) == 0;
+            int chunkWidth;
+            int chunkHeight;
+            if (horizontal)
+            {
+                var maxLong = Math.Min(MountainMinLongAxis + 8, Math.Min(halfWidth, remaining / MountainMinShortAxis));
+                if (maxLong < MountainMinLongAxis)
+                {
+                    continue;
+                }
+
+                chunkWidth = rng.Next(MountainMinLongAxis, maxLong + 1);
+                var maxShort = Math.Min(MountainMinShortAxis + 3, Math.Min(height, remaining / chunkWidth));
+                if (maxShort < MountainMinShortAxis)
+                {
+                    continue;
+                }
+
+                chunkHeight = rng.Next(MountainMinShortAxis, maxShort + 1);
+            }
+            else
+            {
+                var maxLong = Math.Min(MountainMinLongAxis + 8, Math.Min(height, remaining / MountainMinShortAxis));
+                if (maxLong < MountainMinLongAxis)
+                {
+                    continue;
+                }
+
+                chunkHeight = rng.Next(MountainMinLongAxis, maxLong + 1);
+                var maxShort = Math.Min(MountainMinShortAxis + 3, Math.Min(halfWidth, remaining / chunkHeight));
+                if (maxShort < MountainMinShortAxis)
+                {
+                    continue;
+                }
+
+                chunkWidth = rng.Next(MountainMinShortAxis, maxShort + 1);
+            }
+
+            if (chunkWidth * chunkHeight > remaining)
+            {
+                continue;
+            }
+
+            var originX = rng.Next(0, halfWidth - chunkWidth + 1);
+            var originY = rng.Next(0, height - chunkHeight + 1);
+            if (!CanPlaceMountainChunk(terrain, forbidden, originX, originY, chunkWidth, chunkHeight, halfWidth, width))
+            {
+                continue;
+            }
+
+            PaintMountainChunk(terrain, originX, originY, chunkWidth, chunkHeight, TerrainType.Mountain);
+            if (!LeftHalfKeepsExpansionRoutes(terrain, commander, halfWidth))
+            {
+                PaintMountainChunk(terrain, originX, originY, chunkWidth, chunkHeight, TerrainType.Grass);
+                continue;
+            }
+
+            placed += chunkWidth * chunkHeight;
+        }
+    }
+
+    private static bool[,] BuildMountainForbiddenMask(
+        TerrainType[,] terrain,
+        MapSettings map,
+        GameplayTablesCatalog tables,
+        WorldSize world)
+    {
+        var width = world.Width;
+        var height = world.Height;
+        var forbidden = new bool[width, height];
+        var resources = new List<TilePosition>();
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                if (terrain[x, y].IsResource())
+                {
+                    resources.Add(new TilePosition(x, y));
+                }
+            }
+        }
+
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var tile = new TilePosition(x, y);
+                foreach (var resource in resources)
+                {
+                    if (Math.Max(Math.Abs(tile.X - resource.X), Math.Abs(tile.Y - resource.Y)) < MountainResourceClearance)
+                    {
+                        forbidden[x, y] = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        foreach (var player in map.Players)
+        {
+            if (player.StartCommander is null && player.StartBastion is null && player.StartHub is null
+                && player.Id is not (1 or 2))
+            {
+                continue;
+            }
+
+            var (commander, bastion, hub) = player.ResolveStartPositions(world);
+            MarkFootprintForbidden(forbidden, commander, new WorldSize(1, 1), world);
+            MarkFootprintForbidden(forbidden, bastion, tables.GetFootprint(EntityKind.Bastion), world);
+            MarkFootprintForbidden(forbidden, hub, tables.GetFootprint(EntityKind.Hub), world);
+            MarkChebyshevRingForbidden(forbidden, bastion, tables.GetFootprint(EntityKind.Bastion), radius: 1, world);
+        }
+
+        return forbidden;
+    }
+
+    private static void MarkFootprintForbidden(bool[,] forbidden, TilePosition origin, WorldSize footprint, WorldSize world)
+    {
+        for (var dy = 0; dy < footprint.Height; dy++)
+        {
+            for (var dx = 0; dx < footprint.Width; dx++)
+            {
+                var x = origin.X + dx;
+                var y = origin.Y + dy;
+                if (x >= 0 && y >= 0 && x < world.Width && y < world.Height)
+                {
+                    forbidden[x, y] = true;
+                    forbidden[world.Width - 1 - x, y] = true;
+                }
+            }
+        }
+    }
+
+    private static void MarkChebyshevRingForbidden(
+        bool[,] forbidden,
+        TilePosition origin,
+        WorldSize footprint,
+        int radius,
+        WorldSize world)
+    {
+        for (var y = origin.Y - radius; y < origin.Y + footprint.Height + radius; y++)
+        {
+            for (var x = origin.X - radius; x < origin.X + footprint.Width + radius; x++)
+            {
+                if (x < 0 || y < 0 || x >= world.Width || y >= world.Height)
+                {
+                    continue;
+                }
+
+                forbidden[x, y] = true;
+                forbidden[world.Width - 1 - x, y] = true;
+            }
+        }
+    }
+
+    private static bool CanPlaceMountainChunk(
+        TerrainType[,] terrain,
+        bool[,] forbidden,
+        int originX,
+        int originY,
+        int chunkWidth,
+        int chunkHeight,
+        int halfWidth,
+        int width)
+    {
+        var height = terrain.GetLength(1);
+        for (var dy = 0; dy < chunkHeight; dy++)
+        {
+            for (var dx = 0; dx < chunkWidth; dx++)
+            {
+                var x = originX + dx;
+                var y = originY + dy;
+                if (x < 0 || y < 0 || x >= halfWidth || y >= height)
+                {
+                    return false;
+                }
+
+                var mirrorX = width - 1 - x;
+                if (terrain[x, y] != TerrainType.Grass
+                    || terrain[mirrorX, y] != TerrainType.Grass
+                    || forbidden[x, y]
+                    || forbidden[mirrorX, y])
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static void PaintMountainChunk(
+        TerrainType[,] terrain,
+        int originX,
+        int originY,
+        int chunkWidth,
+        int chunkHeight,
+        TerrainType type)
+    {
+        for (var dy = 0; dy < chunkHeight; dy++)
+        {
+            for (var dx = 0; dx < chunkWidth; dx++)
+            {
+                terrain[originX + dx, originY + dy] = type;
+            }
+        }
+    }
+
+    private static TilePosition ResolveSeatCommander(MapSettings map, WorldSize world, int playerId)
+    {
+        var player = map.Players.First(p => p.Id == playerId);
+        return player.ResolveStartPositions(world).Commander;
+    }
+
+    private static bool LeftHalfKeepsExpansionRoutes(TerrainType[,] terrain, TilePosition start, int halfWidth)
+    {
+        var height = terrain.GetLength(1);
+        var visited = new bool[halfWidth, height];
+        var queue = new Queue<TilePosition>();
+        if (start.X < 0 || start.Y < 0 || start.X >= halfWidth || start.Y >= height
+            || !terrain[start.X, start.Y].IsWalkable())
+        {
+            return false;
+        }
+
+        queue.Enqueue(start);
+        visited[start.X, start.Y] = true;
+        var reachedCoal = false;
+        var reachedOil = false;
+        var reachedMidline = false;
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (terrain[current.X, current.Y] == TerrainType.Coal)
+            {
+                reachedCoal = true;
+            }
+
+            if (terrain[current.X, current.Y] == TerrainType.Oil)
+            {
+                reachedOil = true;
+            }
+
+            if (current.X == halfWidth - 1)
+            {
+                reachedMidline = true;
+            }
+
+            if (reachedCoal && reachedOil && reachedMidline)
+            {
+                return true;
+            }
+
+            TryEnqueue(current.X + 1, current.Y);
+            TryEnqueue(current.X - 1, current.Y);
+            TryEnqueue(current.X, current.Y + 1);
+            TryEnqueue(current.X, current.Y - 1);
+        }
+
+        return false;
+
+        void TryEnqueue(int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= halfWidth || y >= height || visited[x, y])
+            {
+                return;
+            }
+
+            if (!terrain[x, y].IsWalkable())
+            {
+                return;
+            }
+
+            visited[x, y] = true;
+            queue.Enqueue(new TilePosition(x, y));
+        }
+    }
+
     private bool CanPlaceBuilding(EntityKind targetKind, TilePosition anchor)
     {
         var tiles = GameWorld.GetFootprintTiles(targetKind, anchor, GameplayTables).ToList();
         if (tiles.Any(tile => !World.IsInside(tile)))
+        {
+            return false;
+        }
+
+        if (tiles.Any(tile => !World.GetTerrain(tile).IsWalkable()))
         {
             return false;
         }

@@ -498,7 +498,7 @@ public sealed partial class GameSimulation
                 }
 
                 var probe = new WorldEntity(-1, unitKind, tile, factory.OwnerId);
-                if (IsGroundPassable(probe, tile)
+                if (IsStopTilePassable(probe, tile)
                     && CanOccupyWorldPosition(probe, probe.WorldPosition, _spatialQueryIndex))
                 {
                     spawnTile = tile;

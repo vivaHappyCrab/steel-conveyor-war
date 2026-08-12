@@ -21,34 +21,6 @@ public sealed class ResearchProgressionTests
     }
 
     [Fact]
-    public void ProfileA_OneOfTwoCategoriesUnlocksTier2()
-    {
-        var simulation = Create(ResearchProfileIds.MvpA);
-        var player = new PlayerId(1);
-        CompleteTech(simulation, player, TechnologyId.ImprovedConveyors);
-        CompleteTech(simulation, player, new TechnologyId("technology.t1.distributed-energy"));
-        CompleteTech(simulation, player, new TechnologyId("technology.t1.expedition-logistics"));
-
-        Assert.Equal(ResearchTierIds.T2, simulation.GetPlayer(player).Research.CurrentTierId);
-        Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(player, new TechnologyId("technology.t1.mass-production")));
-    }
-
-    [Fact]
-    public void ProfileC_SupportsParallelCycleProjects()
-    {
-        var simulation = Create(ResearchProfileIds.MvpC);
-        var player = new PlayerId(1);
-        Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(player, new TechnologyId("technology.t1.automated-base")));
-        Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(player, new TechnologyId("technology.t1.distant-expedition")));
-        Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(player, new TechnologyId("technology.t1.new-resource-mastery")));
-
-        var snapshot = simulation.GetResearchSnapshot(player);
-        var cycle = snapshot.Tracks.Single(track => track.Id == ResearchTrackIds.Cycle);
-        Assert.Equal(3, cycle.ProjectWeights.Count);
-        Assert.Equal(7_000, cycle.AllocationBasisPoints);
-    }
-
-    [Fact]
     public void ProfileB_ExclusiveDoctrineLocksAlternativeOnComplete()
     {
         var simulation = Create(ResearchProfileIds.MvpB);
@@ -62,32 +34,6 @@ public sealed class ResearchProgressionTests
 
         Assert.Contains(fortified, simulation.GetPlayer(player).Research.LockedTechnologies);
         Assert.Equal(ResearchCommandResult.Locked, simulation.TrySelectResearch(player, fortified, confirmExclusive: true));
-    }
-
-    [Fact]
-    public void ProfileC_ExclusiveDoctrineLocksOnStart()
-    {
-        var simulation = Create(ResearchProfileIds.MvpC);
-        var player = new PlayerId(1);
-        var swarm = new TechnologyId("technology.t1.doctrine.swarm");
-        var observation = new TechnologyId("technology.t1.doctrine.observation");
-
-        Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(player, swarm, confirmExclusive: true));
-        Assert.Contains(observation, simulation.GetPlayer(player).Research.LockedTechnologies);
-    }
-
-    [Fact]
-    public void ProfileHybrid_UsesAGatesAndCSchedule()
-    {
-        var simulation = Create(ResearchProfileIds.HybridAC);
-        var player = new PlayerId(1);
-        var snapshot = simulation.GetResearchSnapshot(player);
-        Assert.Equal(2, snapshot.Tracks.Count);
-
-        CompleteTech(simulation, player, TechnologyId.ImprovedConveyors);
-        CompleteTech(simulation, player, new TechnologyId("technology.t1.distributed-energy"));
-        CompleteTech(simulation, player, new TechnologyId("technology.t1.expedition-logistics"));
-        Assert.Equal(ResearchTierIds.T2, simulation.GetPlayer(player).Research.CurrentTierId);
     }
 
     [Fact]
@@ -139,28 +85,6 @@ public sealed class ResearchProgressionTests
         Assert.True(simulation.TryCancelResearch(player, TechnologyId.ProductionI));
         Assert.Equal(progress, simulation.GetPlayer(player).Research.ProgressWorkUnits[TechnologyId.ProductionI]);
         Assert.Null(simulation.GetResearchSnapshot(player).Tracks.Single().ActiveSerialTarget);
-    }
-
-    [Fact]
-    public void AllocationSplitIsDeterministicAcrossSimulations()
-    {
-        var first = Create(ResearchProfileIds.MvpC);
-        var second = Create(ResearchProfileIds.MvpC);
-        var player = new PlayerId(1);
-        Assert.Equal(ResearchCommandResult.Ok, first.TrySetTrackAllocation(player, new Dictionary<string, int>
-        {
-            [ResearchTrackIds.Cycle] = 10_000,
-            [ResearchTrackIds.Tactical] = 0
-        }));
-        Assert.Equal(ResearchCommandResult.Ok, second.TrySetTrackAllocation(player, new Dictionary<string, int>
-        {
-            [ResearchTrackIds.Cycle] = 10_000,
-            [ResearchTrackIds.Tactical] = 0
-        }));
-
-        Assert.Equal(
-            first.GetResearchSnapshot(player).Tracks.Single(track => track.Id == ResearchTrackIds.Cycle).AllocationBasisPoints,
-            second.GetResearchSnapshot(player).Tracks.Single(track => track.Id == ResearchTrackIds.Cycle).AllocationBasisPoints);
     }
 
     private static GameSimulation Create(string profileId)

@@ -44,8 +44,8 @@ public sealed class CommandProtocolTests
             new WithdrawItemTypeFromHubOrOutputCommand(actor, tick, 3, 5, ItemId.Steel) { Sequence = 29 },
             new SelectResearchCommand(actor, tick, new TechnologyId("logistics-1"),
                 ConfirmExclusive: true, PreferredTrackId: "cycle") { Sequence = 30 },
-            new SetProjectWeightCommand(actor, tick, ResearchTrackIds.Cycle,
-                new TechnologyId("technology.t1.automated-base"), Weight: 150) { Sequence = 31 },
+            new SetProjectWeightCommand(actor, tick, ResearchTrackIds.Primary,
+                TechnologyId.ProductionI, Weight: 150) { Sequence = 31 },
         };
 
         return commands.Select(command => new object[] { command });
@@ -103,26 +103,16 @@ public sealed class CommandProtocolTests
     }
 
     [Fact]
-    public void SetProjectWeight_Apply_UpdatesParallelTrackWeight_AndRejectsWrongActor()
+    public void SetProjectWeight_Apply_RejectedOnSerialMvpBTrack()
     {
         var simulation = GameSimulation.CreateNewGame(
-            new GameCreationOptions(5, ResearchProfileIds.MvpC, MvpResearchCatalog.CreateEmbedded()));
+            new GameCreationOptions(5, ResearchProfileIds.MvpB, MvpResearchCatalog.CreateEmbedded()));
         var actor = new PlayerId(1);
-        var tech = new TechnologyId("technology.t1.automated-base");
+        var tech = TechnologyId.ProductionI;
         Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(actor, tech));
 
-        Assert.True(simulation.ApplyCommand(
-            new SetProjectWeightCommand(actor, simulation.Tick, ResearchTrackIds.Cycle, tech, Weight: 250)));
-
-        var cycle = simulation.GetResearchSnapshot(actor).Tracks
-            .Single(track => track.Id == ResearchTrackIds.Cycle);
-        Assert.Equal(250, cycle.ProjectWeights[tech]);
-
-        // Other player's SetProjectWeight must not change this player's weights.
-        Assert.True(simulation.ApplyCommand(
-            new SetProjectWeightCommand(new PlayerId(2), simulation.Tick, ResearchTrackIds.Cycle, tech, Weight: 1)));
-        Assert.Equal(250, simulation.GetResearchSnapshot(actor).Tracks
-            .Single(track => track.Id == ResearchTrackIds.Cycle).ProjectWeights[tech]);
+        Assert.False(simulation.ApplyCommand(
+            new SetProjectWeightCommand(actor, simulation.Tick, ResearchTrackIds.Primary, tech, Weight: 250)));
     }
 
     [Fact]

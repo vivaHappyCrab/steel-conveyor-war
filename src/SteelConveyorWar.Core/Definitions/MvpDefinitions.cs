@@ -89,6 +89,9 @@ public static class MvpDefinitions
         return kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter;
     }
 
+    public static bool IsBuildingKind(EntityKind kind) =>
+        kind != EntityKind.Commander && kind != EntityKind.GhostBuild && !UnitKinds.Contains(kind);
+
     public static bool BlocksGroundMovement(EntityKind kind)
     {
         return !UnitKinds.Contains(kind) && kind != EntityKind.Commander && !IsPassableLogistic(kind);
@@ -97,18 +100,21 @@ public static class MvpDefinitions
     public static bool IsWallKind(EntityKind kind) => kind is EntityKind.Wall or EntityKind.SteelWall;
 
     /// <summary>
-    /// Ground units that can receive Wall/SteelWall G2G cover. Scout is treated as air (no cover).
+    /// Ground units that can receive Wall/SteelWall G2G cover. Flying units (Scout) are not covered.
     /// Allied wall cover uses same <see cref="PlayerState.TeamId"/> as the target (map-config alliances).
     /// </summary>
-    public static bool IsGroundUnitForWallCover(EntityKind kind)
+    public static bool IsGroundUnitForWallCover(EntityKind kind, MovementType movementType)
     {
-        if (kind == EntityKind.Scout || IsWallKind(kind))
+        if (movementType != MovementType.Ground || IsWallKind(kind))
         {
             return false;
         }
 
         return kind == EntityKind.Commander || UnitKinds.Contains(kind);
     }
+
+    public static bool IsGroundUnitForWallCover(EntityKind kind) =>
+        IsGroundUnitForWallCover(kind, GameplayTablesCatalog.Embedded.GetStats(kind).MovementType);
 
     public static CombatTargetCategory GetCombatTargetCategory(EntityKind kind)
     {

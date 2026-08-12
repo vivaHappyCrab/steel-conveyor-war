@@ -108,7 +108,7 @@ public sealed partial class GameSimulation
                 var path = FindGroundPath(entity, entity.Position, target);
                 if (path.Count == 0)
                 {
-                    return !IsGroundPassable(entity, target);
+                    return !IsStopTilePassable(entity, target);
                 }
 
                 entity.MovementPathMutable.AddRange(path);
@@ -132,7 +132,7 @@ public sealed partial class GameSimulation
             entity.WorldPosition = waypointPosition;
             RelocateMobileEntity(entity, entity.CurrentWaypoint.Value, spatial);
             entity.CurrentWaypoint = null;
-            return entity.MovementPath.Count == 0 && (entity.Position == target || !IsGroundPassable(entity, target));
+            return entity.MovementPath.Count == 0 && (entity.Position == target || !IsStopTilePassable(entity, target));
         }
 
         var dx = waypointPosition.X - entity.WorldPosition.X;
@@ -226,7 +226,7 @@ public sealed partial class GameSimulation
 
     private IEnumerable<TilePosition> GetCandidatePathTargets(WorldEntity entity, TilePosition start, TilePosition target)
     {
-        if (World.IsInside(target) && IsGroundPassable(entity, target))
+        if (World.IsInside(target) && IsStopTilePassable(entity, target))
         {
             yield return target;
             yield break;
@@ -247,7 +247,7 @@ public sealed partial class GameSimulation
                     }
 
                     var candidate = new TilePosition(x, y);
-                    if (World.IsInside(candidate) && IsGroundPassable(entity, candidate))
+                    if (World.IsInside(candidate) && IsStopTilePassable(entity, candidate))
                     {
                         candidates.Add(candidate);
                     }
@@ -315,20 +315,20 @@ public sealed partial class GameSimulation
 
     private bool CanEnterNeighbor(WorldEntity mover, TilePosition current, TilePosition next, TilePosition start)
     {
-        if (!World.IsInside(next) || (next != start && !IsGroundPassable(mover, next)))
+        if (!World.IsInside(next) || (next != start && !IsTransitTilePassable(mover, next)))
         {
             return false;
         }
 
-        if (!IsDiagonalStep(current, next))
+        if (!IsDiagonalStep(current, next) || IsFlying(mover))
         {
             return true;
         }
 
         var horizontal = new TilePosition(next.X, current.Y);
         var vertical = new TilePosition(current.X, next.Y);
-        return (horizontal == start || IsGroundPassable(mover, horizontal))
-            && (vertical == start || IsGroundPassable(mover, vertical));
+        return (horizontal == start || IsTransitTilePassable(mover, horizontal))
+            && (vertical == start || IsTransitTilePassable(mover, vertical));
     }
 
     private static bool IsDiagonalStep(TilePosition from, TilePosition to)
@@ -354,6 +354,37 @@ public sealed partial class GameSimulation
         return diagonal * PathCostDiagonal + straight * PathCostStraight;
     }
 
+    private bool IsFlying(WorldEntity mover) =>
+        GameplayTables.GetStats(mover.Kind).MovementType == MovementType.Flying;
+
+    private bool IsTerrainWalkable(TilePosition tile) =>
+        World.IsInside(tile) && World.GetTerrain(tile).IsWalkable();
+
+    private bool IsTransitTilePassable(WorldEntity mover, TilePosition tile)
+    {
+        if (!World.IsInside(tile))
+        {
+            return false;
+        }
+
+        if (IsFlying(mover))
+        {
+            return true;
+        }
+
+        return IsTerrainWalkable(tile) && IsGroundPassable(mover, tile);
+    }
+
+    private bool IsStopTilePassable(WorldEntity mover, TilePosition tile)
+    {
+        if (!World.IsInside(tile) || !IsTerrainWalkable(tile))
+        {
+            return false;
+        }
+
+        return IsFlying(mover) || IsGroundPassable(mover, tile);
+    }
+
     private bool IsGroundPassable(WorldEntity mover, TilePosition tile)
     {
         if (!World.IsInside(tile))
@@ -369,7 +400,20 @@ public sealed partial class GameSimulation
 
     private bool CanOccupyWorldPosition(WorldEntity mover, WorldPosition position, SpatialQueryIndex spatial)
     {
-        if (!World.IsInside(position.ToTilePosition()))
+        var tile = position.ToTilePosition();
+        if (!World.IsInside(tile))
+        {
+            return false;
+        }
+
+        var flying = IsFlying(mover);
+        var moving = IsMobileEntityMoving(mover);
+        if (!flying && !IsTerrainWalkable(tile))
+        {
+            return false;
+        }
+
+        if (flying && !moving && !IsTerrainWalkable(tile))
         {
             return false;
         }
@@ -380,7 +424,7 @@ public sealed partial class GameSimulation
             return true;
         }
 
-        var moverTile = position.ToTilePosition();
+        var moverTile = tile;
         foreach (var entity in spatial.QueryByPositionInEuclideanRange(
                      moverTile,
                      SpatialQueryIndex.CollisionNeighborhoodRadiusTiles))
@@ -392,6 +436,11 @@ public sealed partial class GameSimulation
 
             if (MvpDefinitions.BlocksGroundMovement(entity.Kind))
             {
+                if (flying)
+                {
+                    continue;
+                }
+
                 if (CircleIntersectsEntityFootprint(position, radius, entity)
                     && !MovesOutOfExistingOverlap(mover, position, radius, entity))
                 {
@@ -402,7 +451,13 @@ public sealed partial class GameSimulation
             }
 
             // Moving units ignore unit↔unit collision (radius effectively 0); stopped units keep full size.
+            // Flying ignores ground units entirely; stopped flying still collide with other stopped flying.
             if (IsMobileEntityMoving(mover) || IsMobileEntityMoving(entity))
+            {
+                continue;
+            }
+
+            if (flying != (GameplayTables.GetStats(entity.Kind).MovementType == MovementType.Flying))
             {
                 continue;
             }

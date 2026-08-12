@@ -389,6 +389,7 @@ internal static class HudOverlay
             TerrainType.CopperOre => new Color(170, 110, 55),
             TerrainType.Coal => new Color(55, 55, 58),
             TerrainType.Oil => new Color(70, 45, 95),
+            TerrainType.Mountain => new Color(110, 104, 96),
             _ => new Color(48, 78, 48)
         };
 

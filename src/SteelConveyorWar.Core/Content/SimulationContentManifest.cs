@@ -193,7 +193,8 @@ public static class SimulationContentManifest
                 .Append(stats.VisionRadius).Append('|')
                 .Append(stats.Armor).Append('|')
                 .Append((int)stats.ProjectileKind).Append('|')
-                .Append(stats.SplashRadius).Append('\n');
+                .Append(stats.SplashRadius).Append('|')
+                .Append((int)stats.MovementType).Append('\n');
         }
 
         canonical.Append("resistances:\n");

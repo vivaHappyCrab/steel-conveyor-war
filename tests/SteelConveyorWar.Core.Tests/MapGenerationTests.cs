@@ -93,6 +93,68 @@ public class MapGenerationTests
         }
     }
 
+    [Fact]
+    public void Mountains_RespectCapClearanceAndMinChunkSize()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var width = simulation.World.Size.Width;
+        var height = simulation.World.Size.Height;
+        var mountains = EnumerateTerrain(simulation).Where(t => t.Type == TerrainType.Mountain).ToList();
+        var resources = EnumerateTerrain(simulation).Where(t => t.Type.IsResource()).ToList();
+
+        Assert.True(mountains.Count <= width * height * 5 / 100);
+        Assert.NotEmpty(mountains);
+
+        foreach (var mountain in mountains)
+        {
+            foreach (var resource in resources)
+            {
+                var chebyshev = Math.Max(Math.Abs(mountain.X - resource.X), Math.Abs(mountain.Y - resource.Y));
+                Assert.True(chebyshev >= 10, $"mountain ({mountain.X},{mountain.Y}) too close to resource ({resource.X},{resource.Y})");
+            }
+        }
+
+        foreach (var entity in simulation.World.Entities.Where(e => e.Kind is EntityKind.Commander or EntityKind.Bastion or EntityKind.Hub or EntityKind.SolarPanel))
+        {
+            foreach (var tile in GameWorld.GetFootprintTiles(entity.Kind, entity.Position, simulation.GameplayTables))
+            {
+                Assert.NotEqual(TerrainType.Mountain, simulation.World.GetTerrain(tile));
+            }
+        }
+
+        foreach (var component in FloodMountainComponents(mountains, width, height))
+        {
+            var boxWidth = component.Max(t => t.X) - component.Min(t => t.X) + 1;
+            var boxHeight = component.Max(t => t.Y) - component.Min(t => t.Y) + 1;
+            Assert.True(component.Count >= 10, $"mountain chunk area {component.Count}");
+            Assert.True(Math.Min(boxWidth, boxHeight) >= 2, $"mountain chunk short axis {Math.Min(boxWidth, boxHeight)}");
+            Assert.True(Math.Max(boxWidth, boxHeight) >= 5, $"mountain chunk long axis {Math.Max(boxWidth, boxHeight)}");
+        }
+    }
+
+    [Fact]
+    public void GroundCannotPlaceOnMountain_FlyingStopsOnlyOnWalkable()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var mountain = EnumerateTerrain(simulation).First(t => t.Type == TerrainType.Mountain);
+        var mountainTile = new TilePosition(mountain.X, mountain.Y);
+        var player = new PlayerId(1);
+
+        Assert.False(simulation.TryPlaceGhostBuild(player, EntityKind.Wall, mountainTile, out _));
+        Assert.False(simulation.TryPlaceGhostBuild(player, EntityKind.Conveyor, mountainTile, out _));
+
+        var commander = simulation.World.Entities.Single(e => e.Kind == EntityKind.Commander && e.OwnerId == player);
+        Assert.True(simulation.TryIssueMoveCommand(commander.Id, player, mountainTile));
+        AdvanceTicks(simulation, 30);
+        Assert.NotEqual(mountainTile, commander.Position);
+        Assert.NotEqual(TerrainType.Mountain, simulation.World.GetTerrain(commander.Position));
+
+        Assert.Equal(MovementType.Flying, simulation.GameplayTables.GetStats(EntityKind.Scout).MovementType);
+        Assert.Equal(MovementType.Ground, simulation.GameplayTables.GetStats(EntityKind.Commander).MovementType);
+        Assert.Equal(new WorldSize(2, 2), simulation.GameplayTables.GetFootprint(EntityKind.Refinery));
+        Assert.Equal(new WorldSize(2, 3), simulation.GameplayTables.GetFootprint(EntityKind.CoalPlant));
+    }
+
     private static void AssertTerrainEqual(GameSimulation left, GameSimulation right)
     {
         Assert.True(TerrainsEqual(left, right));
@@ -118,6 +180,59 @@ public class MapGenerationTests
         }
 
         return true;
+    }
+
+    private static void AdvanceTicks(GameSimulation simulation, int ticks)
+    {
+        for (var i = 0; i < ticks; i++)
+        {
+            simulation.AdvanceTick();
+        }
+    }
+
+    private static List<List<(int X, int Y)>> FloodMountainComponents(
+        List<(int X, int Y, TerrainType Type)> mountains,
+        int width,
+        int height)
+    {
+        var mountainSet = mountains.Select(t => (t.X, t.Y)).ToHashSet();
+        var seen = new HashSet<(int X, int Y)>();
+        var components = new List<List<(int X, int Y)>>();
+        var offsets = new[] { (1, 0), (-1, 0), (0, 1), (0, -1) };
+
+        foreach (var start in mountainSet)
+        {
+            if (!seen.Add(start))
+            {
+                continue;
+            }
+
+            var component = new List<(int X, int Y)>();
+            var queue = new Queue<(int X, int Y)>();
+            queue.Enqueue(start);
+            while (queue.Count > 0)
+            {
+                var tile = queue.Dequeue();
+                component.Add(tile);
+                foreach (var (dx, dy) in offsets)
+                {
+                    var next = (tile.X + dx, tile.Y + dy);
+                    if (next.Item1 < 0 || next.Item2 < 0 || next.Item1 >= width || next.Item2 >= height)
+                    {
+                        continue;
+                    }
+
+                    if (mountainSet.Contains(next) && seen.Add(next))
+                    {
+                        queue.Enqueue(next);
+                    }
+                }
+            }
+
+            components.Add(component);
+        }
+
+        return components;
     }
 
     private static IEnumerable<(int X, int Y, TerrainType Type)> EnumerateTerrain(GameSimulation simulation)

@@ -1,5 +1,7 @@
 # Варианты дерева исследований MVP
 
+> Runtime ships **only profile B** (`mvp-b` in `config/research.json`). Variants A, C, and hybrid-A/C below are design history for later playtests, not loaded catalogs.
+
 ## 1. Назначение документа
 
 Документ предлагает три варианта структуры исследований для циклического темпа матча:
