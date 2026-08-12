@@ -81,7 +81,7 @@ pwsh eng/verify.ps1
 **Дата:** 2026-08-12  
 **Ветка:** `ai/61-post-remediation-fixes` · issue [#61](https://github.com/vivaHappyCrab/steel-conveyor-war/issues/61)  
 **Индекс планов:** [`docs/review/plans/post-remediation/PLANS_INDEX.md`](plans/post-remediation/PLANS_INDEX.md)  
-**Верификация P0:** ✅ `eng/verify.ps1` — Core **405**, SFML **68**, headless + client smoke
+**Верификация P0 (+ caretaker H06/M02 hardening):** ✅ scoped verify — Core **426**, SFML **70**, headless smoke
 
 ## Wave P0
 

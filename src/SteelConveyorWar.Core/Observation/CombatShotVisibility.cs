@@ -23,10 +23,10 @@ public enum CombatShotRevealMode
 public static class CombatShotVisibility
 {
     /// <summary>
-    /// Fraction of the full shot vector used for muzzle-only / impact-only stubs so the hidden
-    /// endpoint coordinate is never implied exactly.
+    /// Fixed presentation stub length (millitiles) for muzzle-only / impact-only reveals.
+    /// Must not depend on the hidden endpoint — a fractional shot vector would encode exact fog coords.
     /// </summary>
-    public const int PartialSegmentBasisPoints = 2_000; // 20%
+    public const long StubLengthMilli = WorldUnits.MilliPerTile / 5; // 0.2 tile
 
     public static CombatShotRevealMode Classify(
         GameSimulation simulation,
@@ -53,7 +53,10 @@ public static class CombatShotVisibility
 
     public static bool IsVisible(CombatShotRevealMode mode) => mode != CombatShotRevealMode.Hidden;
 
-    /// <summary>Sanitized endpoints for observation/draw — hidden sides are null or stubbed.</summary>
+    /// <summary>
+    /// Sanitized endpoints for observation/draw. Hidden coordinates never leave this API:
+    /// partial modes use a fixed-length axis stub that does not reference the opposite endpoint.
+    /// </summary>
     public static (WorldPosition? From, WorldPosition? To) SanitizeEndpoints(
         CombatShotEvent shot,
         CombatShotRevealMode mode)
@@ -61,8 +64,14 @@ public static class CombatShotVisibility
         return mode switch
         {
             CombatShotRevealMode.Full => (shot.From, shot.To),
-            CombatShotRevealMode.MuzzleOnly => (shot.From, PartialToward(shot.From, shot.To)),
-            CombatShotRevealMode.ImpactOnly => (PartialToward(shot.To, shot.From), shot.To),
+            // Fixed +X muzzle stub — independent of hidden To.
+            CombatShotRevealMode.MuzzleOnly => (
+                shot.From,
+                new WorldPosition(shot.From.X + StubLengthMilli, shot.From.Y)),
+            // Fixed -X approach stub — independent of hidden From.
+            CombatShotRevealMode.ImpactOnly => (
+                new WorldPosition(shot.To.X - StubLengthMilli, shot.To.Y),
+                shot.To),
             _ => (null, null),
         };
     }
@@ -89,14 +98,5 @@ public static class CombatShotVisibility
         }
 
         return simulation.GetVisibility(observerId, fallbackTile.ToTilePosition()) == VisibilityState.Visible;
-    }
-
-    private static WorldPosition PartialToward(WorldPosition from, WorldPosition toward)
-    {
-        var dx = toward.X - from.X;
-        var dy = toward.Y - from.Y;
-        return new WorldPosition(
-            from.X + dx * PartialSegmentBasisPoints / ModifierResolver.BasisPointsScale,
-            from.Y + dy * PartialSegmentBasisPoints / ModifierResolver.BasisPointsScale);
     }
 }

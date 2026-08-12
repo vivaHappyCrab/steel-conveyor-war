@@ -51,6 +51,30 @@ public sealed class CombatShotVisibilityTests
         Assert.Equal(shot.From, from);
         Assert.NotNull(to);
         Assert.NotEqual(shot.To, to!.Value);
+        // Stub must be a fixed offset from muzzle — never a fraction of the hidden vector.
+        Assert.Equal(new WorldPosition(shot.From.X + CombatShotVisibility.StubLengthMilli, shot.From.Y), to);
+    }
+
+    [Fact]
+    public void MuzzleOnly_Sanitize_IsIndependentOfHiddenTarget()
+    {
+        var (simulation, blue, blueCommander, redCommander) = NewGame();
+        // Another fog tile near the red start (same half-map, still Unknown to blue).
+        var otherHidden = new TilePosition(redCommander.Position.X, redCommander.Position.Y + 1);
+        Assert.Equal(VisibilityState.Unknown, simulation.GetVisibility(blue, redCommander.Position));
+        Assert.Equal(VisibilityState.Unknown, simulation.GetVisibility(blue, otherHidden));
+
+        var shotA = ShotBetween(blueCommander, redCommander);
+        var shotB = new CombatShotEvent(
+            blueCommander.Id,
+            redCommander.Id,
+            WorldPosition.FromTileCenter(blueCommander.Position),
+            WorldPosition.FromTileCenter(otherHidden),
+            ProjectileKind.Ballistic);
+
+        Assert.Equal(
+            CombatShotVisibility.SanitizeEndpoints(shotA, CombatShotRevealMode.MuzzleOnly),
+            CombatShotVisibility.SanitizeEndpoints(shotB, CombatShotRevealMode.MuzzleOnly));
     }
 
     [Fact]
@@ -65,6 +89,24 @@ public sealed class CombatShotVisibilityTests
         Assert.Equal(WorldPosition.FromTileCenter(blueCommander.Position), ev.From);
         Assert.NotNull(ev.To);
         Assert.NotEqual(WorldPosition.FromTileCenter(redCommander.Position), ev.To!.Value);
+        var from = ev.From!.Value;
+        Assert.Equal(
+            new WorldPosition(from.X + CombatShotVisibility.StubLengthMilli, from.Y),
+            ev.To);
+    }
+
+    [Fact]
+    public void ImpactOnly_Sanitize_IsIndependentOfHiddenAttacker()
+    {
+        var visibleImpact = WorldPosition.FromTileCenter(new TilePosition(10, 10));
+        var hiddenFromA = WorldPosition.FromTileCenter(new TilePosition(1, 1));
+        var hiddenFromB = WorldPosition.FromTileCenter(new TilePosition(30, 40));
+        var shotA = new CombatShotEvent(1, 2, hiddenFromA, visibleImpact, ProjectileKind.Ballistic);
+        var shotB = new CombatShotEvent(1, 2, hiddenFromB, visibleImpact, ProjectileKind.Ballistic);
+
+        Assert.Equal(
+            CombatShotVisibility.SanitizeEndpoints(shotA, CombatShotRevealMode.ImpactOnly),
+            CombatShotVisibility.SanitizeEndpoints(shotB, CombatShotRevealMode.ImpactOnly));
     }
 
     [Fact]
