@@ -43,6 +43,8 @@ public static class ContentCrossValidator
         ValidateRecipeDomains(tables, errors);
         ValidateBuildCostPlaceables(buildCosts, tables, errors);
         ValidateGameplayStatRanges(tables, errors);
+        ValidateBuildingFootprints(tables, errors);
+        ValidateMovementTypes(tables, errors);
         ValidateMapStarts(map, tables, errors);
 
         // tiles: presentation catalog is not yet referenced by map bootstrap; empty is allowed for
@@ -285,6 +287,81 @@ public static class ContentCrossValidator
             {
                 errors.Add($"entityStats '{kind}' has undefined projectileKind '{stats.ProjectileKind}'.");
             }
+
+            if (!Enum.IsDefined(stats.MovementType))
+            {
+                errors.Add($"entityStats '{kind}' has undefined movementType '{stats.MovementType}'.");
+            }
+        }
+    }
+
+    private static void ValidateBuildingFootprints(GameplayTablesCatalog tables, List<string> errors)
+    {
+        if (tables.EntityStats.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var kind in Enum.GetValues<EntityKind>())
+        {
+            if (!MvpDefinitions.IsBuildingKind(kind))
+            {
+                if (tables.Footprints.ContainsKey(kind))
+                {
+                    errors.Add($"footprints must not include mobile/ghost kind '{kind}'.");
+                }
+
+                continue;
+            }
+
+            if (!tables.Footprints.ContainsKey(kind))
+            {
+                errors.Add($"building '{kind}' is missing an explicit footprints entry in gameplay-tables.");
+            }
+        }
+    }
+
+    private static void ValidateMovementTypes(GameplayTablesCatalog tables, List<string> errors)
+    {
+        if (tables.EntityStats.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var kind in MobileKinds())
+        {
+            if (!tables.EntityStats.TryGetValue(kind, out var stats))
+            {
+                errors.Add($"entityStats is missing movementType host '{kind}'.");
+                continue;
+            }
+
+            if (kind == EntityKind.Scout && stats.MovementType != MovementType.Flying)
+            {
+                errors.Add("entityStats 'Scout' must use movementType Flying.");
+            }
+
+            if (kind != EntityKind.Scout && stats.MovementType != MovementType.Ground)
+            {
+                errors.Add($"entityStats '{kind}' must use movementType Ground.");
+            }
+        }
+
+        foreach (var (kind, stats) in tables.EntityStats)
+        {
+            if (MvpDefinitions.IsBuildingKind(kind) && stats.MovementType == MovementType.Flying)
+            {
+                errors.Add($"entityStats '{kind}' is a building and cannot be Flying.");
+            }
+        }
+    }
+
+    private static IEnumerable<EntityKind> MobileKinds()
+    {
+        yield return EntityKind.Commander;
+        foreach (var kind in MvpDefinitions.UnitKinds)
+        {
+            yield return kind;
         }
     }
 

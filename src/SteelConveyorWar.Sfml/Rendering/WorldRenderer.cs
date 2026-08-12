@@ -145,6 +145,7 @@ internal static class WorldRenderer
             TerrainType.CopperOre => new Color(158, 96, 48),
             TerrainType.Coal => new Color(42, 42, 44),
             TerrainType.Oil => new Color(40, 26, 52),
+            TerrainType.Mountain => new Color(92, 88, 82),
             _ => new Color(43, 74, 43)
         };
 
@@ -280,7 +281,7 @@ internal static class WorldRenderer
             };
             target.Draw(unit);
         }
-        else if (entity.Kind == EntityKind.Scout)
+        else if (simulation.GameplayTables.GetStats(entity.Kind).MovementType == MovementType.Flying)
         {
             using var unit = new ConvexShape(3)
             {
@@ -368,7 +369,7 @@ internal static class WorldRenderer
             return;
         }
 
-        if (entity.Kind == EntityKind.Scout)
+        if (simulation.GameplayTables.GetStats(entity.Kind).MovementType == MovementType.Flying)
         {
             using var outline = new ConvexShape(3)
             {

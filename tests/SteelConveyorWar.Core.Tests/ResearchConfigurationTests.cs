@@ -9,10 +9,9 @@ public sealed class ResearchConfigurationTests
     {
         var catalog = MvpResearchCatalog.CreateEmbedded();
         Assert.False(string.IsNullOrWhiteSpace(catalog.ContentHash));
-        Assert.Contains(ResearchProfileIds.MvpA, catalog.Profiles.Keys);
         Assert.Contains(ResearchProfileIds.MvpB, catalog.Profiles.Keys);
-        Assert.Contains(ResearchProfileIds.MvpC, catalog.Profiles.Keys);
-        Assert.Contains(ResearchProfileIds.HybridAC, catalog.Profiles.Keys);
+        Assert.Single(catalog.Profiles);
+        Assert.Equal(34, catalog.Technologies.Count);
         Assert.True(catalog.Technologies.ContainsKey(TechnologyId.LightBot));
         Assert.True(catalog.Technologies.ContainsKey(TechnologyId.ProductionI));
     }
@@ -25,7 +24,8 @@ public sealed class ResearchConfigurationTests
         var parsed = ResearchContentLoader.Parse(json);
         Assert.Equal(embedded.Technologies.Count, parsed.Technologies.Count);
         Assert.Equal(embedded.Profiles.Count, parsed.Profiles.Count);
-        Assert.Contains(ResearchProfileIds.HybridAC, parsed.Profiles.Keys);
+        Assert.Contains(ResearchProfileIds.MvpB, parsed.Profiles.Keys);
+        Assert.Single(parsed.Profiles);
     }
 
     [Fact]
@@ -36,9 +36,7 @@ public sealed class ResearchConfigurationTests
         var embedded = MvpResearchCatalog.CreateEmbedded();
         var catalog = ResearchContentLoader.Parse(File.ReadAllText(path));
         Assert.Contains(ResearchProfileIds.MvpB, catalog.Profiles.Keys);
-        Assert.Contains(ResearchProfileIds.MvpA, catalog.Profiles.Keys);
-        Assert.Contains(ResearchProfileIds.MvpC, catalog.Profiles.Keys);
-        Assert.Contains(ResearchProfileIds.HybridAC, catalog.Profiles.Keys);
+        Assert.Single(catalog.Profiles);
         Assert.Equal(embedded.Technologies.Count, catalog.Technologies.Count);
         Assert.False(string.IsNullOrWhiteSpace(catalog.ContentHash));
     }
@@ -47,9 +45,9 @@ public sealed class ResearchConfigurationTests
     public void CreateNewGame_UsesSelectedProfile()
     {
         var catalog = MvpResearchCatalog.CreateEmbedded();
-        var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(7, ResearchProfileIds.MvpC, catalog));
-        Assert.Equal(ResearchProfileIds.MvpC, simulation.ResearchProfile.Id);
-        Assert.Equal(2, simulation.GetResearchSnapshot(new PlayerId(1)).Tracks.Count);
+        var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(7, ResearchProfileIds.MvpB, catalog));
+        Assert.Equal(ResearchProfileIds.MvpB, simulation.ResearchProfile.Id);
+        Assert.Single(simulation.GetResearchSnapshot(new PlayerId(1)).Tracks);
     }
 
     private static string FindConfigPath(string fileName)

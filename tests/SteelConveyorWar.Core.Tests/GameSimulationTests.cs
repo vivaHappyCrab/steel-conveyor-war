@@ -938,6 +938,26 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void FlyingScout_PathsThroughBuildingsThatBlockGround()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var player = new PlayerId(1);
+        var blocker = NearBlue(simulation, 6, 0);
+        Assert.True(simulation.TryPlaceGhostBuild(player, EntityKind.Smelter, blocker, out _));
+        AdvanceTicks(simulation, 30);
+
+        var start = NearBlue(simulation, 4, -2);
+        var dest = NearBlue(simulation, 10, 0);
+        Assert.True(simulation.TrySpawnEntityForTests(EntityKind.Scout, start, player, out var scoutId));
+        var scout = simulation.World.GetEntity(scoutId)!;
+        scout.Order = new BastionOrder(BastionOrderKind.Scout, dest);
+        AdvanceTicks(simulation, 120);
+
+        Assert.Equal(dest, scout.Position);
+        Assert.True(simulation.World.GetTerrain(dest).IsWalkable());
+    }
+
+    [Fact]
     public void StartingBastions_DoNotOverlapResourcePatches()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);

@@ -76,8 +76,5 @@ public static class ResearchTrackIds
 
 public static class ResearchProfileIds
 {
-    public const string MvpA = "mvp-a";
     public const string MvpB = "mvp-b";
-    public const string MvpC = "mvp-c";
-    public const string HybridAC = "hybrid-a-c";
 }

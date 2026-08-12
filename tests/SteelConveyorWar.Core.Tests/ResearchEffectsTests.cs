@@ -51,12 +51,12 @@ public sealed class ResearchEffectsTests
     }
 
     [Fact]
-    public void HubBuffering_IncreasesHubStorageStat()
+    public void ProductionReserve_IncreasesHubStorageStat()
     {
-        var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(42, ResearchProfileIds.MvpA, MvpResearchCatalog.CreateEmbedded()));
+        var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(42, ResearchProfileIds.MvpB, MvpResearchCatalog.CreateEmbedded()));
         var player = new PlayerId(1);
         var before = simulation.ResolveStat(player, ResearchStatIds.HubStorageStacks, MvpDefinitions.HubStorageStacks);
-        ForceComplete(simulation, player, new TechnologyId("technology.t1.hub-buffering"));
+        ForceComplete(simulation, player, new TechnologyId("technology.t1.production-reserve"));
         var after = simulation.ResolveStat(player, ResearchStatIds.HubStorageStacks, MvpDefinitions.HubStorageStacks);
         Assert.True(after > before);
     }

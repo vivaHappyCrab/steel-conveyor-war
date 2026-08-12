@@ -47,12 +47,23 @@ public sealed partial record GameplayTablesCatalog
     "CoalMine": { "width": 2, "height": 2 },
     "OilWell": { "width": 2, "height": 2 },
     "Smelter": { "width": 2, "height": 2 },
+    "Refinery": { "width": 2, "height": 2 },
     "Assembler": { "width": 2, "height": 2 },
     "Laboratory": { "width": 2, "height": 2 },
     "Hub": { "width": 2, "height": 2 },
     "Bastion": { "width": 3, "height": 3 },
     "TankFactory": { "width": 3, "height": 3 },
-    "DroneCenter": { "width": 3, "height": 3 }
+    "DroneCenter": { "width": 3, "height": 3 },
+    "CoalPlant": { "width": 2, "height": 3 },
+    "SolarPanel": { "width": 1, "height": 1 },
+    "Conveyor": { "width": 1, "height": 1 },
+    "UndergroundConveyor": { "width": 1, "height": 1 },
+    "Inserter": { "width": 1, "height": 1 },
+    "Wall": { "width": 1, "height": 1 },
+    "SteelWall": { "width": 1, "height": 1 },
+    "MachineGunTurret": { "width": 1, "height": 1 },
+    "CannonTurret": { "width": 1, "height": 1 },
+    "AntiAirTurret": { "width": 1, "height": 1 }
   },
   "collisionRadius": {
     "Commander": 350,
@@ -173,7 +184,8 @@ public sealed partial record GameplayTablesCatalog
       "moveEveryTicks": 8,
       "visionRadius": 7,
       "armor": 2,
-      "projectileKind": "GroundToGround"
+      "projectileKind": "GroundToGround",
+      "movementType": "Ground"
     },
     "Bastion": {
       "maxHealth": 450,
@@ -286,7 +298,8 @@ public sealed partial record GameplayTablesCatalog
       "moveEveryTicks": 5,
       "visionRadius": 4,
       "armor": 0,
-      "projectileKind": "GroundToGround"
+      "projectileKind": "GroundToGround",
+      "movementType": "Ground"
     },
     "BasicTank": {
       "maxHealth": 90,
@@ -296,7 +309,8 @@ public sealed partial record GameplayTablesCatalog
       "moveEveryTicks": 9,
       "visionRadius": 5,
       "armor": 3,
-      "projectileKind": "GroundToGround"
+      "projectileKind": "GroundToGround",
+      "movementType": "Ground"
     },
     "Scout": {
       "maxHealth": 25,
@@ -305,7 +319,8 @@ public sealed partial record GameplayTablesCatalog
       "attackCooldownTicks": 30,
       "moveEveryTicks": 3,
       "visionRadius": 10,
-      "armor": 0
+      "armor": 0,
+      "movementType": "Flying"
     },
     "MediumBot": {
       "maxHealth": 60,
@@ -315,7 +330,8 @@ public sealed partial record GameplayTablesCatalog
       "moveEveryTicks": 4,
       "visionRadius": 5,
       "armor": 1,
-      "projectileKind": "GroundToGround"
+      "projectileKind": "GroundToGround",
+      "movementType": "Ground"
     },
     "MediumTank": {
       "maxHealth": 150,
@@ -326,7 +342,8 @@ public sealed partial record GameplayTablesCatalog
       "visionRadius": 6,
       "armor": 5,
       "projectileKind": "Ballistic",
-      "splashRadius": 1
+      "splashRadius": 1,
+      "movementType": "Ground"
     },
     "AntiAirBot": {
       "maxHealth": 70,
@@ -336,7 +353,8 @@ public sealed partial record GameplayTablesCatalog
       "moveEveryTicks": 6,
       "visionRadius": 6,
       "armor": 1,
-      "projectileKind": "AirToGround"
+      "projectileKind": "AirToGround",
+      "movementType": "Ground"
     },
     "RocketLauncher": {
       "maxHealth": 75,
@@ -347,7 +365,8 @@ public sealed partial record GameplayTablesCatalog
       "visionRadius": 6,
       "armor": 0,
       "projectileKind": "Ballistic",
-      "splashRadius": 2
+      "splashRadius": 2,
+      "movementType": "Ground"
     },
     "GhostBuild": {
       "maxHealth": 20,

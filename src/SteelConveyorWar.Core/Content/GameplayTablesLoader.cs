@@ -258,6 +258,14 @@ public static class GameplayTablesLoader
                     $"entityStats '{kind}' projectileKind");
             }
 
+            var movement = MovementType.Ground;
+            if (!string.IsNullOrWhiteSpace(stats.MovementType))
+            {
+                movement = ContentJsonOptions.ParseDefinedEnum<MovementType>(
+                    stats.MovementType,
+                    $"entityStats '{kind}' movementType");
+            }
+
             var entityStats = new EntityStats(
                 stats.MaxHealth,
                 stats.AttackDamage,
@@ -267,7 +275,8 @@ public static class GameplayTablesLoader
                 stats.VisionRadius,
                 stats.Armor,
                 projectile,
-                stats.SplashRadius);
+                stats.SplashRadius,
+                movement);
 
             if (!result.TryAdd(kind, entityStats))
             {
@@ -405,6 +414,7 @@ public static class GameplayTablesLoader
         public int Armor { get; set; }
         public string? ProjectileKind { get; set; }
         public int SplashRadius { get; set; }
+        public string? MovementType { get; set; }
     }
 
     private sealed class ResistanceDto

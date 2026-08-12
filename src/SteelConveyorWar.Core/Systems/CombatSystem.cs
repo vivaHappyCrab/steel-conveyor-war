@@ -110,7 +110,10 @@ internal sealed class CombatSystem
             return false;
         }
 
-        if (!MvpDefinitions.IsGroundUnitForWallCover(target.Kind) || target.OwnerId is null)
+        if (!MvpDefinitions.IsGroundUnitForWallCover(
+                target.Kind,
+                _context.GameplayTables.GetStats(target.Kind).MovementType)
+            || target.OwnerId is null)
         {
             return false;
         }

@@ -18,6 +18,24 @@
       "name": "Copper Ore",
       "walkable": true,
       "resource": "copper_ore"
+    },
+    {
+      "id": "resource.coal",
+      "name": "Coal",
+      "walkable": true,
+      "resource": "coal"
+    },
+    {
+      "id": "resource.oil",
+      "name": "Oil",
+      "walkable": true,
+      "resource": "oil"
+    },
+    {
+      "id": "terrain.mountain",
+      "name": "Mountain",
+      "walkable": false,
+      "resource": null
     }
   ]
 }

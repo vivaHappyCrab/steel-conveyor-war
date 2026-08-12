@@ -26,19 +26,6 @@ public sealed class ResearchPanelModelTests
     }
 
     [Fact]
-    public void FromSnapshot_ProfileC_ExposesAllocationToggleAndExclusivePreview()
-    {
-        var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(42, ResearchProfileIds.MvpC, MvpResearchCatalog.CreateEmbedded()));
-        var snapshot = simulation.GetResearchSnapshot(new PlayerId(1));
-        var panel = ResearchPanelModel.FromSnapshot(snapshot, pageIndex: 0);
-
-        Assert.True(panel.SupportsAllocationToggle);
-        Assert.Equal(2, snapshot.Tracks.Count);
-        Assert.Contains(panel.ToHudLines(), line => line.Contains("Alloc:", StringComparison.Ordinal));
-        Assert.DoesNotContain(panel.ToHudLines(), line => line.Contains("[T]", StringComparison.Ordinal));
-    }
-
-    [Fact]
     public void FromSnapshot_ClampsPageIndex()
     {
         var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(42, ResearchProfileIds.MvpB, MvpResearchCatalog.CreateEmbedded()));

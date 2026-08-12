@@ -53,7 +53,11 @@ public sealed class ConfigContentLoaderTests
         var catalog = TileContentLoader.Parse(File.ReadAllText(FindConfigPath("tiles.json")));
         Assert.Contains("terrain.grass", catalog.Tiles.Keys);
         Assert.Contains("resource.iron_ore", catalog.Tiles.Keys);
+        Assert.Contains("resource.coal", catalog.Tiles.Keys);
+        Assert.Contains("resource.oil", catalog.Tiles.Keys);
+        Assert.Contains("terrain.mountain", catalog.Tiles.Keys);
         Assert.True(catalog.Tiles["terrain.grass"].Walkable);
+        Assert.False(catalog.Tiles["terrain.mountain"].Walkable);
     }
 
     [Fact]

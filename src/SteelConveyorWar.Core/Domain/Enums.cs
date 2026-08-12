@@ -6,7 +6,22 @@ public enum TerrainType
     IronOre,
     CopperOre,
     Coal,
-    Oil
+    Oil,
+    Mountain
+}
+
+public enum MovementType
+{
+    Ground = 0,
+    Flying = 1
+}
+
+public static class TerrainRules
+{
+    public static bool IsResource(this TerrainType terrain) =>
+        terrain is TerrainType.IronOre or TerrainType.CopperOre or TerrainType.Coal or TerrainType.Oil;
+
+    public static bool IsWalkable(this TerrainType terrain) => terrain != TerrainType.Mountain;
 }
 
 public enum EntityKind

@@ -50,36 +50,13 @@ public static class MvpResearchCatalog
             [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 9_000)],
             "mandatory", "cycle");
 
-        // Variant C T1 mandatory aliases
-        Tech(new TechnologyId("technology.t1.automated-base"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 9_000)],
-            "mandatory", "cycle");
-        Tech(new TechnologyId("technology.t1.distant-expedition"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 9_000)],
-            "mandatory", "cycle");
-        Tech(new TechnologyId("technology.t1.new-resource-mastery"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new GrantCapabilityEffect(ResearchCapabilityIds.Tier2Content)],
-            "mandatory", "cycle");
-
-        // Variant A T1 qualification projects
+        // Variant A T1 qualification projects (also used by B's optional pool)
         Tech(TechnologyId.ImprovedConveyors, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.ConveyorMoveTicks, ModifierOperation.Multiply, 7_000)],
             "optional", "qualification", "production", "tactical");
-        Tech(new TechnologyId("technology.t1.mass-production"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_500)],
-            "optional", "qualification", "production", "tactical");
-        Tech(new TechnologyId("technology.t1.distributed-energy"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.EnergyShortagePenalty, ModifierOperation.Multiply, 7_500)],
-            "optional", "qualification", "infrastructure", "tactical");
         Tech(new TechnologyId("technology.t1.power-reserve"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.EnergyShortagePenalty, ModifierOperation.Multiply, 7_000)],
             "optional", "qualification", "infrastructure", "tactical");
-        Tech(new TechnologyId("technology.t1.expedition-logistics"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 8_000)],
-            "optional", "qualification", "field", "tactical");
-        Tech(new TechnologyId("technology.t1.defensive-engineering"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 7_500)],
-            "optional", "qualification", "field", "tactical");
 
         // Legacy / expansion optionals T1
         Tech(TechnologyId.LightBot, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
@@ -122,24 +99,6 @@ public static class MvpResearchCatalog
         Tech(new TechnologyId("technology.t1.fast-regroup"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 9_000)],
             "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.conveyor-telemetry"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.ConveyorMoveTicks, ModifierOperation.Multiply, 8_500)],
-            "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.energy-reserve"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.EnergyShortagePenalty, ModifierOperation.Multiply, 7_500)],
-            "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.modular-tooling"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 9_000)],
-            "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.recon-archive"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.VisionRadius, ModifierOperation.Add, 5_000)],
-            "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.hub-buffering"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.HubStorageStacks, ModifierOperation.Add, 30_000)],
-            "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.return-protocol"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 9_000)],
-            "optional", "tactical");
 
         // T1 doctrines
         Tech(new TechnologyId("technology.t1.doctrine.mobile-groups"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
@@ -147,15 +106,6 @@ public static class MvpResearchCatalog
             "doctrine", "tactical", "optional");
         Tech(new TechnologyId("technology.t1.doctrine.fortified-line"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 8_000)],
-            "doctrine", "tactical", "optional");
-        Tech(new TechnologyId("technology.t1.doctrine.swarm"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_500, EntityKind.LightBot.ToString())],
-            "doctrine", "tactical", "optional");
-        Tech(new TechnologyId("technology.t1.doctrine.observation"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.VisionRadius, ModifierOperation.Add, 20_000)],
-            "doctrine", "tactical", "optional");
-        Tech(new TechnologyId("technology.t1.doctrine.fortification"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 7_500)],
             "doctrine", "tactical", "optional");
 
         // T2 mandatory B
@@ -172,21 +122,6 @@ public static class MvpResearchCatalog
             ],
             "mandatory", "cycle");
 
-        // T2 C mandatory
-        Tech(new TechnologyId("technology.t2.steel-standardization"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [new AddModifierEffect(ResearchStatIds.SmelterWorkTicks, ModifierOperation.Multiply, 8_500)],
-            "mandatory", "cycle", "qualification", "industry");
-        Tech(new TechnologyId("technology.t2.fuel-logistics"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 9_000)],
-            "mandatory", "cycle");
-        Tech(new TechnologyId("technology.t2.field-bastion-network"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [new GrantCapabilityEffect(ResearchCapabilityIds.AdditionalBastions)],
-            "mandatory", "cycle", "qualification", "command");
-
-        // T2 A qualification extras
-        Tech(new TechnologyId("technology.t2.fuel-intensification"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_500)],
-            "optional", "qualification", "industry", "tactical");
         Tech(TechnologyId.UndergroundConveyors, ResearchTierIds.T2, 3, ItemId.SciencePackT2,
             [UnlockContentEffect.Entity(EntityKind.UndergroundConveyor)],
             "optional", "qualification", "logistics", "tactical");
@@ -198,9 +133,6 @@ public static class MvpResearchCatalog
                 new GrantCapabilityEffect(ResearchCapabilityIds.AdditionalBastions),
                 new AddModifierEffect(ResearchStatIds.BastionTemplateCapacity, ModifierOperation.Add, 20_000)
             ],
-            "optional", "qualification", "command", "tactical");
-        Tech(new TechnologyId("technology.t2.auto-resupply"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_500)],
             "optional", "qualification", "command", "tactical");
 
         // T2 legacy unlocks / optionals
@@ -245,18 +177,6 @@ public static class MvpResearchCatalog
             "doctrine", "tactical", "optional");
         Tech(new TechnologyId("technology.t2.doctrine.ranged-pressure"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
             [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_500, EntityKind.RocketLauncher.ToString())],
-            "doctrine", "tactical", "optional");
-        Tech(new TechnologyId("technology.t2.doctrine.armor-fist"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_000, EntityKind.MediumTank.ToString())],
-            "doctrine", "tactical", "optional");
-        Tech(new TechnologyId("technology.t2.doctrine.maneuver-net"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [
-                new GrantCapabilityEffect(ResearchCapabilityIds.AdditionalBastions),
-                new AddModifierEffect(ResearchStatIds.MaxBastions, ModifierOperation.Add, 20_000)
-            ],
-            "doctrine", "tactical", "optional");
-        Tech(new TechnologyId("technology.t2.doctrine.siege-control"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_000, EntityKind.RocketLauncher.ToString())],
             "doctrine", "tactical", "optional");
 
         return list.ToDictionary(tech => tech.Id);
@@ -314,20 +234,6 @@ public static class MvpResearchCatalog
                 new ResearchTrackDefinition(ResearchTrackIds.Primary, ResearchTrackMode.Serial, 1, [], 100)
             ],
             new ResearchBudgetDefinition(10_000, new Dictionary<string, int> { [ResearchTrackIds.Primary] = 10_000 }, false));
-
-        var dualTrack = new ResearchScheduleDefinition(
-            [
-                new ResearchTrackDefinition(ResearchTrackIds.Cycle, ResearchTrackMode.WeightedParallel, 3, ["mandatory", "cycle"], 100),
-                new ResearchTrackDefinition(ResearchTrackIds.Tactical, ResearchTrackMode.Serial, 1, ["optional", "tactical", "doctrine", "qualification"], 100)
-            ],
-            new ResearchBudgetDefinition(
-                10_000,
-                new Dictionary<string, int>
-                {
-                    [ResearchTrackIds.Cycle] = 7_000,
-                    [ResearchTrackIds.Tactical] = 3_000
-                },
-                true));
 
         var t2ContentEffects = new ResearchEffect[]
         {
@@ -428,183 +334,9 @@ public static class MvpResearchCatalog
             ],
             15_000);
 
-        var profileA = new ResearchProfileDefinition(
-            ResearchProfileIds.MvpA,
-            serialPrimary,
-            new Dictionary<string, TierGateDefinition>
-            {
-                [ResearchTierIds.T1] = new(
-                    "gate.a.t1-to-t2",
-                    ResearchTierIds.T1,
-                    ResearchTierIds.T2,
-                    [
-                        new GateRequirementDefinition("req.production", 1,
-                        [
-                            TechnologyId.ImprovedConveyors,
-                            new TechnologyId("technology.t1.mass-production")
-                        ]),
-                        new GateRequirementDefinition("req.infrastructure", 1,
-                        [
-                            new TechnologyId("technology.t1.distributed-energy"),
-                            new TechnologyId("technology.t1.power-reserve")
-                        ]),
-                        new GateRequirementDefinition("req.field", 1,
-                        [
-                            new TechnologyId("technology.t1.expedition-logistics"),
-                            new TechnologyId("technology.t1.defensive-engineering")
-                        ])
-                    ],
-                    t2ContentEffects),
-                [ResearchTierIds.T2] = new(
-                    "gate.a.t2-to-t3",
-                    ResearchTierIds.T2,
-                    null,
-                    [
-                        new GateRequirementDefinition("req.industry", 1,
-                        [
-                            new TechnologyId("technology.t2.steel-standardization"),
-                            new TechnologyId("technology.t2.fuel-intensification")
-                        ]),
-                        new GateRequirementDefinition("req.logistics", 1,
-                        [
-                            TechnologyId.UndergroundConveyors,
-                            TechnologyId.ConstructionDrone
-                        ]),
-                        new GateRequirementDefinition("req.command", 1,
-                        [
-                            TechnologyId.AdditionalBastions,
-                            new TechnologyId("technology.t2.auto-resupply")
-                        ])
-                    ],
-                    t3Milestone)
-            },
-            Array.Empty<ExclusiveGroupDefinition>(),
-            [
-                new OptionalPoolDefinition("pool.a.t1",
-                [
-                    TechnologyId.LightBot,
-                    TechnologyId.Scout,
-                    TechnologyId.MachineGunTurret,
-                    TechnologyId.ConcreteWalls,
-                    new TechnologyId("technology.t1.field-repair"),
-                    new TechnologyId("technology.t1.modular-tooling"),
-                    new TechnologyId("technology.t1.hub-buffering"),
-                    new TechnologyId("technology.t1.fast-regroup")
-                ]),
-                new OptionalPoolDefinition("pool.a.t2",
-                [
-                    TechnologyId.MediumBot,
-                    TechnologyId.MediumTank,
-                    TechnologyId.RocketLauncher,
-                    TechnologyId.AntiAirTurret,
-                    TechnologyId.SteelWalls,
-                    new TechnologyId("technology.t2.predictive-aa"),
-                    new TechnologyId("technology.t2.mobile-repair"),
-                    new TechnologyId("technology.t2.reinforced-hubs")
-                ])
-            ],
-            15_000);
-
-        var profileC = new ResearchProfileDefinition(
-            ResearchProfileIds.MvpC,
-            dualTrack,
-            new Dictionary<string, TierGateDefinition>
-            {
-                [ResearchTierIds.T1] = new(
-                    "gate.c.t1-to-t2",
-                    ResearchTierIds.T1,
-                    ResearchTierIds.T2,
-                    [
-                        new GateRequirementDefinition("req.auto", 1, [new TechnologyId("technology.t1.automated-base")]),
-                        new GateRequirementDefinition("req.expedition", 1, [new TechnologyId("technology.t1.distant-expedition")]),
-                        new GateRequirementDefinition("req.resources", 1, [new TechnologyId("technology.t1.new-resource-mastery")])
-                    ],
-                    t2ContentEffects),
-                [ResearchTierIds.T2] = new(
-                    "gate.c.t2-to-t3",
-                    ResearchTierIds.T2,
-                    null,
-                    [
-                        new GateRequirementDefinition("req.steel", 1, [new TechnologyId("technology.t2.steel-standardization")]),
-                        new GateRequirementDefinition("req.fuel", 1, [new TechnologyId("technology.t2.fuel-logistics")]),
-                        new GateRequirementDefinition("req.bastion", 1, [new TechnologyId("technology.t2.field-bastion-network")])
-                    ],
-                    t3Milestone)
-            },
-            [
-                new ExclusiveGroupDefinition(
-                    "exclusive.c.t1-doctrine",
-                    [
-                        new TechnologyId("technology.t1.doctrine.swarm"),
-                        new TechnologyId("technology.t1.doctrine.observation"),
-                        new TechnologyId("technology.t1.doctrine.fortification")
-                    ],
-                    1,
-                    ExclusiveLockOn.Start,
-                    true),
-                new ExclusiveGroupDefinition(
-                    "exclusive.c.t2-doctrine",
-                    [
-                        new TechnologyId("technology.t2.doctrine.armor-fist"),
-                        new TechnologyId("technology.t2.doctrine.maneuver-net"),
-                        new TechnologyId("technology.t2.doctrine.siege-control")
-                    ],
-                    1,
-                    ExclusiveLockOn.Start,
-                    true)
-            ],
-            [
-                new OptionalPoolDefinition("pool.c.t1",
-                [
-                    new TechnologyId("technology.t1.conveyor-telemetry"),
-                    new TechnologyId("technology.t1.energy-reserve"),
-                    new TechnologyId("technology.t1.modular-tooling"),
-                    new TechnologyId("technology.t1.field-repair"),
-                    new TechnologyId("technology.t1.recon-archive"),
-                    new TechnologyId("technology.t1.prefab-fortifications"),
-                    new TechnologyId("technology.t1.hub-buffering"),
-                    new TechnologyId("technology.t1.return-protocol"),
-                    TechnologyId.LightBot,
-                    TechnologyId.Scout,
-                    TechnologyId.MachineGunTurret,
-                    TechnologyId.ConcreteWalls,
-                    new TechnologyId("technology.t1.doctrine.swarm"),
-                    new TechnologyId("technology.t1.doctrine.observation"),
-                    new TechnologyId("technology.t1.doctrine.fortification")
-                ]),
-                new OptionalPoolDefinition("pool.c.t2",
-                [
-                    TechnologyId.UndergroundConveyors,
-                    TechnologyId.ConstructionDrone,
-                    TechnologyId.AntiAirTurret,
-                    TechnologyId.SteelWalls,
-                    TechnologyId.MediumBot,
-                    TechnologyId.MediumTank,
-                    TechnologyId.RocketLauncher,
-                    new TechnologyId("technology.t2.predictive-aa"),
-                    new TechnologyId("technology.t2.reinforced-hubs"),
-                    new TechnologyId("technology.t2.ammo-priority"),
-                    new TechnologyId("technology.t2.doctrine.armor-fist"),
-                    new TechnologyId("technology.t2.doctrine.maneuver-net"),
-                    new TechnologyId("technology.t2.doctrine.siege-control")
-                ])
-            ],
-            15_000);
-
-        var hybrid = profileA with
-        {
-            Id = ResearchProfileIds.HybridAC,
-            Schedule = dualTrack,
-            ExclusiveGroups = profileC.ExclusiveGroups,
-            OptionalPools = profileC.OptionalPools
-        };
-
         return new Dictionary<string, ResearchProfileDefinition>
         {
-            [profileA.Id] = profileA,
-            [profileB.Id] = profileB,
-            [profileC.Id] = profileC,
-            [hybrid.Id] = hybrid
+            [profileB.Id] = profileB
         };
     }
 }
