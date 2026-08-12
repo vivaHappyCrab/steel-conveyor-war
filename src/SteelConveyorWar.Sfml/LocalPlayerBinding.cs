@@ -13,11 +13,18 @@ public static class LocalPlayerBinding
     public static PlayerId Resolve(IReadOnlyList<string> args, PlayerId? fallback = null)
     {
         var defaultId = fallback ?? SfmlDisplayOptions.DefaultLocalPlayerId;
-        for (var i = 0; i < args.Count - 1; i++)
+        for (var i = 0; i < args.Count; i++)
         {
             if (!args[i].Equals(CliFlag, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
+            }
+
+            // L01: trailing flag or flag followed by another flag is an error (not a silent default).
+            if (i >= args.Count - 1 || args[i + 1].StartsWith('-'))
+            {
+                throw new ArgumentException(
+                    $"{CliFlag} requires a positive integer player id (e.g. {CliFlag} 1).");
             }
 
             if (!int.TryParse(args[i + 1], out var value) || value < 1)

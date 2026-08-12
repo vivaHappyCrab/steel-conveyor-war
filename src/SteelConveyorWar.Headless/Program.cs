@@ -1,9 +1,10 @@
 using SteelConveyorWar.Core;
 using SteelConveyorWar.Headless;
+using SteelConveyorWar.Hosting;
 
 var options = HeadlessHostOptions.Parse(args);
 
-// R25: shared bootstrap resolves config, loads + cross-validates all catalogs, builds creation options.
+// R25/M09: shared Hosting bootstrap owns file I/O; Core stays parse/validate only.
 var content = ContentBootstrap.Load(ContentBootstrap.ResolveConfigDirectory());
 
 var simulation = GameSimulation.CreateNewGame(content.CreationOptions);

@@ -151,7 +151,11 @@ internal sealed class InputCommandMapper
         if (key == "F1")
         {
             var selectedId = _state.SelectedEntityId;
-            SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, _localPlayer, ref selectedId);
+            if (!SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, _localPlayer, ref selectedId))
+            {
+                return InputMapResult.Handled;
+            }
+
             _state.SetSelectedEntityId(selectedId);
             _state.ClearTransientUiKeepingSelection();
             return InputMapResult.CenterSelected;
@@ -170,7 +174,11 @@ internal sealed class InputCommandMapper
                     out var copyRecipe))
             {
                 var selectedId = _state.SelectedEntityId;
-                SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, _localPlayer, ref selectedId);
+                if (!SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, _localPlayer, ref selectedId))
+                {
+                    return InputMapResult.Handled;
+                }
+
                 _state.SetSelectedEntityId(selectedId);
                 _state.OpenBuildMenuWithCopy(copyKind, copyDirection, copyRecipe);
             }

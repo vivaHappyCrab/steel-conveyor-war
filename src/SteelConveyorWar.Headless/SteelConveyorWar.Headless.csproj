@@ -4,11 +4,12 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>SteelConveyorWar.Headless</RootNamespace>
     <AssemblyName>SteelConveyorWar.Headless</AssemblyName>
-    <Description>Headless bot/net host entrypoint (Core only, no SFML window).</Description>
+    <Description>Headless bot/CI host entrypoint (Core + Hosting bootstrap, no SFML window).</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SteelConveyorWar.Core\SteelConveyorWar.Core.csproj" />
+    <ProjectReference Include="..\SteelConveyorWar.Hosting\SteelConveyorWar.Hosting.csproj" />
   </ItemGroup>
 
   <ItemGroup>

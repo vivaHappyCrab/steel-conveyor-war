@@ -1,10 +1,12 @@
-namespace SteelConveyorWar.Core;
+using SteelConveyorWar.Core;
+
+namespace SteelConveyorWar.Hosting;
 
 /// <summary>
-/// R25: single shared content bootstrap for every host (Client, Headless). Owns config-path
-/// resolution, file I/O, catalog loading, cross-catalog validation, and <see cref="GameCreationOptions"/>
-/// assembly, so adding a new required catalog is a one-place change and hosts cannot drift.
-/// Host-specific concerns (window/render vs headless loop) stay in each host's entry point.
+/// R25 / M09: single shared content bootstrap for every host (Client, Headless). Owns config-path
+/// resolution and file I/O, then delegates parse/validate to Core loaders and
+/// <see cref="ContentCrossValidator"/> so hosts cannot drift. Core stays parse-only; this assembly
+/// is the shared host I/O boundary (no SFML).
 /// </summary>
 public static class ContentBootstrap
 {

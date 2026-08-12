@@ -28,6 +28,19 @@ public class LocalPlayerBindingTests
     }
 
     [Fact]
+    public void Resolve_TrailingLocalPlayerFlag_Throws()
+    {
+        var ex = Assert.Throws<ArgumentException>(() => LocalPlayerBinding.Resolve(["--local-player"]));
+        Assert.Contains("--local-player", ex.Message);
+    }
+
+    [Fact]
+    public void Resolve_LocalPlayerFollowedByAnotherFlag_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => LocalPlayerBinding.Resolve(["--local-player", "--smoke-test"]));
+    }
+
+    [Fact]
     public void DisplayOptions_DefaultsLocalPlayerAndRequiresPositiveTicks()
     {
         var display = new SfmlDisplayOptions(800, 600, "Test", GameSimulation.DefaultTicksPerSecond);

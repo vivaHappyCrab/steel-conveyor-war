@@ -96,20 +96,63 @@ public sealed class SessionStateTests
     }
 
     [Fact]
-    public void PrepareOpenResearchExclusive_ClosesEnergyAndBastionComposition()
+    public void PrepareOpenResearchExclusive_ClosesBuildEnergyAndBastionComposition()
     {
         var state = new SessionState();
+        state.ToggleBuildMenu(EntityKind.Conveyor);
         state.OpenEnergyOverlay();
         state.ToggleBastionComposition();
+        Assert.True(state.IsBuildMenuOpen);
         Assert.True(state.IsEnergyOverlayOpen);
         Assert.True(state.IsBastionCompositionOpen);
 
         state.PrepareOpenResearchExclusive();
         state.OpenResearchOverlay();
 
+        Assert.Equal(ExclusiveUiMode.Research, state.ActiveExclusiveMode);
         Assert.True(state.IsResearchOverlayOpen);
+        Assert.False(state.IsBuildMenuOpen);
+        Assert.Null(state.PendingBuildKind);
         Assert.False(state.IsEnergyOverlayOpen);
         Assert.False(state.IsBastionCompositionOpen);
+    }
+
+    [Fact]
+    public void ExclusiveModes_MutualExclusionMatrix()
+    {
+        var state = new SessionState();
+
+        state.ToggleBuildMenu(EntityKind.Conveyor);
+        Assert.Equal(ExclusiveUiMode.Build, state.ActiveExclusiveMode);
+
+        state.PrepareOpenResearchExclusive();
+        state.OpenResearchOverlay();
+        Assert.Equal(ExclusiveUiMode.Research, state.ActiveExclusiveMode);
+        Assert.False(state.IsBuildMenuOpen);
+
+        state.PrepareOpenEnergyExclusive();
+        state.OpenEnergyOverlay();
+        Assert.Equal(ExclusiveUiMode.Energy, state.ActiveExclusiveMode);
+        Assert.False(state.IsResearchOverlayOpen);
+
+        state.PrepareToggleBastionCompositionExclusive();
+        state.ToggleBastionComposition();
+        Assert.Equal(ExclusiveUiMode.BastionCompose, state.ActiveExclusiveMode);
+        Assert.False(state.IsEnergyOverlayOpen);
+
+        state.ToggleBuildMenu(EntityKind.Inserter);
+        Assert.Equal(ExclusiveUiMode.Build, state.ActiveExclusiveMode);
+        Assert.False(state.IsBastionCompositionOpen);
+        Assert.False(state.IsResearchOverlayOpen);
+        Assert.False(state.IsEnergyOverlayOpen);
+
+        state.OpenBuildMenuWithCopy(EntityKind.Conveyor, Direction.North, recipe: null);
+        Assert.Equal(ExclusiveUiMode.Build, state.ActiveExclusiveMode);
+
+        state.PrepareOpenEnergyExclusive();
+        state.OpenEnergyOverlay();
+        Assert.Equal(ExclusiveUiMode.Energy, state.ActiveExclusiveMode);
+        Assert.False(state.IsBuildMenuOpen);
     }
 
     [Fact]

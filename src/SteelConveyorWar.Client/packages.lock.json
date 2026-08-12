@@ -57,6 +57,12 @@
       "steelconveyorwar.core": {
         "type": "Project"
       },
+      "steelconveyorwar.hosting": {
+        "type": "Project",
+        "dependencies": {
+          "SteelConveyorWar.Core": "[1.0.0, )"
+        }
+      },
       "steelconveyorwar.sfml": {
         "type": "Project",
         "dependencies": {
