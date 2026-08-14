@@ -38,13 +38,13 @@ public sealed class CommanderAirTargetTests
     }
 
     [Fact]
-    public void ConcreteWallsResearch_AddsBastionCap()
+    public void AdditionalBastionResearch_AddsBastionCap()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var player = new PlayerId(1);
         var before = simulation.GetMaxBastionCount(player);
         Assert.Equal(3, before);
-        Assert.True(simulation.TryForceCompleteResearch(player, TechnologyId.ConcreteWalls, confirmExclusive: true));
+        Assert.True(simulation.TryForceCompleteResearch(player, TechnologyId.AdditionalBastion, confirmExclusive: true));
         Assert.Equal(before + 1, simulation.GetMaxBastionCount(player));
     }
 

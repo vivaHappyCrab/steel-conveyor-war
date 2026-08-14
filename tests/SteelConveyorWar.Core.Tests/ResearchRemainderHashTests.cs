@@ -31,7 +31,7 @@ public sealed class ResearchRemainderHashTests
         var mutated = GameSimulation.CreateNewGame(42);
 
         var research = mutated.GetPlayer(new PlayerId(1)).Research;
-        research.ProjectSelectionRemainder[TechnologyId.LightBot] = 3;
+        research.ProjectSelectionRemainder[TechnologyId.GroundUnitAttack] = 3;
 
         Assert.NotEqual(baseline.ComputeStateHash(), mutated.ComputeStateHash());
     }

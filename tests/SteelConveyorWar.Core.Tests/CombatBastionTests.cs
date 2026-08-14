@@ -663,7 +663,7 @@ public sealed class CombatBastionTests
     private static WorldEntity ProduceScoutForBastion(GameSimulation simulation, int bastionId)
     {
         Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.CommandI, confirmExclusive: true));
-        Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.Scout));
+        Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.GroundUnitArmor));
         var desired = simulation.World.GetEntity(bastionId)!.BastionTemplate.GetValueOrDefault(EntityKind.Scout) + 1;
         Assert.True(simulation.TrySetBastionTemplate(bastionId, new PlayerId(1), EntityKind.Scout, desired));
         var factory = simulation.World.Entities.FirstOrDefault(entity =>

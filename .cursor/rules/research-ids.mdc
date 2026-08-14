@@ -1,0 +1,23 @@
+---
+description: Keep content ids and C# constants aligned with current naming
+globs: "config/**/*.json,src/SteelConveyorWar.Core/Domain/**/*.cs,src/SteelConveyorWar.Core/Research/**/*.cs"
+alwaysApply: true
+---
+
+# Ids and constants stay current
+
+When a content id or display name changes, rename the matching C# constant in the same change. Do not leave leftover aliases (`LightBot` pointing at `ground-unit-attack`).
+
+Convention: PascalCase constant = last kebab-case segment of the namespaced id. Roman suffixes stay `I`/`II` (`production-i` → `ProductionI`).
+
+```csharp
+// BAD — stale constant, live id
+public static readonly TechnologyId LightBot = new("technology.t1.ground-unit-attack");
+
+// GOOD — name matches the id
+public static readonly TechnologyId GroundUnitAttack = new("technology.t1.ground-unit-attack");
+```
+
+Research also needs `config/research.json` and `ResearchDisplayNames` updated together.
+
+`EntityKind.LightBot` / `Scout` are unit kinds, not research ids. T1 `AdditionalBastion` vs T2 `AdditionalBastions` is intentional (singular vs plural id).

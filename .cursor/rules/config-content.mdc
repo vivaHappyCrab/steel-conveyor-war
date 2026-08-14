@@ -7,6 +7,7 @@ alwaysApply: false
 # Config and content IDs
 
 - Prefer stable lowercase namespaced ids in config (`unit.commander`, `terrain.grass`).
+- Research: `TechnologyId` constant names must match the current catalog id (PascalCase of the last kebab segment). Do not leave aliases like `LightBot` pointing at `ground-unit-attack`. See `.cursor/rules/research-ids.mdc`.
 - Runtime loads `game.json` / `research.json` / `tiles.json` / `entities.json` (Core parse, Client I/O). New recipes/combat/build costs still go into `MvpDefinitions.cs` until those domains migrate — not SFML.
 - Do not hardcode recipes/balance in rendering code.
 - Asset paths are presentation-only and must not define gameplay rules.

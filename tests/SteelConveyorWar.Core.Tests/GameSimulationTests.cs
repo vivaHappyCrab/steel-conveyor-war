@@ -506,7 +506,7 @@ public class GameSimulationTests
         Assert.True(factory.IsManualProductionTarget);
 
         Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.CommandI, confirmExclusive: true));
-        Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.LightBot, confirmExclusive: true));
+        Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.GroundUnitAttack, confirmExclusive: true));
         Assert.True(simulation.TrySetFactoryProduction(factoryId, new PlayerId(1), EntityKind.LightBot));
         factory = simulation.World.GetEntity(factoryId)!;
         Assert.Equal(EntityKind.LightBot, factory.ProductionTargetKind);
@@ -612,10 +612,10 @@ public class GameSimulationTests
         var playerId = new PlayerId(1);
 
         Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.CommandI, confirmExclusive: true));
-        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.LightBot, confirmExclusive: true));
-        Assert.Contains(TechnologyId.LightBot, simulation.GetPlayer(playerId).Research.CompletedTechnologies);
-        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.LightBot, confirmExclusive: true));
-        Assert.DoesNotContain(TechnologyId.LightBot, simulation.GetPlayer(playerId).Research.ProgressWorkUnits.Keys);
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.GroundUnitAttack, confirmExclusive: true));
+        Assert.Contains(TechnologyId.GroundUnitAttack, simulation.GetPlayer(playerId).Research.CompletedTechnologies);
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.GroundUnitAttack, confirmExclusive: true));
+        Assert.DoesNotContain(TechnologyId.GroundUnitAttack, simulation.GetPlayer(playerId).Research.ProgressWorkUnits.Keys);
     }
 
     [Fact]
@@ -628,10 +628,10 @@ public class GameSimulationTests
         Assert.True(simulation.TrySetEnergyBufferForTests(labId, int.MaxValue));
         simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 30);
         Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.CommandI, confirmExclusive: true));
-        Assert.True(simulation.TryStartResearch(new PlayerId(1), TechnologyId.LightBot));
+        Assert.True(simulation.TryStartResearch(new PlayerId(1), TechnologyId.GroundUnitAttack));
         AdvanceTicks(simulation, ResearchSystem.LabCycleTicks * 30);
 
-        Assert.Contains(TechnologyId.LightBot, simulation.GetPlayer(new PlayerId(1)).ResearchedTechnologies);
+        Assert.Contains(TechnologyId.GroundUnitAttack, simulation.GetPlayer(new PlayerId(1)).ResearchedTechnologies);
     }
 
     [Fact]
@@ -1090,10 +1090,10 @@ public class GameSimulationTests
         var assembler = simulation.World.GetEntity(assemblerId)!;
         Assert.True(simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 30));
         Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.CommandI, confirmExclusive: true));
-        Assert.True(simulation.TryStartResearch(new PlayerId(1), TechnologyId.LightBot));
+        Assert.True(simulation.TryStartResearch(new PlayerId(1), TechnologyId.GroundUnitAttack));
         AdvanceTicks(simulation, ResearchSystem.LabCycleTicks * 30);
 
-        Assert.Contains(TechnologyId.LightBot, simulation.GetPlayer(new PlayerId(1)).ResearchedTechnologies);
+        Assert.Contains(TechnologyId.GroundUnitAttack, simulation.GetPlayer(new PlayerId(1)).ResearchedTechnologies);
     }
 
     [Fact]

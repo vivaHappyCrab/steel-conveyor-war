@@ -13,12 +13,12 @@ public sealed class SessionStateTests
     {
         var state = new SessionState();
         state.OpenResearchOverlay();
-        state.SetResearchSelectedId(TechnologyId.LightBot);
-        state.RecordResearchClick(TechnologyId.LightBot, nowSeconds: 1f);
+        state.SetResearchSelectedId(TechnologyId.GroundUnitAttack);
+        state.RecordResearchClick(TechnologyId.GroundUnitAttack, nowSeconds: 1f);
         state.SetResearchScrollY(40f);
 
         Assert.True(state.IsResearchOverlayOpen);
-        Assert.Equal(TechnologyId.LightBot, state.ResearchSelectedId);
+        Assert.Equal(TechnologyId.GroundUnitAttack, state.ResearchSelectedId);
 
         state.CloseResearchOverlay();
 

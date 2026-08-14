@@ -79,11 +79,11 @@ public static class MvpResearchCatalog
                 pair.Key.ToString()))
             .ToArray();
 
-        // T1 optional combat/bastion bonuses (LightBot/Scout/Walls are T1 baseline unlocks).
-        Tech(TechnologyId.LightBot, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
+        // T1 optional combat/bastion bonuses (LightBot/Scout/Wall remain T1 baseline unlocks).
+        Tech(TechnologyId.GroundUnitAttack, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
             groundAttackEffects,
             "optional", "tactical");
-        Tech(TechnologyId.Scout, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
+        Tech(TechnologyId.GroundUnitArmor, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
             groundArmorEffects,
             "optional", "tactical");
         Tech(TechnologyId.MachineGunTurret, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
@@ -92,7 +92,7 @@ public static class MvpResearchCatalog
                 new AddModifierEffect(ResearchStatIds.AttackDamage, ModifierOperation.Multiply, 11_000)
             ],
             "optional", "tactical");
-        Tech(TechnologyId.ConcreteWalls, ResearchTierIds.T1, 2, ItemId.SciencePackT1,
+        Tech(TechnologyId.AdditionalBastion, ResearchTierIds.T1, 2, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.MaxBastions, ModifierOperation.Add, 10_000)],
             "optional", "tactical");
         Tech(new TechnologyId("technology.t1.forward-observer"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
@@ -199,8 +199,8 @@ public static class MvpResearchCatalog
             list[index] = list[index] with { Prerequisites = prerequisites };
         }
 
-        Require(TechnologyId.LightBot, TechnologyId.CommandI);
-        Require(TechnologyId.Scout, TechnologyId.CommandI);
+        Require(TechnologyId.GroundUnitAttack, TechnologyId.CommandI);
+        Require(TechnologyId.GroundUnitArmor, TechnologyId.CommandI);
 
         return list.ToDictionary(tech => tech.Id);
     }
@@ -331,14 +331,14 @@ public static class MvpResearchCatalog
                     TechnologyId.ImprovedConveyors,
                     new TechnologyId("technology.t1.power-reserve"),
                     new TechnologyId("technology.t1.forward-observer"),
-                    TechnologyId.LightBot,
+                    TechnologyId.GroundUnitAttack,
                     new TechnologyId("technology.t1.field-repair"),
                     new TechnologyId("technology.t1.prefab-fortifications"),
                     new TechnologyId("technology.t1.production-reserve"),
                     new TechnologyId("technology.t1.fast-regroup"),
-                    TechnologyId.Scout,
+                    TechnologyId.GroundUnitArmor,
                     TechnologyId.MachineGunTurret,
-                    TechnologyId.ConcreteWalls,
+                    TechnologyId.AdditionalBastion,
                     new TechnologyId("technology.t1.doctrine.mobile-groups"),
                     new TechnologyId("technology.t1.doctrine.fortified-line")
                 ]),
