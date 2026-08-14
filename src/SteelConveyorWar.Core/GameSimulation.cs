@@ -1873,58 +1873,57 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         var halfWidth = size.Width / 2;
 
         // Left-half start ores; right half is mirrored for PvP fairness.
-        // 3 iron + 2 copper per side. Patch centers stay far enough that every resource tile
-        // is at least MinStartResourceChebyshevDistance from the P1 commander seat.
+        // 3 iron + 2 copper per side: one Fe/Cu pair stays near the commander, extras stay at
+        // least MinStartResourceChebyshevDistance away so they do not sit on the starter pair.
         var start = ResolveSeatCommander(map, size, playerId: 1);
-        var minCenter = MvpDefinitions.MinStartResourceChebyshevDistance + StartOrePatchMaxRadius;
+        var minExtraCenter = MvpDefinitions.MinStartResourceChebyshevDistance + StartOrePatchMaxRadius;
         var oreCenters = new List<TilePosition>(5);
         var ironCenter = JitterTile(
             rng,
-            baseX: start.X + 2,
-            baseY: start.Y - minCenter,
+            baseX: start.X,
+            baseY: start.Y - 10,
             maxOffset: 1,
             minX: 3,
-            maxX: Math.Min(10, halfWidth - 4),
-            minY: 4,
-            maxY: start.Y - minCenter);
+            maxX: 7,
+            minY: start.Y - 12,
+            maxY: start.Y - 8);
         var copperCenter = JitterTile(
             rng,
-            baseX: start.X + 2,
-            baseY: start.Y + minCenter,
+            baseX: start.X,
+            baseY: start.Y + 10,
             maxOffset: 1,
             minX: 3,
-            maxX: Math.Min(10, halfWidth - 4),
-            minY: start.Y + minCenter,
-            maxY: size.Height - 5);
+            maxX: 7,
+            minY: start.Y + 8,
+            maxY: start.Y + 12);
         // Chebyshev radius ≥ 2 → bounding box at least 5×5 (≥ 4×4 requirement).
-        FillOrePatchLeftHalf(terrain, ironCenter, TerrainType.IronOre, maxDistance: 2 + rng.Next(0, 2), halfWidth, start);
-        FillOrePatchLeftHalf(terrain, copperCenter, TerrainType.CopperOre, maxDistance: 2 + rng.Next(0, 2), halfWidth, start);
+        FillOrePatchLeftHalf(terrain, ironCenter, TerrainType.IronOre, maxDistance: 2 + rng.Next(0, 2), halfWidth);
+        FillOrePatchLeftHalf(terrain, copperCenter, TerrainType.CopperOre, maxDistance: 2 + rng.Next(0, 2), halfWidth);
         oreCenters.Add(ironCenter);
         oreCenters.Add(copperCenter);
 
-        // Extra Fe/Cu also beyond the min start distance, inland from the west-edge pair.
         PlaceExtraStartOre(
             terrain, rng, oreCenters, TerrainType.IronOre, halfWidth, start,
             baseX: start.X + 22,
-            baseY: start.Y - minCenter,
+            baseY: start.Y - minExtraCenter,
             minX: start.X + 16,
             maxX: Math.Min(start.X + 30, halfWidth - 8),
             minY: 4,
-            maxY: start.Y - minCenter);
+            maxY: start.Y - minExtraCenter);
         PlaceExtraStartOre(
             terrain, rng, oreCenters, TerrainType.IronOre, halfWidth, start,
-            baseX: start.X + minCenter,
+            baseX: start.X + minExtraCenter,
             baseY: start.Y - 12,
-            minX: start.X + minCenter,
-            maxX: Math.Min(start.X + minCenter + 8, halfWidth - 4),
+            minX: start.X + minExtraCenter,
+            maxX: Math.Min(start.X + minExtraCenter + 8, halfWidth - 4),
             minY: start.Y - 20,
             maxY: start.Y - 4);
         PlaceExtraStartOre(
             terrain, rng, oreCenters, TerrainType.CopperOre, halfWidth, start,
-            baseX: start.X + minCenter,
+            baseX: start.X + minExtraCenter,
             baseY: start.Y + 12,
-            minX: start.X + minCenter,
-            maxX: Math.Min(start.X + minCenter + 8, halfWidth - 4),
+            minX: start.X + minExtraCenter,
+            maxX: Math.Min(start.X + minExtraCenter + 8, halfWidth - 4),
             minY: start.Y + 4,
             maxY: start.Y + 20);
 
@@ -1947,8 +1946,8 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             maxX: halfWidth - 1,
             minY: start.Y + 8,
             maxY: size.Height - 16);
-        FillOrePatchLeftHalf(terrain, coalCenter, TerrainType.Coal, maxDistance: 2 + rng.Next(0, 2), halfWidth, start);
-        FillOrePatchLeftHalf(terrain, oilCenter, TerrainType.Oil, maxDistance: 2 + rng.Next(0, 2), halfWidth, start);
+        FillOrePatchLeftHalf(terrain, coalCenter, TerrainType.Coal, maxDistance: 2 + rng.Next(0, 2), halfWidth);
+        FillOrePatchLeftHalf(terrain, oilCenter, TerrainType.Oil, maxDistance: 2 + rng.Next(0, 2), halfWidth);
 
         PlaceMountainChunksLeftHalf(terrain, rng, map, tables);
         MirrorNonGrassTilesLeftToRight(terrain, halfWidth);
@@ -2020,7 +2019,14 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         }
 
         var center = chosen ?? JitterTile(rng, baseX, baseY, maxOffset: 1, minX, maxX, minY, maxY);
-        FillOrePatchLeftHalf(terrain, center, type, maxDistance: 2 + rng.Next(0, 2), halfWidth, start);
+        FillOrePatchLeftHalf(
+            terrain,
+            center,
+            type,
+            maxDistance: 2 + rng.Next(0, 2),
+            halfWidth,
+            start,
+            MvpDefinitions.MinStartResourceChebyshevDistance);
         oreCenters.Add(center);
     }
 
@@ -2030,7 +2036,8 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         TerrainType type,
         int maxDistance,
         int halfWidth,
-        TilePosition start)
+        TilePosition? keepAwayFrom = null,
+        int minChebyshev = 0)
     {
         // Chebyshev (square) fill so min radius 2 yields at least a 5×5 AABB (≥ 4×4).
         for (var y = center.Y - maxDistance; y <= center.Y + maxDistance; y++)
@@ -2038,15 +2045,22 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             for (var x = center.X - maxDistance; x <= center.X + maxDistance; x++)
             {
                 var distance = Math.Max(Math.Abs(center.X - x), Math.Abs(center.Y - y));
-                if (distance <= maxDistance
-                    && x >= 0
-                    && y >= 0
-                    && x < halfWidth
-                    && y < terrain.GetLength(1)
-                    && ChebyshevDistance(new TilePosition(x, y), start) >= MvpDefinitions.MinStartResourceChebyshevDistance)
+                if (distance > maxDistance
+                    || x < 0
+                    || y < 0
+                    || x >= halfWidth
+                    || y >= terrain.GetLength(1))
                 {
-                    terrain[x, y] = type;
+                    continue;
                 }
+
+                if (keepAwayFrom is { } origin
+                    && ChebyshevDistance(new TilePosition(x, y), origin) < minChebyshev)
+                {
+                    continue;
+                }
+
+                terrain[x, y] = type;
             }
         }
     }

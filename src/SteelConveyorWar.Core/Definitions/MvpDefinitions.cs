@@ -6,7 +6,9 @@ public static class MvpDefinitions
 {
     public const int CommanderBuildRadius = 12;
     public const int CommanderInteractRadius = 6;
-    /// <summary>Chebyshev distance from a commander start tile to the nearest generated resource tile.</summary>
+    /// <summary>
+    /// Chebyshev distance from a commander start tile to extra iron/copper patches (not the near-base pair).
+    /// </summary>
     public const int MinStartResourceChebyshevDistance = 40;
     public const int ConveyorMoveTicks = 10;
     public const int InserterTransferTicks = 12;

@@ -76,12 +76,12 @@ public class MapGenerationTests
         var nearestCoal = EnumerateTerrain(simulation)
             .Where(t => t.Type == TerrainType.Coal && t.X < half)
             .Min(t => Math.Max(Math.Abs(t.X - startX), Math.Abs(t.Y - midY)));
-        Assert.True(nearestIron >= MvpDefinitions.MinStartResourceChebyshevDistance);
+        Assert.True(nearestIron < 20, $"starter iron should stay near the base, was {nearestIron}");
         Assert.True(nearestCoal > nearestIron);
     }
 
     [Fact]
-    public void StartingResourceTiles_AreAtLeastMinChebyshevFromCommanderStarts()
+    public void ExtraIronAndCopperPatches_AreAtLeastMinChebyshevFromCommanderStarts()
     {
         foreach (var seed in new[] { 1, 42, 99, 12345 })
         {
@@ -90,12 +90,28 @@ public class MapGenerationTests
             {
                 var commander = simulation.World.Entities.Single(
                     entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(playerId));
-                var nearest = EnumerateTerrain(simulation)
-                    .Where(t => t.Type.IsResource())
-                    .Min(t => Math.Max(Math.Abs(t.X - commander.Position.X), Math.Abs(t.Y - commander.Position.Y)));
-                Assert.True(
-                    nearest >= MvpDefinitions.MinStartResourceChebyshevDistance,
-                    $"seed {seed} player {playerId} nearest resource Chebyshev {nearest}");
+                foreach (var type in new[] { TerrainType.IronOre, TerrainType.CopperOre })
+                {
+                    var patches = CollectOrePatches(simulation, type).ToList();
+                    Assert.True(patches.Count >= 2, $"seed {seed} player {playerId} {type} patch count {patches.Count}");
+                    var ordered = patches
+                        .Select(patch => (
+                            Patch: patch,
+                            Nearest: patch.Min(tile => Math.Max(
+                                Math.Abs(tile.X - commander.Position.X),
+                                Math.Abs(tile.Y - commander.Position.Y)))))
+                        .OrderBy(item => item.Nearest)
+                        .ToList();
+                    Assert.True(
+                        ordered[0].Nearest < 20,
+                        $"seed {seed} player {playerId} starter {type} Chebyshev {ordered[0].Nearest}");
+                    foreach (var extra in ordered.Skip(1))
+                    {
+                        Assert.True(
+                            extra.Nearest >= MvpDefinitions.MinStartResourceChebyshevDistance,
+                            $"seed {seed} player {playerId} extra {type} Chebyshev {extra.Nearest}");
+                    }
+                }
             }
         }
     }
@@ -224,6 +240,42 @@ public class MapGenerationTests
         for (var i = 0; i < ticks; i++)
         {
             simulation.AdvanceTick();
+        }
+    }
+
+    private static IEnumerable<List<(int X, int Y)>> CollectOrePatches(GameSimulation simulation, TerrainType type)
+    {
+        var tiles = EnumerateTerrain(simulation)
+            .Where(t => t.Type == type)
+            .Select(t => (t.X, t.Y))
+            .ToHashSet();
+        var seen = new HashSet<(int X, int Y)>();
+        var offsets = new[] { (1, 0), (-1, 0), (0, 1), (0, -1) };
+        foreach (var start in tiles)
+        {
+            if (!seen.Add(start))
+            {
+                continue;
+            }
+
+            var patch = new List<(int X, int Y)>();
+            var queue = new Queue<(int X, int Y)>();
+            queue.Enqueue(start);
+            while (queue.Count > 0)
+            {
+                var tile = queue.Dequeue();
+                patch.Add(tile);
+                foreach (var (dx, dy) in offsets)
+                {
+                    var next = (tile.X + dx, tile.Y + dy);
+                    if (tiles.Contains(next) && seen.Add(next))
+                    {
+                        queue.Enqueue(next);
+                    }
+                }
+            }
+
+            yield return patch;
         }
     }
 
