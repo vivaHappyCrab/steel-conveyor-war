@@ -30,6 +30,9 @@ internal sealed class SfmlPlaySession
             0f,
             Math.Max(0f, (simulation.World.Size.Height / 2f) * SfmlUiLayout.TileSize - playfieldHeight / 2f));
         var isMiddleDragging = false;
+        var isMinimapDragging = false;
+        var isBuildDragging = false;
+        TilePosition? lastBuildDragTile = null;
         var lastDragMouse = new Vector2i();
 
         using var window = new RenderWindow(
@@ -299,6 +302,11 @@ internal sealed class SfmlPlaySession
                     return;
                 }
 
+                if (button == "Left")
+                {
+                    isMinimapDragging = true;
+                }
+
                 ApplyCameraRequest(
                     inputMapper.HandleMinimapClick(
                         simulation,
@@ -378,6 +386,14 @@ internal sealed class SfmlPlaySession
                 return;
             }
 
+            if (button == "Left"
+                && session.IsBuildMenuOpen
+                && session.PendingBuildKind is not null)
+            {
+                isBuildDragging = true;
+                lastBuildDragTile = tile.Value;
+            }
+
             ApplyCameraRequest(
                 inputMapper.HandleWorldClick(
                     simulation,
@@ -418,6 +434,13 @@ internal sealed class SfmlPlaySession
                 isMiddleDragging = false;
             }
 
+            if (args.Button.ToString() == "Left")
+            {
+                isMinimapDragging = false;
+                isBuildDragging = false;
+                lastBuildDragTile = null;
+            }
+
             if (args.Button.ToString() == "Right")
             {
                 session.ClearDemolishHold();
@@ -455,6 +478,35 @@ internal sealed class SfmlPlaySession
             }
             else
             {
+                if (isMinimapDragging && Mouse.IsButtonPressed(Mouse.Button.Left) && IsOverMinimap(mousePosition))
+                {
+                    var minimapTile = TileFromMinimap(mousePosition);
+                    if (minimapTile is not null)
+                    {
+                        CenterCameraOnTile(minimapTile.Value);
+                    }
+                }
+                else if (isBuildDragging
+                         && Mouse.IsButtonPressed(Mouse.Button.Left)
+                         && session.IsBuildMenuOpen
+                         && session.PendingBuildKind is not null)
+                {
+                    var buildTile = TileFromScreen(mousePosition);
+                    if (buildTile is not null
+                        && IsInPlayfield(mousePosition)
+                        && !IsOverSidePanel(mousePosition)
+                        && (lastBuildDragTile is null || lastBuildDragTile.Value != buildTile.Value))
+                    {
+                        lastBuildDragTile = buildTile.Value;
+                        inputMapper.HandleWorldClick(
+                            simulation,
+                            "Left",
+                            buildTile.Value,
+                            CurrentModifiers(),
+                            confirmPatrolOnRightOrMinimap: false);
+                    }
+                }
+
                 var pan = SfmlUiLayout.CameraPanSpeed * frameDt;
                 var dx = 0f;
                 var dy = 0f;

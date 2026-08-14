@@ -23,6 +23,7 @@ public static class GameplayTablesLoader
         var itemRecipes = ParseItemRecipes(dto.ItemRecipes);
         var entityStats = ParseEntityStats(dto.EntityStats);
         var resistances = ParseResistances(dto.Resistances);
+        var researchBonuses = ParseResearchBonuses(dto.ResearchBonuses);
 
         if (entityStats.Count == 0)
         {
@@ -41,7 +42,8 @@ public static class GameplayTablesLoader
             productionRecipes,
             itemRecipes,
             entityStats,
-            resistances);
+            resistances,
+            researchBonuses);
     }
 
     private static Dictionary<EntityKind, int> ParseKindIntMap(Dictionary<string, int>? source, string section)
@@ -328,6 +330,26 @@ public static class GameplayTablesLoader
         return result;
     }
 
+    private static ResearchBonusTables ParseResearchBonuses(ResearchBonusesDto? source)
+    {
+        if (source is null)
+        {
+            return ResearchBonusTables.Default;
+        }
+
+        if (source.GroundUnitAttackBonusPercent < 0)
+        {
+            throw new InvalidOperationException("researchBonuses.groundUnitAttackBonusPercent must be >= 0.");
+        }
+
+        if (source.GroundUnitArmorBonus < 0)
+        {
+            throw new InvalidOperationException("researchBonuses.groundUnitArmorBonus must be >= 0.");
+        }
+
+        return new ResearchBonusTables(source.GroundUnitAttackBonusPercent, source.GroundUnitArmorBonus);
+    }
+
     private static IReadOnlyDictionary<ItemId, int> ParseCostLines(List<CostLineDto>? cost, string label)
     {
         if (cost is null || cost.Count == 0)
@@ -373,6 +395,13 @@ public static class GameplayTablesLoader
         public Dictionary<string, ItemRecipeDto>? ItemRecipes { get; set; }
         public Dictionary<string, EntityStatsDto>? EntityStats { get; set; }
         public List<ResistanceDto>? Resistances { get; set; }
+        public ResearchBonusesDto? ResearchBonuses { get; set; }
+    }
+
+    private sealed class ResearchBonusesDto
+    {
+        public int GroundUnitAttackBonusPercent { get; set; } = 10;
+        public int GroundUnitArmorBonus { get; set; } = 1;
     }
 
     private sealed class FootprintDto

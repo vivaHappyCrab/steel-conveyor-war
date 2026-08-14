@@ -79,6 +79,21 @@ public class MapGenerationTests
     }
 
     [Fact]
+    public void StartingIronAndCopper_HaveThreeAndTwoPatchesPerSide()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var half = simulation.World.Size.Width / 2;
+        var ironLeft = CountOrePatches(simulation, TerrainType.IronOre, x => x < half);
+        var copperLeft = CountOrePatches(simulation, TerrainType.CopperOre, x => x < half);
+        var ironRight = CountOrePatches(simulation, TerrainType.IronOre, x => x >= half);
+        var copperRight = CountOrePatches(simulation, TerrainType.CopperOre, x => x >= half);
+        Assert.Equal(3, ironLeft);
+        Assert.Equal(2, copperLeft);
+        Assert.Equal(3, ironRight);
+        Assert.Equal(2, copperRight);
+    }
+
+    [Fact]
     public void StartingResourcePatches_HaveAtLeastFourByFourBoundingBox()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
@@ -188,6 +203,42 @@ public class MapGenerationTests
         {
             simulation.AdvanceTick();
         }
+    }
+
+    private static int CountOrePatches(GameSimulation simulation, TerrainType type, Func<int, bool> xPredicate)
+    {
+        var tiles = EnumerateTerrain(simulation)
+            .Where(t => t.Type == type && xPredicate(t.X))
+            .Select(t => (t.X, t.Y))
+            .ToHashSet();
+        var seen = new HashSet<(int X, int Y)>();
+        var patches = 0;
+        var offsets = new[] { (1, 0), (-1, 0), (0, 1), (0, -1) };
+        foreach (var start in tiles)
+        {
+            if (!seen.Add(start))
+            {
+                continue;
+            }
+
+            patches++;
+            var queue = new Queue<(int X, int Y)>();
+            queue.Enqueue(start);
+            while (queue.Count > 0)
+            {
+                var tile = queue.Dequeue();
+                foreach (var (dx, dy) in offsets)
+                {
+                    var next = (tile.X + dx, tile.Y + dy);
+                    if (tiles.Contains(next) && seen.Add(next))
+                    {
+                        queue.Enqueue(next);
+                    }
+                }
+            }
+        }
+
+        return patches;
     }
 
     private static List<List<(int X, int Y)>> FloodMountainComponents(

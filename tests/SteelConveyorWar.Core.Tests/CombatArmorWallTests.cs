@@ -149,7 +149,7 @@ public sealed class CombatArmorWallTests
     }
 
     [Fact]
-    public void TryForceCompleteResearch_ConcreteWalls_SyncsExistingEntityMaxHealth()
+    public void TryForceCompleteResearch_MaxHealthModifier_SyncsExistingEntityMaxHealth()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerId = new PlayerId(1);
@@ -157,7 +157,10 @@ public sealed class CombatArmorWallTests
         var baseline = MvpDefinitions.GetStats(EntityKind.Commander).MaxHealth;
         Assert.Equal(baseline, commander.MaxHealth);
 
-        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.ConcreteWalls, confirmExclusive: true));
+        simulation.ApplyResearchModifierForTests(
+            playerId,
+            new AddModifierEffect(ResearchStatIds.MaxHealth, ModifierOperation.Multiply, 11_000));
+        simulation.AdvanceTick();
 
         var expected = simulation.ResolveStat(
             playerId,
@@ -175,7 +178,9 @@ public sealed class CombatArmorWallTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerId = new PlayerId(1);
-        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.ConcreteWalls, confirmExclusive: true));
+        simulation.ApplyResearchModifierForTests(
+            playerId,
+            new AddModifierEffect(ResearchStatIds.MaxHealth, ModifierOperation.Multiply, 11_000));
 
         var wallBaseline = MvpDefinitions.GetStats(EntityKind.Wall).MaxHealth;
         var expected = simulation.ResolveStat(

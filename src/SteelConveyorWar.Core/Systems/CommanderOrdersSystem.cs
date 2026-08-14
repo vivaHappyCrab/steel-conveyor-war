@@ -35,7 +35,8 @@ public sealed partial class GameSimulation
                     order.TargetPosition,
                     out _,
                     order.Direction,
-                    order.SelectedItemRecipe);
+                    order.SelectedItemRecipe,
+                    inserterLongReach: order.InserterLongReach);
                 continue;
             }
 

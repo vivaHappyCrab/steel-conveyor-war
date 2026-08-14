@@ -75,6 +75,8 @@ public sealed class CommandSerializerPropertyTests
                 actor, tick, tech, ConfirmExclusive: rng.Next(0, 2) == 0, PreferredTrackId: "cycle"),
             SimulationCommandKind.SetProjectWeight => new SetProjectWeightCommand(
                 actor, tick, ResearchTrackIds.Cycle, tech, rng.Next(0, 500)),
+            SimulationCommandKind.SetInserterReach => new SetInserterReachCommand(
+                actor, tick, entityId, rng.Next(0, 2) == 0),
             _ => throw new InvalidOperationException($"Unhandled advertised kind {kind}"),
         };
 

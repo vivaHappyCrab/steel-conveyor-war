@@ -22,7 +22,7 @@ namespace SteelConveyorWar.Core;
 /// </remarks>
 public static class SimulationStateHasher
 {
-    public const int AlgorithmVersion = 9;
+    public const int AlgorithmVersion = 10;
 
     public static string Compute(GameSimulation simulation)
     {
@@ -178,6 +178,7 @@ public static class SimulationStateHasher
         writer.Write(entity.ActiveSmeltRecipe.HasValue ? (int)entity.ActiveSmeltRecipe.Value : 0);
         writer.Write(entity.FilterItem.HasValue);
         writer.Write(entity.FilterItem.HasValue ? (int)entity.FilterItem.Value : 0);
+        writer.Write(entity.InserterLongReach);
         writer.Write(entity.AssignedBastionId.HasValue);
         writer.Write(entity.AssignedBastionId ?? 0);
         writer.Write(entity.IsGarrisoned);
@@ -226,6 +227,7 @@ public static class SimulationStateHasher
             writer.Write((int)buildOrder.Direction);
             writer.Write(buildOrder.SelectedItemRecipe.HasValue);
             writer.Write(buildOrder.SelectedItemRecipe.HasValue ? (int)buildOrder.SelectedItemRecipe.Value : 0);
+            writer.Write(buildOrder.InserterLongReach);
         }
 
         var demolishOrder = entity.QueuedDemolishOrder;

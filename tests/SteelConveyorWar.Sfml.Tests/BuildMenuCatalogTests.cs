@@ -139,11 +139,12 @@ public class BuildMenuCatalogTests
         var hub = simulation.World.Entities.First(e => e.Kind == EntityKind.Hub);
         var empty = BuildCostCatalog.Empty;
 
-        Assert.False(BuildBarModel.TryCopyFromWorldEntity(hub, empty, out _, out _, out _));
+        Assert.False(BuildBarModel.TryCopyFromWorldEntity(hub, empty, out _, out _, out _, out _));
         Assert.True(BuildBarModel.TryCopyFromWorldEntity(
             hub,
             simulation.BuildCostCatalog,
             out var kind,
+            out _,
             out _,
             out _));
         Assert.Equal(EntityKind.Hub, kind);
@@ -190,7 +191,8 @@ public class BuildMenuCatalogTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var unlocked = BastionCompositionPanelModel.UnlockedUnitKinds(simulation, new PlayerId(1));
         Assert.Contains(EntityKind.BasicTank, unlocked);
-        Assert.DoesNotContain(EntityKind.LightBot, unlocked);
+        Assert.Contains(EntityKind.LightBot, unlocked);
+        Assert.Contains(EntityKind.Scout, unlocked);
     }
 
     [Fact]

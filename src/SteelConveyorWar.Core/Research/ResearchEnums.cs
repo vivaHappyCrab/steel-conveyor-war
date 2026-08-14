@@ -56,6 +56,12 @@ public static class ResearchCapabilityIds
     public const string Tier2Content = "capability.tier2-content";
 }
 
+public static class ResearchSelectorIds
+{
+    /// <summary>Matches commander + ground army units (see <see cref="MvpDefinitions.IsGroundCombatUnit"/>).</summary>
+    public const string GroundUnit = "GroundUnit";
+}
+
 public static class ResearchMilestoneIds
 {
     public const string T3Qualified = "milestone.t3-qualified";

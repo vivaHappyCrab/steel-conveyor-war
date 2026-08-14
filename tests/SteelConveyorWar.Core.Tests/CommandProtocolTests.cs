@@ -46,6 +46,7 @@ public sealed class CommandProtocolTests
                 ConfirmExclusive: true, PreferredTrackId: "cycle") { Sequence = 30 },
             new SetProjectWeightCommand(actor, tick, ResearchTrackIds.Primary,
                 TechnologyId.ProductionI, Weight: 150) { Sequence = 31 },
+            new SetInserterReachCommand(actor, tick, 3, LongReach: true) { Sequence = 32 },
         };
 
         return commands.Select(command => new object[] { command });
@@ -166,7 +167,7 @@ public sealed class CommandProtocolTests
             new IssueMoveCommand(new PlayerId(1), 5, 3, new TilePosition(1, 1)));
 
         Assert.Contains($"\"protocolVersion\":{SimulationCommandSerializer.ProtocolVersion}", json);
-        Assert.Equal(2, SimulationCommandSerializer.ProtocolVersion);
+        Assert.Equal(3, SimulationCommandSerializer.ProtocolVersion);
     }
 
     [Fact]

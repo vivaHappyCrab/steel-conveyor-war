@@ -80,8 +80,7 @@
     {
       "kind": "Wall",
       "cost": { "IronPlate": 2 },
-      "buildTicks": 30,
-      "requiredTechnology": "technology.t1.concrete-walls"
+      "buildTicks": 30
     },
     {
       "kind": "SteelWall",
@@ -108,7 +107,7 @@
     },
     {
       "kind": "Bastion",
-      "cost": { "IronPlate": 60, "CopperPlate": 30, "Steel": 10 },
+      "cost": { "IronPlate": 60, "CopperPlate": 30 },
       "buildTicks": 30
     }
   ]

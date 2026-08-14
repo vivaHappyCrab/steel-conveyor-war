@@ -356,7 +356,8 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         out int ghostId,
         Direction direction = Direction.East,
         ItemRecipeId? selectedItemRecipe = null,
-        PlayerId? actor = null)
+        PlayerId? actor = null,
+        bool inserterLongReach = false)
     {
         ghostId = 0;
         var commander = World.GetEntity(commanderId);
@@ -402,6 +403,11 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             ghost.SelectedItemRecipe = selectedItemRecipe;
         }
 
+        if (targetKind == EntityKind.Inserter)
+        {
+            ghost.InserterLongReach = inserterLongReach;
+        }
+
         var buildTicks = BuildCostCatalog.BuildTicks.GetValueOrDefault(targetKind, TicksPerSecond);
         if (commander.OwnerId is not null)
         {
@@ -423,7 +429,8 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         TilePosition position,
         Direction direction = Direction.East,
         ItemRecipeId? selectedItemRecipe = null,
-        PlayerId? actor = null)
+        PlayerId? actor = null,
+        bool inserterLongReach = false)
     {
         var commander = World.GetEntity(commanderId);
         if (commander is null || commander.Kind != EntityKind.Commander || commander.OwnerId is null || !commander.IsAlive)
@@ -443,10 +450,12 @@ public sealed partial class GameSimulation : ISimulationSystemContext
 
         if (IsWithinBuildRadius(commander, targetKind, position))
         {
-            return TryPlaceGhostBuildFromCommander(commanderId, targetKind, position, out _, direction, selectedItemRecipe, actor);
+            return TryPlaceGhostBuildFromCommander(
+                commanderId, targetKind, position, out _, direction, selectedItemRecipe, actor, inserterLongReach);
         }
 
-        commander.QueuedBuildOrder = new CommanderBuildOrder(targetKind, position, direction, selectedItemRecipe);
+        commander.QueuedBuildOrder = new CommanderBuildOrder(
+            targetKind, position, direction, selectedItemRecipe, inserterLongReach);
         commander.QueuedDemolishOrder = null;
         commander.IsGarrisoned = false;
         commander.MoveTarget = null;
@@ -470,6 +479,21 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         }
 
         entity.Direction = Rotate(entity.Direction, clockwise);
+        return true;
+    }
+
+    public bool TrySetInserterReach(int entityId, PlayerId actorPlayerId, bool longReach)
+    {
+        var entity = World.GetEntity(entityId);
+        if (entity is null
+            || entity.OwnerId != actorPlayerId
+            || !entity.IsAlive
+            || !MvpDefinitions.IsInserterOrGhost(entity))
+        {
+            return false;
+        }
+
+        entity.InserterLongReach = longReach;
         return true;
     }
 
@@ -1849,14 +1873,28 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         var halfWidth = size.Width / 2;
 
         // Left-half start ores near Blue; right half is mirrored for PvP fairness.
-        // Keep Fe/Cu within CommanderBuildRadius of the start (commander ~ (4, midY)).
-        // Prefer vertical separation; baseX near commander so Manhattan distance stays ≤ radius after jitter.
+        // 3 iron + 2 copper per side. Extra patches stay about as far from map center as the
+        // original near-base patches (west edge), with Chebyshev separation so they do not merge.
         var midY = size.Height / 2;
+        var oreCenters = new List<TilePosition>(5);
         var ironCenter = JitterTile(rng, baseX: 4, baseY: midY - 10, maxOffset: 1, minX: 3, maxX: 7, minY: midY - 12, maxY: midY - 8);
         var copperCenter = JitterTile(rng, baseX: 4, baseY: midY + 10, maxOffset: 1, minX: 3, maxX: 7, minY: midY + 8, maxY: midY + 12);
         // Chebyshev radius ≥ 2 → bounding box at least 5×5 (≥ 4×4 requirement).
         FillOrePatchLeftHalf(terrain, ironCenter, TerrainType.IronOre, maxDistance: 2 + rng.Next(0, 2), halfWidth);
         FillOrePatchLeftHalf(terrain, copperCenter, TerrainType.CopperOre, maxDistance: 2 + rng.Next(0, 2), halfWidth);
+        oreCenters.Add(ironCenter);
+        oreCenters.Add(copperCenter);
+
+        // Extra Fe/Cu at similar distance from map center as the start patches, not adjacent to them.
+        PlaceExtraStartOre(
+            terrain, rng, oreCenters, TerrainType.IronOre, halfWidth,
+            baseX: 5, baseY: midY - 24, minX: 3, maxX: 10, minY: midY - 30, maxY: midY - 18);
+        PlaceExtraStartOre(
+            terrain, rng, oreCenters, TerrainType.IronOre, halfWidth,
+            baseX: 16, baseY: midY - 8, minX: 12, maxX: 20, minY: midY - 14, maxY: midY - 2);
+        PlaceExtraStartOre(
+            terrain, rng, oreCenters, TerrainType.CopperOre, halfWidth,
+            baseX: 16, baseY: midY + 8, minX: 12, maxX: 20, minY: midY + 2, maxY: midY + 14);
 
         // Coal/oil farther from the start, near the center of the left half, then mirrored.
         var coalCenter = JitterTile(
@@ -1898,6 +1936,48 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         var x = Math.Clamp(baseX + rng.Next(-maxOffset, maxOffset + 1), minX, maxX);
         var y = Math.Clamp(baseY + rng.Next(-maxOffset, maxOffset + 1), minY, maxY);
         return new TilePosition(x, y);
+    }
+
+    private const int ExtraStartOreMinSeparation = 8;
+
+    private static void PlaceExtraStartOre(
+        TerrainType[,] terrain,
+        Random rng,
+        List<TilePosition> oreCenters,
+        TerrainType type,
+        int halfWidth,
+        int baseX,
+        int baseY,
+        int minX,
+        int maxX,
+        int minY,
+        int maxY)
+    {
+        TilePosition? chosen = null;
+        for (var attempt = 0; attempt < 16; attempt++)
+        {
+            var candidate = JitterTile(rng, baseX, baseY, maxOffset: 2, minX, maxX, minY, maxY);
+            var tooClose = false;
+            for (var i = 0; i < oreCenters.Count; i++)
+            {
+                var existing = oreCenters[i];
+                if (Math.Max(Math.Abs(candidate.X - existing.X), Math.Abs(candidate.Y - existing.Y)) < ExtraStartOreMinSeparation)
+                {
+                    tooClose = true;
+                    break;
+                }
+            }
+
+            if (!tooClose)
+            {
+                chosen = candidate;
+                break;
+            }
+        }
+
+        var center = chosen ?? JitterTile(rng, baseX, baseY, maxOffset: 1, minX, maxX, minY, maxY);
+        FillOrePatchLeftHalf(terrain, center, type, maxDistance: 2 + rng.Next(0, 2), halfWidth);
+        oreCenters.Add(center);
     }
 
     private static void FillOrePatchLeftHalf(TerrainType[,] terrain, TilePosition center, TerrainType type, int maxDistance, int halfWidth)

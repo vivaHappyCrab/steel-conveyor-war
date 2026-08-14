@@ -32,14 +32,13 @@ public static class MvpBuildCostCatalog
             [EntityKind.MachineGunTurret] = Cost((ItemId.IronPlate, 20), (ItemId.CopperPlate, 10)),
             [EntityKind.CannonTurret] = Cost((ItemId.Steel, 15), (ItemId.CopperPlate, 10)),
             [EntityKind.AntiAirTurret] = Cost((ItemId.Steel, 12), (ItemId.CopperPlate, 15)),
-            [EntityKind.Bastion] = Cost((ItemId.IronPlate, 60), (ItemId.CopperPlate, 30), (ItemId.Steel, 10))
+            [EntityKind.Bastion] = Cost((ItemId.IronPlate, 60), (ItemId.CopperPlate, 30))
         };
 
         var ticks = costs.Keys.ToDictionary(kind => kind, _ => 30);
         var requirements = new Dictionary<EntityKind, TechnologyId>
         {
             [EntityKind.MachineGunTurret] = TechnologyId.MachineGunTurret,
-            [EntityKind.Wall] = TechnologyId.ConcreteWalls,
             [EntityKind.UndergroundConveyor] = TechnologyId.UndergroundConveyors,
             [EntityKind.SteelWall] = TechnologyId.SteelWalls,
             [EntityKind.AntiAirTurret] = TechnologyId.AntiAirTurret

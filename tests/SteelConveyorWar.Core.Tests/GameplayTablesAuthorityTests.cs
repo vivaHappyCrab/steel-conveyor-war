@@ -17,7 +17,7 @@ public sealed class GameplayTablesAuthorityTests
             entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
         Assert.Equal(999, commander.MaxHealth);
         Assert.Equal(999, commander.Health);
-        Assert.Equal(300, MvpDefinitions.GetStats(EntityKind.Commander).MaxHealth);
+        Assert.Equal(600, MvpDefinitions.GetStats(EntityKind.Commander).MaxHealth);
     }
 
     [Fact]

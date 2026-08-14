@@ -40,4 +40,7 @@ public enum SimulationCommandKind
 
     // M02: parallel-track project weight (not the same as SetTrackAllocation basis points).
     SetProjectWeight = 21,
+
+    /// <summary>Toggle or set inserter long-reach (pickup/drop two tiles away).</summary>
+    SetInserterReach = 22,
 }

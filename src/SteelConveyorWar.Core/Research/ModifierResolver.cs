@@ -47,7 +47,19 @@ public static class ModifierResolver
 
     private static bool MatchesSelector(string? modifierSelector, string? requestedSelector)
     {
-        return modifierSelector is null || requestedSelector is null || modifierSelector == requestedSelector;
+        if (modifierSelector is null || requestedSelector is null || modifierSelector == requestedSelector)
+        {
+            return true;
+        }
+
+        if (modifierSelector == ResearchSelectorIds.GroundUnit
+            && Enum.TryParse<EntityKind>(requestedSelector, out var kind)
+            && MvpDefinitions.IsGroundCombatUnit(kind))
+        {
+            return true;
+        }
+
+        return false;
     }
 }
 

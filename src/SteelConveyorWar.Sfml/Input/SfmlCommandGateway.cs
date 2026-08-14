@@ -40,14 +40,19 @@ internal sealed class SfmlCommandGateway
         EntityKind targetKind,
         TilePosition position,
         Direction direction,
-        ItemRecipeId? selectedItemRecipe)
-        => Enqueue(new QueueCommanderBuildCommand(actor, 0, commanderId, targetKind, position, direction, selectedItemRecipe));
+        ItemRecipeId? selectedItemRecipe,
+        bool inserterLongReach = false)
+        => Enqueue(new QueueCommanderBuildCommand(
+            actor, 0, commanderId, targetKind, position, direction, selectedItemRecipe, inserterLongReach));
 
     internal bool QueueCommanderDemolish(int commanderId, PlayerId actor, int targetEntityId)
         => Enqueue(new QueueCommanderDemolishCommand(actor, 0, commanderId, targetEntityId));
 
     internal bool RotateEntity(int entityId, PlayerId actor, bool clockwise)
         => Enqueue(new RotateEntityCommand(actor, 0, entityId, clockwise));
+
+    internal bool SetInserterReach(int entityId, PlayerId actor, bool longReach)
+        => Enqueue(new SetInserterReachCommand(actor, 0, entityId, longReach));
 
     internal bool SetAssemblerRecipe(int assemblerId, PlayerId actor, ItemRecipeId recipeId)
         => Enqueue(new SetAssemblerRecipeCommand(actor, 0, assemblerId, recipeId));

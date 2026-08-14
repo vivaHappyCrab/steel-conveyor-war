@@ -207,6 +207,10 @@ public static class SimulationContentManifest
                 .Append(entry.BasisPoints).Append('\n');
         }
 
+        canonical.Append("researchBonuses:")
+            .Append(catalog.ResearchBonuses.GroundUnitAttackBonusPercent).Append('|')
+            .Append(catalog.ResearchBonuses.GroundUnitArmorBonus).Append('\n');
+
         return Sha256Hex(canonical.ToString());
     }
 

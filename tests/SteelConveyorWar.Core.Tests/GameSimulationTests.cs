@@ -218,9 +218,9 @@ public class GameSimulationTests
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerId = new PlayerId(1);
         Assert.True(simulation.IsUnitProductionUnlocked(playerId, EntityKind.BasicTank));
-        Assert.False(simulation.IsUnitProductionUnlocked(playerId, EntityKind.LightBot));
-        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.LightBot, confirmExclusive: true));
         Assert.True(simulation.IsUnitProductionUnlocked(playerId, EntityKind.LightBot));
+        Assert.True(simulation.IsUnitProductionUnlocked(playerId, EntityKind.Scout));
+        Assert.False(simulation.IsUnitProductionUnlocked(playerId, EntityKind.MediumBot));
     }
 
     [Fact]
@@ -329,32 +329,28 @@ public class GameSimulationTests
     }
 
     [Fact]
-    public void BastionCount_CapStartsAtOne_RaisesAfterAdditionalBastions()
+    public void BastionCount_CapStartsAtThree_RaisesOnTier2()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerId = new PlayerId(1);
-        Assert.Equal(1, simulation.GetMaxBastionCount(playerId));
+        Assert.Equal(MvpDefinitions.BaseMaxBastions, simulation.GetMaxBastionCount(playerId));
+        Assert.Equal(3, simulation.GetMaxBastionCount(playerId));
         Assert.Equal(1, simulation.CountOwnedBastions(playerId));
 
         var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
-        Assert.False(simulation.TryPlaceGhostBuildFromCommander(
-            commander.Id,
-            EntityKind.Bastion,
-            NearBlue(simulation, 8, -4),
-            out _));
-
-        UnlockTier2ForTests(simulation, playerId);
-        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.AdditionalBastions));
-        Assert.Equal(MvpDefinitions.MaxBastionsAfterUnlock, simulation.GetMaxBastionCount(playerId));
-        Assert.Equal(MvpDefinitions.BaseBastionTemplateCapacity + 2, simulation.GetBastionTemplateCapacity(playerId));
-
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Bastion,
             NearBlue(simulation, 8, -4),
-            out var ghostId));
+            out _));
         Assert.Equal(2, simulation.CountOwnedBastions(playerId));
-        Assert.NotEqual(0, ghostId);
+
+        UnlockTier2ForTests(simulation, playerId);
+        Assert.Equal(MvpDefinitions.MaxBastionsAfterUnlock, simulation.GetMaxBastionCount(playerId));
+        Assert.Equal(MvpDefinitions.BaseBastionTemplateCapacity, simulation.GetBastionTemplateCapacity(playerId));
+
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.AdditionalBastions));
+        Assert.Equal(MvpDefinitions.BaseBastionTemplateCapacity + 2, simulation.GetBastionTemplateCapacity(playerId));
     }
 
     [Fact]
@@ -567,7 +563,7 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
-        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, new PlayerId(1), EntityKind.LightBot, 1));
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, new PlayerId(1), EntityKind.MediumBot, 1));
         Assert.True(simulation.TrySetBastionTemplate(bastion.Id, new PlayerId(1), EntityKind.BasicTank, 1));
         Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
         simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 40);
@@ -576,7 +572,7 @@ public class GameSimulationTests
         AdvanceTicks(simulation, MvpDefinitions.ProductionRecipes[EntityKind.BasicTank].WorkTicks + 10);
         Assert.Contains(simulation.World.Entities, entity =>
             entity.IsAlive && entity.Kind == EntityKind.BasicTank && entity.AssignedBastionId == bastion.Id);
-        Assert.DoesNotContain(simulation.World.Entities, entity => entity.Kind == EntityKind.LightBot);
+        Assert.DoesNotContain(simulation.World.Entities, entity => entity.Kind == EntityKind.MediumBot);
     }
 
     [Fact]

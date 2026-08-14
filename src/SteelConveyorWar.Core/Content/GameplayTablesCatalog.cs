@@ -15,7 +15,8 @@ public sealed partial record GameplayTablesCatalog(
     IReadOnlyDictionary<EntityKind, ProductionRecipe> ProductionRecipes,
     IReadOnlyDictionary<ItemRecipeId, ItemRecipeDefinition> ItemRecipes,
     IReadOnlyDictionary<EntityKind, EntityStats> EntityStats,
-    IReadOnlyList<ResistanceEntry> Resistances)
+    IReadOnlyList<ResistanceEntry> Resistances,
+    ResearchBonusTables ResearchBonuses)
 {
     // H07: freeze table graphs (including after H01 match-scoped wiring). Nested recipe Inputs are
     // frozen by ProductionRecipe / ItemRecipeDefinition property init.
@@ -90,7 +91,8 @@ public sealed partial record GameplayTablesCatalog(
         ProductionRecipes: new Dictionary<EntityKind, ProductionRecipe>(),
         ItemRecipes: new Dictionary<ItemRecipeId, ItemRecipeDefinition>(),
         EntityStats: new Dictionary<EntityKind, EntityStats>(),
-        Resistances: Array.Empty<ResistanceEntry>());
+        Resistances: Array.Empty<ResistanceEntry>(),
+        ResearchBonuses: ResearchBonusTables.Default);
 
     public EntityStats GetStats(EntityKind kind) =>
         EntityStats.TryGetValue(kind, out var stats)
@@ -134,3 +136,21 @@ public readonly record struct ResistanceEntry(
     ProjectileKind Projectile,
     CombatTargetCategory Category,
     int BasisPoints);
+
+/// <summary>
+/// Tuneable T1 optional combat/bastion bonus magnitudes. Attack percent is applied as a multiply
+/// of (10000 + percent×100) basis points so +10% floors per unit default.
+/// </summary>
+public readonly record struct ResearchBonusTables(
+    int GroundUnitAttackBonusPercent,
+    int GroundUnitArmorBonus)
+{
+    public static ResearchBonusTables Default { get; } = new(10, 1);
+
+    public int GroundUnitAttackMultiplyBasisPoints =>
+        ModifierResolver.BasisPointsScale
+        + ModifierResolver.BasisPointsScale * GroundUnitAttackBonusPercent / 100;
+
+    public int GroundUnitArmorAddBasisPoints =>
+        GroundUnitArmorBonus * ModifierResolver.BasisPointsScale;
+}

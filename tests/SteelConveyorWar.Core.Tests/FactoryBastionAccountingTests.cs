@@ -58,8 +58,8 @@ public sealed class FactoryBastionAccountingTests
         Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
-        Assert.False(simulation.IsUnitProductionUnlocked(playerId, EntityKind.LightBot));
-        Assert.False(simulation.TrySetFactoryProduction(factoryId, playerId, EntityKind.LightBot));
+        Assert.False(simulation.IsUnitProductionUnlocked(playerId, EntityKind.MediumBot));
+        Assert.False(simulation.TrySetFactoryProduction(factoryId, playerId, EntityKind.MediumBot));
         Assert.Null(simulation.World.GetEntity(factoryId)!.ProductionTargetKind);
     }
 
@@ -72,21 +72,25 @@ public sealed class FactoryBastionAccountingTests
         Assert.True(simulation.TryPlaceGhostBuild(playerId, EntityKind.TankFactory, NearBlue(simulation, 2, 6), out var factoryId));
         AdvanceTicks(simulation, 30);
 
-        // Template demand is allowed while locked; production set is gated (H04-C).
-        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, playerId, EntityKind.LightBot, 1));
-        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
-        simulation.AddItemToEntity(factoryId, ItemId.IronPlate, 20);
+        foreach (var technology in new[] { TechnologyId.ProductionI, TechnologyId.EnergyI, TechnologyId.CommandI })
+        {
+            Assert.True(simulation.TryForceCompleteResearch(playerId, technology));
+            simulation.AdvanceTick();
+        }
 
-        // Inject sticky manual target the way a pre-gate client could leave it (H04 freeze repro).
+        Assert.True(simulation.TrySetBastionTemplate(bastion.Id, playerId, EntityKind.MediumBot, 1));
+        Assert.True(simulation.TrySetEnergyBufferForTests(factoryId, int.MaxValue));
+        simulation.AddItemToEntity(factoryId, ItemId.Steel, 20);
+
         var factory = simulation.World.GetEntity(factoryId)!;
-        factory.ProductionTargetKind = EntityKind.LightBot;
+        factory.ProductionTargetKind = EntityKind.MediumBot;
         factory.IsManualProductionTarget = true;
         AdvanceTicks(simulation, 5);
         Assert.Equal(0, factory.WorkTicksRemaining);
-        Assert.False(simulation.IsUnitProductionUnlocked(playerId, EntityKind.LightBot));
+        Assert.False(simulation.IsUnitProductionUnlocked(playerId, EntityKind.MediumBot));
 
-        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.LightBot, confirmExclusive: true));
-        Assert.True(simulation.IsUnitProductionUnlocked(playerId, EntityKind.LightBot));
+        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.MediumBot, confirmExclusive: true));
+        Assert.True(simulation.IsUnitProductionUnlocked(playerId, EntityKind.MediumBot));
         simulation.AdvanceTick();
         Assert.True(factory.WorkTicksRemaining > 0);
     }
