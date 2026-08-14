@@ -407,7 +407,15 @@ public sealed partial record GameplayTablesCatalog
       "AntiAirBot": 1,
       "RocketLauncher": 3
     },
-    "groundUnitArmorBonus": 1
+    "groundUnitArmorBonus": {
+      "Commander": 1,
+      "LightBot": 1,
+      "BasicTank": 1,
+      "MediumBot": 1,
+      "MediumTank": 1,
+      "AntiAirBot": 1,
+      "RocketLauncher": 1
+    }
   }
 }
 """";

@@ -59,12 +59,20 @@ public static class MvpResearchCatalog
             "optional", "qualification", "infrastructure", "tactical");
 
         var bonuses = GameplayTablesCatalog.Embedded.ResearchBonuses;
-        var groundArmorBp = bonuses.GroundUnitArmorAddBasisPoints;
         var groundAttackEffects = bonuses.GroundUnitAttackBonus
             .Where(pair => pair.Value > 0)
             .OrderBy(pair => pair.Key.ToString(), StringComparer.Ordinal)
             .Select(pair => (ResearchEffect)new AddModifierEffect(
                 ResearchStatIds.AttackDamage,
+                ModifierOperation.Add,
+                pair.Value * ModifierResolver.BasisPointsScale,
+                pair.Key.ToString()))
+            .ToArray();
+        var groundArmorEffects = bonuses.GroundUnitArmorBonus
+            .Where(pair => pair.Value > 0)
+            .OrderBy(pair => pair.Key.ToString(), StringComparer.Ordinal)
+            .Select(pair => (ResearchEffect)new AddModifierEffect(
+                ResearchStatIds.Armor,
                 ModifierOperation.Add,
                 pair.Value * ModifierResolver.BasisPointsScale,
                 pair.Key.ToString()))
@@ -75,7 +83,7 @@ public static class MvpResearchCatalog
             groundAttackEffects,
             "optional", "tactical");
         Tech(TechnologyId.Scout, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.Armor, ModifierOperation.Add, groundArmorBp, ResearchSelectorIds.GroundUnit)],
+            groundArmorEffects,
             "optional", "tactical");
         Tech(TechnologyId.MachineGunTurret, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
             [

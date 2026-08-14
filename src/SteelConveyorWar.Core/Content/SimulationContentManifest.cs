@@ -214,7 +214,14 @@ public static class SimulationContentManifest
             canonical.Append(kind).Append('=').Append(amount).Append(';');
         }
 
-        canonical.Append('|').Append(catalog.ResearchBonuses.GroundUnitArmorBonus).Append('\n');
+        canonical.Append('|');
+        foreach (var (kind, amount) in catalog.ResearchBonuses.GroundUnitArmorBonus
+                     .OrderBy(pair => pair.Key.ToString(), StringComparer.Ordinal))
+        {
+            canonical.Append(kind).Append('=').Append(amount).Append(';');
+        }
+
+        canonical.Append('\n');
 
         return Sha256Hex(canonical.ToString());
     }

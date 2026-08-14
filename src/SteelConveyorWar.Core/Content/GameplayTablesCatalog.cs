@@ -138,12 +138,13 @@ public readonly record struct ResistanceEntry(
     int BasisPoints);
 
 /// <summary>
-/// Tuneable T1 optional combat/bastion bonus magnitudes. Attack is an absolute add per
-/// ground combat unit (starter values are 10% of that unit's default attack, rounded half-up).
+/// Tuneable T1 optional combat/bastion bonus magnitudes. Attack and armor are absolute adds
+/// per ground combat unit. Starter attack is 10% of that unit's default (rounded half-up);
+/// starter armor is +1.
 /// </summary>
 public readonly record struct ResearchBonusTables(
     IReadOnlyDictionary<EntityKind, int> GroundUnitAttackBonus,
-    int GroundUnitArmorBonus)
+    IReadOnlyDictionary<EntityKind, int> GroundUnitArmorBonus)
 {
     public IReadOnlyDictionary<EntityKind, int> GroundUnitAttackBonus
     {
@@ -151,17 +152,25 @@ public readonly record struct ResearchBonusTables(
         init => field = ContentFreeze.Dictionary(value);
     } = ContentFreeze.Dictionary(GroundUnitAttackBonus);
 
+    public IReadOnlyDictionary<EntityKind, int> GroundUnitArmorBonus
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value);
+    } = ContentFreeze.Dictionary(GroundUnitArmorBonus);
+
     public static ResearchBonusTables Default { get; } = new(
         new Dictionary<EntityKind, int>(),
-        1);
-
-    public int GroundUnitArmorAddBasisPoints =>
-        GroundUnitArmorBonus * ModifierResolver.BasisPointsScale;
+        new Dictionary<EntityKind, int>());
 
     public int AttackAddBasisPoints(EntityKind kind) =>
         GroundUnitAttackBonus.GetValueOrDefault(kind) * ModifierResolver.BasisPointsScale;
 
-    /// <summary>Starter absolute bonus: 10% of base attack, rounded half away from zero.</summary>
+    public int ArmorAddBasisPoints(EntityKind kind) =>
+        GroundUnitArmorBonus.GetValueOrDefault(kind) * ModifierResolver.BasisPointsScale;
+
+    /// <summary>Starter absolute attack bonus: 10% of base attack, rounded half away from zero.</summary>
     public static int TenPercentOfAttack(int attackDamage) =>
         attackDamage <= 0 ? 0 : (attackDamage + 5) / 10;
+
+    public const int DefaultArmorBonus = 1;
 }

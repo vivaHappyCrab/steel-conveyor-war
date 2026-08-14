@@ -65,10 +65,23 @@ public sealed class ResearchEffectsTests
         ForceComplete(simulation, player, TechnologyId.Scout);
 
         var after = simulation.ResolveStat(player, ResearchStatIds.Armor, baseline, EntityKind.LightBot.ToString(), minValue: 0);
-        Assert.Equal(before + GameplayTablesCatalog.Embedded.ResearchBonuses.GroundUnitArmorBonus, after);
         Assert.Equal(
-            GameplayTablesCatalog.Embedded.ResearchBonuses.GroundUnitArmorAddBasisPoints,
-            simulation.ResearchCatalog.Technologies[TechnologyId.Scout].Effects.OfType<AddModifierEffect>().Single().ValueBasisPoints);
+            before + GameplayTablesCatalog.Embedded.ResearchBonuses.GroundUnitArmorBonus[EntityKind.LightBot],
+            after);
+
+        var lightBotArmor = simulation.ResearchCatalog.Technologies[TechnologyId.Scout].Effects
+            .OfType<AddModifierEffect>()
+            .Single(effect => effect.Selector == EntityKind.LightBot.ToString());
+        Assert.Equal(ModifierOperation.Add, lightBotArmor.Operation);
+        Assert.Equal(
+            GameplayTablesCatalog.Embedded.ResearchBonuses.ArmorAddBasisPoints(EntityKind.LightBot),
+            lightBotArmor.ValueBasisPoints);
+
+        var commanderArmor = MvpDefinitions.GetStats(EntityKind.Commander).Armor;
+        Assert.Equal(
+            commanderArmor + 1,
+            simulation.ResolveStat(
+                player, ResearchStatIds.Armor, commanderArmor, EntityKind.Commander.ToString(), minValue: 0));
 
         var scoutArmor = MvpDefinitions.GetStats(EntityKind.Scout).Armor;
         Assert.Equal(

@@ -487,7 +487,49 @@
           "statId": "stat.combat.armor",
           "operation": "Add",
           "valueBasisPoints": 10000,
-          "selector": "GroundUnit"
+          "selector": "AntiAirBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "BasicTank"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "Commander"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "LightBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "MediumBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "MediumTank"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "RocketLauncher"
         }
       ],
       "tags": [
