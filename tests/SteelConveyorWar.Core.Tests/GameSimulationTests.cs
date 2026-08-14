@@ -152,36 +152,28 @@ public class GameSimulationTests
     }
 
     [Fact]
-    public void TrySetBastionTemplate_RejectsPlayerWideSumOverCapacityAcrossBastions()
+    public void TrySetBastionTemplate_AllowsFullCapacityOnEachBastion()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var playerId = new PlayerId(1);
         var commander = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Commander);
         var bastionA = simulation.World.Entities.Single(entity => entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion);
-
-        UnlockTier2ForTests(simulation, playerId);
-        Assert.True(simulation.TryForceCompleteResearch(playerId, TechnologyId.AdditionalBastions));
         var capacity = simulation.GetBastionTemplateCapacity(playerId);
-        Assert.True(capacity >= MvpDefinitions.BaseBastionTemplateCapacity);
 
         Assert.True(simulation.TryPlaceGhostBuildFromCommander(
             commander.Id,
             EntityKind.Bastion,
             NearBlue(simulation, 8, -4),
-            out var ghostId));
+            out _));
         AdvanceTicks(simulation, 60);
         var bastionB = simulation.World.Entities.Single(entity =>
             entity.IsAlive && entity.OwnerId == playerId && entity.Kind == EntityKind.Bastion && entity.Id != bastionA.Id);
-        Assert.NotEqual(0, ghostId);
 
-        Assert.True(simulation.TrySetBastionTemplate(bastionA.Id, new PlayerId(1), EntityKind.BasicTank, capacity));
-        Assert.False(simulation.TrySetBastionTemplate(bastionB.Id, new PlayerId(1), EntityKind.BasicTank, 1));
+        Assert.True(simulation.TrySetBastionTemplate(bastionA.Id, playerId, EntityKind.BasicTank, capacity));
+        Assert.True(simulation.TrySetBastionTemplate(bastionB.Id, playerId, EntityKind.BasicTank, capacity));
         Assert.Equal(capacity, bastionA.BastionTemplate[EntityKind.BasicTank]);
-        Assert.False(bastionB.BastionTemplate.ContainsKey(EntityKind.BasicTank));
-
-        Assert.True(simulation.TrySetBastionTemplate(bastionA.Id, new PlayerId(1), EntityKind.BasicTank, capacity - 1));
-        Assert.True(simulation.TrySetBastionTemplate(bastionB.Id, new PlayerId(1), EntityKind.LightBot, 1));
-        Assert.False(simulation.TrySetBastionTemplate(bastionB.Id, new PlayerId(1), EntityKind.BasicTank, 1));
+        Assert.Equal(capacity, bastionB.BastionTemplate[EntityKind.BasicTank]);
+        Assert.False(simulation.TrySetBastionTemplate(bastionB.Id, playerId, EntityKind.LightBot, 1));
     }
 
     [Fact]

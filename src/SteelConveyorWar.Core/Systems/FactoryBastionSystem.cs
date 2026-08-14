@@ -84,7 +84,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            // Manual and autofill both wait when template demand or army capacity is full.
+            // Manual and autofill both wait when that kind's template demand is already filled.
             if (factory.OwnerId is null || !CanStartUnitProduction(factory.OwnerId.Value, recipe.OutputKind))
             {
                 RememberIdleFactorySkip(factory);
@@ -225,7 +225,7 @@ public sealed partial class GameSimulation
 
     /// <summary>
     /// True when player-wide living+in-flight supply of <paramref name="unitKind"/> is below
-    /// summed bastion templates for that kind, and total army supply is below template capacity.
+    /// summed bastion templates for that kind. Each bastion has its own template capacity.
     /// </summary>
     private bool CanStartUnitProduction(PlayerId ownerId, EntityKind unitKind)
     {
@@ -244,12 +244,7 @@ public sealed partial class GameSimulation
             return false;
         }
 
-        if (CountPlayerUnitKindSupply(ownerId, unitKind) >= kindDemand)
-        {
-            return false;
-        }
-
-        return CountPlayerArmySupply(ownerId) < GetBastionTemplateCapacity(ownerId);
+        return CountPlayerUnitKindSupply(ownerId, unitKind) < kindDemand;
     }
 
     private int CountPlayerUnitKindSupply(PlayerId ownerId, EntityKind unitKind)
@@ -265,35 +260,6 @@ public sealed partial class GameSimulation
         }
 
         return living + CountInFlightOfKind(ownerId, unitKind);
-    }
-
-    private int CountPlayerArmySupply(PlayerId ownerId)
-    {
-        var living = 0;
-        for (var i = 0; i < _scratchUnits.Count; i++)
-        {
-            var entity = _scratchUnits[i];
-            if (entity.IsAlive && entity.OwnerId == ownerId)
-            {
-                living++;
-            }
-        }
-
-        var inFlight = 0;
-        for (var i = 0; i < _scratchFactories.Count; i++)
-        {
-            var entity = _scratchFactories[i];
-            if (entity.IsAlive
-                && entity.OwnerId == ownerId
-                && entity.ProductionTargetKind is not null
-                && entity.WorkTicksRemaining > 0
-                && MvpDefinitions.UnitKinds.Contains(entity.ProductionTargetKind.Value))
-            {
-                inFlight++;
-            }
-        }
-
-        return living + inFlight;
     }
 
     private int CountInFlightOfKind(PlayerId ownerId, EntityKind unitKind)

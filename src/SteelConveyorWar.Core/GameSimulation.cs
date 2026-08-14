@@ -1079,15 +1079,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         var currentSum = bastion.BastionTemplate.Values.Sum();
         var previous = bastion.BastionTemplate.GetValueOrDefault(unitKind);
         var proposedSum = currentSum - previous + count;
-        // Player-wide template budget (not per-bastion): other owned bastions count against the same cap.
-        var otherBastionSum = World.Entities
-            .Where(entity =>
-                entity.IsAlive
-                && entity.OwnerId == bastion.OwnerId
-                && entity.Kind == EntityKind.Bastion
-                && entity.Id != bastionId)
-            .Sum(entity => entity.BastionTemplate.Values.Sum());
-        if (otherBastionSum + proposedSum > GetBastionTemplateCapacity(bastion.OwnerId.Value))
+        if (proposedSum > GetBastionTemplateCapacity(bastion.OwnerId.Value))
         {
             return false;
         }
