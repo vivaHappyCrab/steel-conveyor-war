@@ -18,14 +18,14 @@ public sealed class ResearchEffectsTests
     }
 
     [Fact]
-    public void LightBot_AppliesGroundUnitAttackBonus()
+    public void GroundUnitAttack_AppliesAttackBonus()
     {
         var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(42, ResearchProfileIds.MvpB, MvpResearchCatalog.CreateEmbedded()));
         var player = new PlayerId(1);
         var baseline = MvpDefinitions.GetStats(EntityKind.Commander).AttackDamage;
         var before = simulation.ResolveStat(player, ResearchStatIds.AttackDamage, baseline, EntityKind.Commander.ToString(), minValue: 0);
 
-        ForceComplete(simulation, player, TechnologyId.LightBot);
+        ForceComplete(simulation, player, TechnologyId.GroundUnitAttack);
 
         var after = simulation.ResolveStat(player, ResearchStatIds.AttackDamage, baseline, EntityKind.Commander.ToString(), minValue: 0);
         Assert.Equal(before + 1, after);
@@ -35,7 +35,7 @@ public sealed class ResearchEffectsTests
             player, ResearchStatIds.AttackDamage, lightBotBaseline, EntityKind.LightBot.ToString(), minValue: 0);
         Assert.Equal(lightBotBaseline + 1, lightBotAfter);
 
-        var commanderBonus = simulation.ResearchCatalog.Technologies[TechnologyId.LightBot].Effects
+        var commanderBonus = simulation.ResearchCatalog.Technologies[TechnologyId.GroundUnitAttack].Effects
             .OfType<AddModifierEffect>()
             .Single(effect => effect.Selector == EntityKind.Commander.ToString());
         Assert.Equal(ModifierOperation.Add, commanderBonus.Operation);
@@ -55,21 +55,21 @@ public sealed class ResearchEffectsTests
     }
 
     [Fact]
-    public void ScoutResearch_AppliesGroundUnitArmorBonus()
+    public void GroundUnitArmor_AppliesArmorBonus()
     {
         var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(42, ResearchProfileIds.MvpB, MvpResearchCatalog.CreateEmbedded()));
         var player = new PlayerId(1);
         var baseline = MvpDefinitions.GetStats(EntityKind.LightBot).Armor;
         var before = simulation.ResolveStat(player, ResearchStatIds.Armor, baseline, EntityKind.LightBot.ToString(), minValue: 0);
 
-        ForceComplete(simulation, player, TechnologyId.Scout);
+        ForceComplete(simulation, player, TechnologyId.GroundUnitArmor);
 
         var after = simulation.ResolveStat(player, ResearchStatIds.Armor, baseline, EntityKind.LightBot.ToString(), minValue: 0);
         Assert.Equal(
             before + GameplayTablesCatalog.Embedded.ResearchBonuses.GroundUnitArmorBonus[EntityKind.LightBot],
             after);
 
-        var lightBotArmor = simulation.ResearchCatalog.Technologies[TechnologyId.Scout].Effects
+        var lightBotArmor = simulation.ResearchCatalog.Technologies[TechnologyId.GroundUnitArmor].Effects
             .OfType<AddModifierEffect>()
             .Single(effect => effect.Selector == EntityKind.LightBot.ToString());
         Assert.Equal(ModifierOperation.Add, lightBotArmor.Operation);
@@ -124,6 +124,17 @@ public sealed class ResearchEffectsTests
 
     private static void ForceComplete(GameSimulation simulation, PlayerId playerId, TechnologyId technologyId)
     {
+        if (simulation.ResearchCatalog.Technologies.TryGetValue(technologyId, out var definition))
+        {
+            foreach (var prerequisite in definition.Prerequisites)
+            {
+                if (!simulation.GetPlayer(playerId).Research.CompletedTechnologies.Contains(prerequisite))
+                {
+                    ForceComplete(simulation, playerId, prerequisite);
+                }
+            }
+        }
+
         Assert.True(simulation.TryForceCompleteResearch(playerId, technologyId, confirmExclusive: true));
         simulation.AdvanceTick();
         Assert.Contains(technologyId, simulation.GetPlayer(playerId).Research.CompletedTechnologies);

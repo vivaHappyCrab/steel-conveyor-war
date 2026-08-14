@@ -44,7 +44,7 @@ public sealed class EncapsulationTests
         var player = simulation.GetPlayer(new PlayerId(1));
         var factory = simulation.World.Entities.First(entity => entity.Kind == EntityKind.Commander);
 
-        Assert.ThrowsAny<Exception>(() => ((ICollection<TechnologyId>)player.Research.CompletedTechnologies).Add(TechnologyId.LightBot));
+        Assert.ThrowsAny<Exception>(() => ((ICollection<TechnologyId>)player.Research.CompletedTechnologies).Add(TechnologyId.GroundUnitAttack));
         Assert.ThrowsAny<Exception>(() => ((IDictionary<ItemId, int>)player.Inventory.Items)[ItemId.IronPlate] = 99);
         Assert.ThrowsAny<Exception>(() => ((IList<ConveyorItem>)factory.ConveyorItems).Clear());
         Assert.ThrowsAny<Exception>(() => ((IDictionary<EntityKind, int>)factory.BastionTemplate)[EntityKind.BasicTank] = 1);

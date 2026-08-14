@@ -20,6 +20,7 @@
 - `tests/SteelConveyorWar.Hosting.Tests` — shared bootstrap I/O tests
 - `tests/SteelConveyorWar.Sfml.Tests` — SFML adapter tests
 - `config/` — runtime content (`game`/`research`/`tiles`/`entities`/`build-costs` JSON); remaining recipes/combat/footprints/stacks/power in `MvpDefinitions.cs`
+- Research catalog ids, `TechnologyId` constant names, and display names stay in sync (no leftover aliases after a rename)
 - `resources/` — presentation assets only
 
 ## Verification

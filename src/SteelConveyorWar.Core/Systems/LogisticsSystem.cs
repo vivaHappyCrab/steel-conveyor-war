@@ -130,7 +130,9 @@ public sealed partial class GameSimulation
                 }
 
                 var target = World.GetTopEntityAt(conveyor.Position.Offset(conveyor.Direction));
-                if (target is not null && TryInsertItem(target, conveyorItem.Item))
+                if (target is not null
+                    && target.Kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor
+                    && TryInsertItem(target, conveyorItem.Item))
                 {
                     conveyor.ConveyorItemsMutable.Remove(conveyorItem);
                 }

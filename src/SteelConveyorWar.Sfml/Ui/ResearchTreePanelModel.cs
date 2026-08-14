@@ -435,6 +435,13 @@ public sealed record ResearchTreePanelModel(
 
         if (!tech.IsAvailable)
         {
+            if (tech.Prerequisites.Count > 0)
+            {
+                return "нужно: " + string.Join(
+                    ", ",
+                    tech.Prerequisites.Select(id => ResearchDisplayNames.GetDisplayName(id)));
+            }
+
             return tech.TierId == currentTierId
                 ? "недоступно"
                 : isMandatory

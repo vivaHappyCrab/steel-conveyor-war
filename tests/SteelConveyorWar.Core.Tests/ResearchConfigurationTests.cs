@@ -12,7 +12,12 @@ public sealed class ResearchConfigurationTests
         Assert.Contains(ResearchProfileIds.MvpB, catalog.Profiles.Keys);
         Assert.Single(catalog.Profiles);
         Assert.Equal(34, catalog.Technologies.Count);
-        Assert.True(catalog.Technologies.ContainsKey(TechnologyId.LightBot));
+        Assert.True(catalog.Technologies.ContainsKey(TechnologyId.GroundUnitAttack));
+        Assert.Equal("technology.t1.ground-unit-attack", TechnologyId.GroundUnitAttack.Value);
+        Assert.Equal("technology.t1.ground-unit-armor", TechnologyId.GroundUnitArmor.Value);
+        Assert.Equal("technology.t1.additional-bastion", TechnologyId.AdditionalBastion.Value);
+        Assert.Contains(TechnologyId.CommandI, catalog.Technologies[TechnologyId.GroundUnitAttack].Prerequisites);
+        Assert.Contains(TechnologyId.CommandI, catalog.Technologies[TechnologyId.GroundUnitArmor].Prerequisites);
         Assert.True(catalog.Technologies.ContainsKey(TechnologyId.ProductionI));
     }
 

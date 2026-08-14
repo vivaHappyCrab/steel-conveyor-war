@@ -37,6 +37,21 @@ public sealed class ResearchProgressionTests
     }
 
     [Fact]
+    public void GroundAttackAndArmor_RequireCommandI()
+    {
+        var simulation = Create(ResearchProfileIds.MvpB);
+        var player = new PlayerId(1);
+
+        Assert.Equal(ResearchCommandResult.NotAvailable, simulation.TrySelectResearch(player, TechnologyId.GroundUnitAttack));
+        Assert.Equal(ResearchCommandResult.NotAvailable, simulation.TrySelectResearch(player, TechnologyId.GroundUnitArmor));
+
+        CompleteTech(simulation, player, TechnologyId.CommandI);
+
+        Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(player, TechnologyId.GroundUnitAttack));
+        Assert.Equal(ResearchCommandResult.Ok, simulation.TrySelectResearch(player, TechnologyId.GroundUnitArmor));
+    }
+
+    [Fact]
     public void ProgressIsPreservedWhenSwitchingResearch()
     {
         var simulation = Create(ResearchProfileIds.MvpB);

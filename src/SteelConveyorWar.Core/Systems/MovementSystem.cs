@@ -19,6 +19,12 @@ public sealed partial class GameSimulation
         for (var i = 0; i < _scratchEntities.Count; i++)
         {
             var unit = _scratchEntities[i];
+            if (ShouldHaltToFire(unit, _spatialQueryIndex))
+            {
+                ResetMovementPath(unit);
+                continue;
+            }
+
             var target = GetMovementTarget(unit, _spatialQueryIndex);
             if (target is null || unit.Position == target.Value)
             {
@@ -489,23 +495,23 @@ public sealed partial class GameSimulation
         return true;
     }
 
-    /// <summary>
-    /// True when a mobile entity has active movement (waypoint, path, or move target) and is not garrisoned.
-    /// </summary>
-    private static bool IsMobileEntityMoving(WorldEntity entity)
+    private bool ShouldHaltToFire(WorldEntity unit, SpatialQueryIndex spatial)
     {
-        if (entity.IsGarrisoned)
+        var stats = GameplayTables.GetStats(unit.Kind);
+        if (MvpDefinitions.CanFireWhileMoving(unit.Kind, stats.MovementType)
+            || stats.AttackDamage <= 0
+            || stats.AttackRange <= 0)
         {
             return false;
         }
 
-        if (entity.CurrentWaypoint is not null || entity.MovementPath.Count > 0)
-        {
-            return true;
-        }
-
-        return entity.MoveTarget is not null && entity.MoveTarget.Value != entity.Position;
+        return FindNearestEnemyInRange(unit, stats.AttackRange, spatial) is not null;
     }
+
+    /// <summary>
+    /// True when a mobile entity has active movement (waypoint, path, or move target) and is not garrisoned.
+    /// </summary>
+    private static bool IsMobileEntityMoving(WorldEntity entity) => entity.IsActivelyMoving;
 
     private bool CircleIntersectsEntityFootprint(WorldPosition position, long radiusMilli, WorldEntity obstacle)
     {

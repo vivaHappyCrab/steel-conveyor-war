@@ -46,7 +46,7 @@ internal static class HudOverlay
                 .OrderBy(pair => pair.Key)
                 .Select(pair => $"{ShortItem(pair.Key)}:{pair.Value}"));
 
-        using var energy = new Text(font, $"Energy {player.PowerProduced}/{player.PowerDemand}", 14)
+        using var energy = new Text(font, $"Energy {player.PowerDemand}/{player.PowerProduced}", 14)
         {
             FillColor = player.PowerDemand > player.PowerProduced ? new Color(220, 70, 70) : Color.White,
             Position = new Vector2f(10f, 8f)
@@ -500,7 +500,7 @@ internal static class HudOverlay
             if (selected.OwnerId is not null)
             {
                 var owner = simulation.GetPlayer(selected.OwnerId.Value);
-                lines.Add($"Grid: {owner.PowerProduced}/{owner.PowerDemand}");
+                lines.Add($"Grid: {owner.PowerDemand}/{owner.PowerProduced}");
             }
 
             lines.Add($"Output: {(selected.PendingOutputItem?.ToString() ?? "-")}");

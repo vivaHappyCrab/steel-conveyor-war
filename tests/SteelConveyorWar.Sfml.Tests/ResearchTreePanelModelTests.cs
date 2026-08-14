@@ -38,11 +38,12 @@ public sealed class ResearchTreePanelModelTests
     {
         var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(42, ResearchProfileIds.MvpB, MvpResearchCatalog.CreateEmbedded()));
         var player = new PlayerId(1);
-        Assert.True(simulation.TryStartResearch(player, TechnologyId.LightBot));
+        Assert.True(simulation.TryForceCompleteResearch(player, TechnologyId.CommandI, confirmExclusive: true));
+        Assert.True(simulation.TryStartResearch(player, TechnologyId.GroundUnitAttack));
 
         var snapshot = simulation.GetResearchSnapshot(player);
         var bounds = new FloatRect(new Vector2f(10f, 40f), new Vector2f(800f, 500f));
-        var tree = ResearchTreePanelModel.FromSnapshot(snapshot, bounds, TechnologyId.LightBot);
+        var tree = ResearchTreePanelModel.FromSnapshot(snapshot, bounds, TechnologyId.GroundUnitAttack);
 
         Assert.True(tree.CanCancelSelected);
         Assert.False(tree.CanStartSelected);

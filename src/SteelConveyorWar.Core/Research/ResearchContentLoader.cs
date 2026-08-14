@@ -43,7 +43,8 @@ public static class ResearchContentLoader
                     tech.Effects.Select(ParseEffect).ToList(),
                     tags,
                     string.IsNullOrWhiteSpace(tech.DisplayName) ? ResearchDisplayNames.GetDisplayName(id) : tech.DisplayName,
-                    string.IsNullOrWhiteSpace(tech.Description) ? ResearchDisplayNames.GetDescription(id, tags) : tech.Description);
+                    string.IsNullOrWhiteSpace(tech.Description) ? ResearchDisplayNames.GetDescription(id, tags) : tech.Description,
+                    (tech.Prerequisites ?? new List<string>()).Select(prereq => new TechnologyId(prereq)).ToList());
             });
 
         var tiers = dto.Tiers.ToDictionary(
@@ -170,7 +171,10 @@ public static class ResearchContentLoader
                             .ToList()
                     },
                     Effects = tech.Effects.Select(ToEffectDto).ToList(),
-                    Tags = tech.Tags.ToList()
+                    Tags = tech.Tags.ToList(),
+                    Prerequisites = tech.Prerequisites.Count == 0
+                        ? null
+                        : tech.Prerequisites.Select(prereq => prereq.Value).ToList()
                 })
                 .ToList(),
             Tiers = catalog.Tiers.Values
@@ -295,6 +299,7 @@ public static class ResearchContentLoader
         public CostDto Cost { get; set; } = new();
         public List<EffectDto> Effects { get; set; } = new();
         public List<string>? Tags { get; set; }
+        public List<string>? Prerequisites { get; set; }
     }
 
     private sealed class CostDto

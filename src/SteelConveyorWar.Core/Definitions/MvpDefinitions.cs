@@ -5,7 +5,11 @@ namespace SteelConveyorWar.Core;
 public static class MvpDefinitions
 {
     public const int CommanderBuildRadius = 12;
-    public const int CommanderInteractRadius = 2;
+    public const int CommanderInteractRadius = 6;
+    /// <summary>
+    /// Chebyshev distance from a commander start tile to extra iron/copper patches (not the near-base pair).
+    /// </summary>
+    public const int MinStartResourceChebyshevDistance = 40;
     public const int ConveyorMoveTicks = 10;
     public const int InserterTransferTicks = 12;
     public const int ConveyorMaxItemsPerTile = 2;
@@ -131,6 +135,20 @@ public static class MvpDefinitions
         }
 
         return kind == EntityKind.Commander || UnitKinds.Contains(kind);
+    }
+
+    /// <summary>
+    /// Flying units (drones/scouts) may fire while translating. Ground army units must halt first.
+    /// Buildings/turrets and the commander are not gated by this rule.
+    /// </summary>
+    public static bool CanFireWhileMoving(EntityKind kind, MovementType movementType)
+    {
+        if (!UnitKinds.Contains(kind))
+        {
+            return true;
+        }
+
+        return movementType == MovementType.Flying;
     }
 
     public static int InserterReachTiles(bool longReach) => longReach ? 2 : 1;

@@ -274,6 +274,11 @@ internal sealed class CombatSystem
             }
 
             var stats = tables.GetStats(attacker.Kind);
+            if (!MvpDefinitions.CanFireWhileMoving(attacker.Kind, stats.MovementType) && attacker.IsActivelyMoving)
+            {
+                continue;
+            }
+
             var attackRange = stats.AttackRange;
             var target = FindNearestCombatTarget(attacker, attackRange, spatial);
             if (target is null)

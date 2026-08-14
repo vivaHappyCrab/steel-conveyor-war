@@ -13,12 +13,12 @@ public sealed class SessionStateTests
     {
         var state = new SessionState();
         state.OpenResearchOverlay();
-        state.SetResearchSelectedId(TechnologyId.LightBot);
-        state.RecordResearchClick(TechnologyId.LightBot, nowSeconds: 1f);
+        state.SetResearchSelectedId(TechnologyId.GroundUnitAttack);
+        state.RecordResearchClick(TechnologyId.GroundUnitAttack, nowSeconds: 1f);
         state.SetResearchScrollY(40f);
 
         Assert.True(state.IsResearchOverlayOpen);
-        Assert.Equal(TechnologyId.LightBot, state.ResearchSelectedId);
+        Assert.Equal(TechnologyId.GroundUnitAttack, state.ResearchSelectedId);
 
         state.CloseResearchOverlay();
 
@@ -55,6 +55,23 @@ public sealed class SessionStateTests
         state.ToggleBuildMenu(defaultKind);
         Assert.False(state.IsBuildMenuOpen);
         Assert.Null(state.PendingBuildKind);
+    }
+
+    [Fact]
+    public void ToggleBuildMenu_ReopensWithLastSelectedKind()
+    {
+        var state = new SessionState(initialSelectedEntityId: 7);
+        state.ToggleBuildMenu(EntityKind.Conveyor);
+        state.SelectPendingBuildKind(EntityKind.Hub);
+        Assert.Equal(EntityKind.Hub, state.PendingBuildKind);
+
+        state.ToggleBuildMenu(EntityKind.Conveyor);
+        Assert.False(state.IsBuildMenuOpen);
+        Assert.Null(state.PendingBuildKind);
+
+        state.ToggleBuildMenu(EntityKind.Mine);
+        Assert.True(state.IsBuildMenuOpen);
+        Assert.Equal(EntityKind.Hub, state.PendingBuildKind);
     }
 
     [Fact]
