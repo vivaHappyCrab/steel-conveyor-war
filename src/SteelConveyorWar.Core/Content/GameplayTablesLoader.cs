@@ -23,6 +23,7 @@ public static class GameplayTablesLoader
         var itemRecipes = ParseItemRecipes(dto.ItemRecipes);
         var entityStats = ParseEntityStats(dto.EntityStats);
         var resistances = ParseResistances(dto.Resistances);
+        var researchBonuses = ParseResearchBonuses(dto.ResearchBonuses, entityStats);
 
         if (entityStats.Count == 0)
         {
@@ -41,7 +42,8 @@ public static class GameplayTablesLoader
             productionRecipes,
             itemRecipes,
             entityStats,
-            resistances);
+            resistances,
+            researchBonuses);
     }
 
     private static Dictionary<EntityKind, int> ParseKindIntMap(Dictionary<string, int>? source, string section)
@@ -328,6 +330,84 @@ public static class GameplayTablesLoader
         return result;
     }
 
+    private static ResearchBonusTables ParseResearchBonuses(
+        ResearchBonusesDto? source,
+        IReadOnlyDictionary<EntityKind, EntityStats> entityStats)
+    {
+        var derived = DeriveDefaultBonuses(entityStats);
+        if (source is null)
+        {
+            return derived;
+        }
+
+        var attackBonus = ParseGroundUnitBonusMap(
+            source.GroundUnitAttackBonus,
+            derived.GroundUnitAttackBonus,
+            "researchBonuses.groundUnitAttackBonus",
+            entityStats);
+        var armorBonus = ParseGroundUnitBonusMap(
+            source.GroundUnitArmorBonus,
+            derived.GroundUnitArmorBonus,
+            "researchBonuses.groundUnitArmorBonus",
+            entityStats);
+        return new ResearchBonusTables(attackBonus, armorBonus);
+    }
+
+    private static Dictionary<EntityKind, int> ParseGroundUnitBonusMap(
+        Dictionary<string, int>? source,
+        IReadOnlyDictionary<EntityKind, int> derivedFallback,
+        string section,
+        IReadOnlyDictionary<EntityKind, EntityStats> entityStats)
+    {
+        if (source is null || source.Count == 0)
+        {
+            return derivedFallback.ToDictionary(pair => pair.Key, pair => pair.Value);
+        }
+
+        var parsed = ParseKindIntMap(source, section);
+        foreach (var (kind, amount) in parsed)
+        {
+            if (amount < 0)
+            {
+                throw new InvalidOperationException($"{section} '{kind}' must be >= 0.");
+            }
+
+            var movement = entityStats.TryGetValue(kind, out var stats)
+                ? stats.MovementType
+                : MovementType.Ground;
+            if (!MvpDefinitions.IsGroundCombatUnit(kind, movement))
+            {
+                throw new InvalidOperationException($"{section} '{kind}' is not a ground combat unit.");
+            }
+        }
+
+        return parsed;
+    }
+
+    private static ResearchBonusTables DeriveDefaultBonuses(
+        IReadOnlyDictionary<EntityKind, EntityStats> entityStats)
+    {
+        var attackBonus = new Dictionary<EntityKind, int>();
+        var armorBonus = new Dictionary<EntityKind, int>();
+        foreach (var (kind, stats) in entityStats)
+        {
+            if (!MvpDefinitions.IsGroundCombatUnit(kind, stats.MovementType))
+            {
+                continue;
+            }
+
+            var attack = ResearchBonusTables.TenPercentOfAttack(stats.AttackDamage);
+            if (attack > 0)
+            {
+                attackBonus[kind] = attack;
+            }
+
+            armorBonus[kind] = ResearchBonusTables.DefaultArmorBonus;
+        }
+
+        return new ResearchBonusTables(attackBonus, armorBonus);
+    }
+
     private static IReadOnlyDictionary<ItemId, int> ParseCostLines(List<CostLineDto>? cost, string label)
     {
         if (cost is null || cost.Count == 0)
@@ -373,6 +453,13 @@ public static class GameplayTablesLoader
         public Dictionary<string, ItemRecipeDto>? ItemRecipes { get; set; }
         public Dictionary<string, EntityStatsDto>? EntityStats { get; set; }
         public List<ResistanceDto>? Resistances { get; set; }
+        public ResearchBonusesDto? ResearchBonuses { get; set; }
+    }
+
+    private sealed class ResearchBonusesDto
+    {
+        public Dictionary<string, int>? GroundUnitAttackBonus { get; set; }
+        public Dictionary<string, int>? GroundUnitArmorBonus { get; set; }
     }
 
     private sealed class FootprintDto

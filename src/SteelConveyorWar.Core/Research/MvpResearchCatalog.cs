@@ -58,15 +58,32 @@ public static class MvpResearchCatalog
             [new AddModifierEffect(ResearchStatIds.EnergyShortagePenalty, ModifierOperation.Multiply, 7_000)],
             "optional", "qualification", "infrastructure", "tactical");
 
-        // Legacy / expansion optionals T1
+        var bonuses = GameplayTablesCatalog.Embedded.ResearchBonuses;
+        var groundAttackEffects = bonuses.GroundUnitAttackBonus
+            .Where(pair => pair.Value > 0)
+            .OrderBy(pair => pair.Key.ToString(), StringComparer.Ordinal)
+            .Select(pair => (ResearchEffect)new AddModifierEffect(
+                ResearchStatIds.AttackDamage,
+                ModifierOperation.Add,
+                pair.Value * ModifierResolver.BasisPointsScale,
+                pair.Key.ToString()))
+            .ToArray();
+        var groundArmorEffects = bonuses.GroundUnitArmorBonus
+            .Where(pair => pair.Value > 0)
+            .OrderBy(pair => pair.Key.ToString(), StringComparer.Ordinal)
+            .Select(pair => (ResearchEffect)new AddModifierEffect(
+                ResearchStatIds.Armor,
+                ModifierOperation.Add,
+                pair.Value * ModifierResolver.BasisPointsScale,
+                pair.Key.ToString()))
+            .ToArray();
+
+        // T1 optional combat/bastion bonuses (LightBot/Scout/Walls are T1 baseline unlocks).
         Tech(TechnologyId.LightBot, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [UnlockContentEffect.Entity(EntityKind.LightBot)],
+            groundAttackEffects,
             "optional", "tactical");
         Tech(TechnologyId.Scout, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [
-                UnlockContentEffect.Entity(EntityKind.Scout),
-                UnlockContentEffect.Recipe(EntityKind.Scout.ToString())
-            ],
+            groundArmorEffects,
             "optional", "tactical");
         Tech(TechnologyId.MachineGunTurret, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
             [
@@ -75,11 +92,7 @@ public static class MvpResearchCatalog
             ],
             "optional", "tactical");
         Tech(TechnologyId.ConcreteWalls, ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [
-                UnlockContentEffect.Entity(EntityKind.Wall),
-                new AddModifierEffect(ResearchStatIds.Armor, ModifierOperation.Add, 10_000),
-                new AddModifierEffect(ResearchStatIds.MaxHealth, ModifierOperation.Multiply, 11_000)
-            ],
+            [new AddModifierEffect(ResearchStatIds.MaxBastions, ModifierOperation.Add, 10_000)],
             "optional", "tactical");
         Tech(new TechnologyId("technology.t1.forward-observer"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.VisionRadius, ModifierOperation.Add, 10_000)],
@@ -202,8 +215,13 @@ public static class MvpResearchCatalog
                     UnlockContentEffect.Entity(EntityKind.DroneCenter),
                     UnlockContentEffect.Entity(EntityKind.Bastion),
                     UnlockContentEffect.Entity(EntityKind.BasicTank),
+                    UnlockContentEffect.Entity(EntityKind.LightBot),
+                    UnlockContentEffect.Entity(EntityKind.Scout),
+                    UnlockContentEffect.Entity(EntityKind.Wall),
                     UnlockContentEffect.Entity(EntityKind.CannonTurret),
                     UnlockContentEffect.Recipe(EntityKind.BasicTank.ToString()),
+                    UnlockContentEffect.Recipe(EntityKind.LightBot.ToString()),
+                    UnlockContentEffect.Recipe(EntityKind.Scout.ToString()),
                     UnlockContentEffect.ItemRecipe(ItemRecipeId.IronGear),
                     UnlockContentEffect.ItemRecipe(ItemRecipeId.Composite),
                     UnlockContentEffect.ItemRecipe(ItemRecipeId.SciencePackT1)
@@ -242,7 +260,8 @@ public static class MvpResearchCatalog
             UnlockContentEffect.Entity(EntityKind.Refinery),
             UnlockContentEffect.Entity(EntityKind.CoalPlant),
             UnlockContentEffect.ItemRecipe(ItemRecipeId.SciencePackT2),
-            new GrantCapabilityEffect(ResearchCapabilityIds.Tier2Content)
+            new GrantCapabilityEffect(ResearchCapabilityIds.Tier2Content),
+            new GrantCapabilityEffect(ResearchCapabilityIds.AdditionalBastions)
         };
 
         var t3Milestone = new ResearchEffect[]

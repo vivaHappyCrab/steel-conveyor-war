@@ -31,8 +31,8 @@
     {
       "id": "technology.t1.concrete-walls",
       "tierId": "tier.t1",
-      "displayName": "\u0411\u0435\u0442\u043E\u043D\u043D\u044B\u0435 \u0441\u0442\u0435\u043D\u044B",
-      "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0431\u0435\u0442\u043E\u043D\u043D\u044B\u0435 \u0441\u0442\u0435\u043D\u044B \u0434\u043B\u044F \u043F\u0440\u0438\u043A\u0440\u044B\u0442\u0438\u044F.",
+      "displayName": "\u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0431\u0430\u0441\u0442\u0438\u043E\u043D",
+      "description": "\u0423\u0432\u0435\u043B\u0438\u0447\u0438\u0432\u0430\u0435\u0442 \u043B\u0438\u043C\u0438\u0442 \u0431\u0430\u0441\u0442\u0438\u043E\u043D\u043E\u0432 \u043D\u0430 1.",
       "cost": {
         "effortUnits": 20,
         "sciencePacks": [
@@ -44,22 +44,10 @@
       },
       "effects": [
         {
-          "type": "unlockContent",
-          "contentKind": "entity",
-          "contentId": "Wall",
-          "valueBasisPoints": 0
-        },
-        {
           "type": "addModifier",
-          "statId": "stat.combat.armor",
+          "statId": "stat.bastion.max-count",
           "operation": "Add",
           "valueBasisPoints": 10000
-        },
-        {
-          "type": "addModifier",
-          "statId": "stat.combat.max-health",
-          "operation": "Multiply",
-          "valueBasisPoints": 11000
         }
       ],
       "tags": [
@@ -263,8 +251,8 @@
     {
       "id": "technology.t1.light-bot",
       "tierId": "tier.t1",
-      "displayName": "\u041B\u0451\u0433\u043A\u0438\u0439 \u0431\u043E\u0442",
-      "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0441\u0442\u0432\u043E \u043B\u0451\u0433\u043A\u0438\u0445 \u0431\u043E\u0435\u0432\u044B\u0445 \u0431\u043E\u0442\u043E\u0432.",
+      "displayName": "\u0410\u0442\u0430\u043A\u0430 \u043D\u0430\u0437\u0435\u043C\u043D\u044B\u0445 \u044E\u043D\u0438\u0442\u043E\u0432",
+      "description": "\u0423\u0432\u0435\u043B\u0438\u0447\u0438\u0432\u0430\u0435\u0442 \u0430\u0442\u0430\u043A\u0443 \u0432\u0441\u0435\u0445 \u043D\u0430\u0437\u0435\u043C\u043D\u044B\u0445 \u044E\u043D\u0438\u0442\u043E\u0432.",
       "cost": {
         "effortUnits": 30,
         "sciencePacks": [
@@ -276,10 +264,53 @@
       },
       "effects": [
         {
-          "type": "unlockContent",
-          "contentKind": "entity",
-          "contentId": "LightBot",
-          "valueBasisPoints": 0
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "AntiAirBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "BasicTank"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "Commander"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "LightBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "MediumBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 20000,
+          "selector": "MediumTank"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 30000,
+          "selector": "RocketLauncher"
         }
       ],
       "tags": [
@@ -439,8 +470,8 @@
     {
       "id": "technology.t1.scout",
       "tierId": "tier.t1",
-      "displayName": "\u0420\u0430\u0437\u0432\u0435\u0434\u0447\u0438\u043A",
-      "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0440\u0430\u0437\u0432\u0435\u0434\u0447\u0438\u043A\u043E\u0432 \u0438 \u043F\u0440\u0438\u043A\u0430\u0437 \u0440\u0430\u0437\u0432\u0435\u0434\u043A\u0438.",
+      "displayName": "\u0411\u0440\u043E\u043D\u044F \u043D\u0430\u0437\u0435\u043C\u043D\u044B\u0445 \u044E\u043D\u0438\u0442\u043E\u0432",
+      "description": "\u0423\u0432\u0435\u043B\u0438\u0447\u0438\u0432\u0430\u0435\u0442 \u0431\u0440\u043E\u043D\u044E \u0432\u0441\u0435\u0445 \u043D\u0430\u0437\u0435\u043C\u043D\u044B\u0445 \u044E\u043D\u0438\u0442\u043E\u0432.",
       "cost": {
         "effortUnits": 30,
         "sciencePacks": [
@@ -452,16 +483,53 @@
       },
       "effects": [
         {
-          "type": "unlockContent",
-          "contentKind": "entity",
-          "contentId": "Scout",
-          "valueBasisPoints": 0
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "AntiAirBot"
         },
         {
-          "type": "unlockContent",
-          "contentKind": "recipe",
-          "contentId": "Scout",
-          "valueBasisPoints": 0
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "BasicTank"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "Commander"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "LightBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "MediumBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "MediumTank"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "RocketLauncher"
         }
       ],
       "tags": [
@@ -473,7 +541,7 @@
       "id": "technology.t2.additional-bastions",
       "tierId": "tier.t2",
       "displayName": "\u0414\u043E\u043F. \u0431\u0430\u0441\u0442\u0438\u043E\u043D\u044B",
-      "description": "\u041F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0434\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0431\u0430\u0441\u0442\u0438\u043E\u043D\u044B.",
+      "description": "\u0420\u0430\u0441\u0448\u0438\u0440\u044F\u0435\u0442 \u0448\u0430\u0431\u043B\u043E\u043D \u0430\u0440\u043C\u0438\u0438 \u0431\u0430\u0441\u0442\u0438\u043E\u043D\u043E\u0432.",
       "cost": {
         "effortUnits": 40,
         "sciencePacks": [
@@ -1086,6 +1154,24 @@
         {
           "type": "unlockContent",
           "contentKind": "entity",
+          "contentId": "LightBot",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Scout",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "Wall",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
           "contentId": "CannonTurret",
           "valueBasisPoints": 0
         },
@@ -1093,6 +1179,18 @@
           "type": "unlockContent",
           "contentKind": "recipe",
           "contentId": "BasicTank",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "recipe",
+          "contentId": "LightBot",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "recipe",
+          "contentId": "Scout",
           "valueBasisPoints": 0
         },
         {
@@ -1251,6 +1349,11 @@
             {
               "type": "grantCapability",
               "capabilityId": "capability.tier2-content",
+              "valueBasisPoints": 0
+            },
+            {
+              "type": "grantCapability",
+              "capabilityId": "capability.additional-bastions",
               "valueBasisPoints": 0
             }
           ]

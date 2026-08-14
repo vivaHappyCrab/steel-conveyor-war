@@ -14,6 +14,7 @@ internal static class WorldRenderer
         int? selectedEntityId,
         EntityKind? pendingBuildKind,
         Direction pendingDirection,
+        bool pendingInserterLongReach,
         TilePosition? hoverTile,
         IReadOnlyList<TilePosition> patrolWaypoints,
         IReadOnlyList<(CombatShotEvent Shot, CombatShotRevealMode Reveal)> combatShots,
@@ -89,6 +90,38 @@ internal static class WorldRenderer
         if (pendingBuildKind is not null && hoverTile is not null && world.IsInside(hoverTile.Value))
         {
             DrawGhostPreview(target, simulation, pendingBuildKind.Value, hoverTile.Value, pendingDirection);
+            if (pendingBuildKind == EntityKind.Inserter)
+            {
+                DrawInserterReachMarkers(target, hoverTile.Value, pendingDirection, pendingInserterLongReach);
+            }
+        }
+
+        WorldEntity? reachInserter = null;
+        if (selectedEntityId is int selectedId)
+        {
+            var selected = simulation.World.GetEntity(selectedId);
+            if (selected is not null && MvpDefinitions.IsInserterOrGhost(selected))
+            {
+                reachInserter = selected;
+            }
+        }
+
+        if (reachInserter is null && hoverTile is not null)
+        {
+            var hovered = simulation.World.GetTopEntityAt(hoverTile.Value);
+            if (hovered is not null && MvpDefinitions.IsInserterOrGhost(hovered))
+            {
+                reachInserter = hovered;
+            }
+        }
+
+        if (reachInserter is not null)
+        {
+            DrawInserterReachMarkers(
+                target,
+                reachInserter.Position,
+                reachInserter.Direction,
+                reachInserter.InserterLongReach);
         }
     }
 
@@ -310,6 +343,49 @@ internal static class WorldRenderer
         }
 
         EntityPictograms.DrawUnitMark(target, entity.Kind, center, radius, ink);
+    }
+
+    internal static void DrawInserterReachMarkers(
+        IRenderTarget target,
+        TilePosition inserterTile,
+        Direction direction,
+        bool longReach)
+    {
+        var pickup = MvpDefinitions.InserterPickupTile(inserterTile, direction, longReach);
+        var drop = MvpDefinitions.InserterDropTile(inserterTile, direction, longReach);
+        var yellow = new Color(255, 220, 70, 210);
+        DrawBluntTileTriangle(target, pickup, direction, yellow);
+        DrawBluntTileTriangle(target, drop, direction, yellow);
+    }
+
+    /// <summary>Wide/blunt yellow triangle centered on a tile, pointing along <paramref name="direction"/>.</summary>
+    internal static void DrawBluntTileTriangle(IRenderTarget target, TilePosition tile, Direction direction, Color color)
+    {
+        var center = new Vector2f(
+            tile.X * SfmlUiLayout.TileSize + SfmlUiLayout.TileSize / 2f,
+            tile.Y * SfmlUiLayout.TileSize + SfmlUiLayout.TileSize / 2f);
+        var half = SfmlUiLayout.TileSize * 0.38f;
+        var blunt = SfmlUiLayout.TileSize * 0.28f;
+        var points = direction switch
+        {
+            Direction.North => new[] { new Vector2f(0, -half), new Vector2f(blunt, half * 0.55f), new Vector2f(-blunt, half * 0.55f) },
+            Direction.East => new[] { new Vector2f(half, 0), new Vector2f(-half * 0.55f, blunt), new Vector2f(-half * 0.55f, -blunt) },
+            Direction.South => new[] { new Vector2f(0, half), new Vector2f(blunt, -half * 0.55f), new Vector2f(-blunt, -half * 0.55f) },
+            Direction.West => new[] { new Vector2f(-half, 0), new Vector2f(half * 0.55f, blunt), new Vector2f(half * 0.55f, -blunt) },
+            _ => Array.Empty<Vector2f>()
+        };
+
+        using var triangle = new ConvexShape(3)
+        {
+            FillColor = color,
+            Position = center
+        };
+        for (uint i = 0; i < points.Length; i++)
+        {
+            triangle.SetPoint(i, points[i]);
+        }
+
+        target.Draw(triangle);
     }
 
     internal static void DrawGhostPreview(

@@ -6,17 +6,33 @@ public readonly record struct PlayerId(int Value);
 
 public readonly record struct TilePosition(int X, int Y)
 {
-    public TilePosition Offset(Direction direction)
+    public TilePosition Offset(Direction direction, int distance = 1)
     {
-        return direction switch
+        if (distance == 0)
         {
-            Direction.North => this with { Y = Y - 1 },
-            Direction.East => this with { X = X + 1 },
-            Direction.South => this with { Y = Y + 1 },
-            Direction.West => this with { X = X - 1 },
+            return this;
+        }
+
+        var step = distance < 0 ? -distance : distance;
+        var dir = distance < 0 ? Opposite(direction) : direction;
+        return dir switch
+        {
+            Direction.North => this with { Y = Y - step },
+            Direction.East => this with { X = X + step },
+            Direction.South => this with { Y = Y + step },
+            Direction.West => this with { X = X - step },
             _ => this
         };
     }
+
+    private static Direction Opposite(Direction direction) => direction switch
+    {
+        Direction.North => Direction.South,
+        Direction.East => Direction.West,
+        Direction.South => Direction.North,
+        Direction.West => Direction.East,
+        _ => direction
+    };
 
     public int ManhattanDistance(TilePosition other)
     {
@@ -123,7 +139,8 @@ public sealed record CommanderBuildOrder(
     EntityKind TargetKind,
     TilePosition TargetPosition,
     Direction Direction = Direction.East,
-    ItemRecipeId? SelectedItemRecipe = null);
+    ItemRecipeId? SelectedItemRecipe = null,
+    bool InserterLongReach = false);
 
 public sealed record CommanderDemolishOrder(int TargetEntityId);
 

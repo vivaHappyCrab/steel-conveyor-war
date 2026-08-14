@@ -60,6 +60,7 @@ internal static class PresentationComposer
                 session.SelectedEntityId,
                 session.IsBuildMenuOpen ? session.PendingBuildKind : null,
                 session.PendingDirection,
+                session.PendingInserterLongReach,
                 hoverTile,
                 session.PatrolWaypoints,
                 combatShots,

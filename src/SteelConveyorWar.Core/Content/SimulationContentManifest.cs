@@ -207,6 +207,22 @@ public static class SimulationContentManifest
                 .Append(entry.BasisPoints).Append('\n');
         }
 
+        canonical.Append("researchBonuses:");
+        foreach (var (kind, amount) in catalog.ResearchBonuses.GroundUnitAttackBonus
+                     .OrderBy(pair => pair.Key.ToString(), StringComparer.Ordinal))
+        {
+            canonical.Append(kind).Append('=').Append(amount).Append(';');
+        }
+
+        canonical.Append('|');
+        foreach (var (kind, amount) in catalog.ResearchBonuses.GroundUnitArmorBonus
+                     .OrderBy(pair => pair.Key.ToString(), StringComparer.Ordinal))
+        {
+            canonical.Append(kind).Append('=').Append(amount).Append(';');
+        }
+
+        canonical.Append('\n');
+
         return Sha256Hex(canonical.ToString());
     }
 

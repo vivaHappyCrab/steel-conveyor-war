@@ -101,6 +101,11 @@ public sealed class WorldEntity
 
     public ItemId? FilterItem { get; internal set; }
 
+    /// <summary>
+    /// When true, this inserter (or inserter ghost) picks up and drops two tiles away instead of adjacent.
+    /// </summary>
+    public bool InserterLongReach { get; internal set; }
+
     public int? AssignedBastionId { get; internal set; }
 
     public bool IsGarrisoned { get; internal set; }

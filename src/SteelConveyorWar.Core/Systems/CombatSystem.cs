@@ -359,6 +359,12 @@ internal sealed class CombatSystem
                 continue;
             }
 
+            if (attacker.Kind == EntityKind.Commander
+                && _context.GameplayTables.GetStats(entity.Kind).MovementType == MovementType.Flying)
+            {
+                continue;
+            }
+
             var distanceSquared = attacker.Position.EuclideanDistanceSquared(entity.Position);
             if (best is null
                 || distanceSquared < bestDistanceSquared

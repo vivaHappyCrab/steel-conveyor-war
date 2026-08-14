@@ -33,7 +33,8 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            var source = World.GetTopEntityAt(inserter.Position.Offset(Opposite(inserter.Direction)));
+            var source = World.GetTopEntityAt(MvpDefinitions.InserterPickupTile(
+                inserter.Position, inserter.Direction, inserter.InserterLongReach));
             if (source is null)
             {
                 continue;
@@ -88,7 +89,8 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            var target = World.GetTopEntityAt(inserter.Position.Offset(inserter.Direction));
+            var target = World.GetTopEntityAt(MvpDefinitions.InserterDropTile(
+                inserter.Position, inserter.Direction, inserter.InserterLongReach));
             if (target is not null && TryInsertItem(target, inserter.HeldItem!.Value))
             {
                 inserter.HeldItem = null;
@@ -134,18 +136,6 @@ public sealed partial class GameSimulation
                 }
             }
         }
-    }
-
-    private static Direction Opposite(Direction direction)
-    {
-        return direction switch
-        {
-            Direction.North => Direction.South,
-            Direction.East => Direction.West,
-            Direction.South => Direction.North,
-            Direction.West => Direction.East,
-            _ => direction
-        };
     }
 
     private static bool TryExtractItem(WorldEntity source, ItemId? filter, out ItemId item)

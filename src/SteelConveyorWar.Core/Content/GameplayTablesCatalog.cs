@@ -15,7 +15,8 @@ public sealed partial record GameplayTablesCatalog(
     IReadOnlyDictionary<EntityKind, ProductionRecipe> ProductionRecipes,
     IReadOnlyDictionary<ItemRecipeId, ItemRecipeDefinition> ItemRecipes,
     IReadOnlyDictionary<EntityKind, EntityStats> EntityStats,
-    IReadOnlyList<ResistanceEntry> Resistances)
+    IReadOnlyList<ResistanceEntry> Resistances,
+    ResearchBonusTables ResearchBonuses)
 {
     // H07: freeze table graphs (including after H01 match-scoped wiring). Nested recipe Inputs are
     // frozen by ProductionRecipe / ItemRecipeDefinition property init.
@@ -90,7 +91,8 @@ public sealed partial record GameplayTablesCatalog(
         ProductionRecipes: new Dictionary<EntityKind, ProductionRecipe>(),
         ItemRecipes: new Dictionary<ItemRecipeId, ItemRecipeDefinition>(),
         EntityStats: new Dictionary<EntityKind, EntityStats>(),
-        Resistances: Array.Empty<ResistanceEntry>());
+        Resistances: Array.Empty<ResistanceEntry>(),
+        ResearchBonuses: ResearchBonusTables.Default);
 
     public EntityStats GetStats(EntityKind kind) =>
         EntityStats.TryGetValue(kind, out var stats)
@@ -134,3 +136,41 @@ public readonly record struct ResistanceEntry(
     ProjectileKind Projectile,
     CombatTargetCategory Category,
     int BasisPoints);
+
+/// <summary>
+/// Tuneable T1 optional combat/bastion bonus magnitudes. Attack and armor are absolute adds
+/// per ground combat unit. Starter attack is 10% of that unit's default (rounded half-up);
+/// starter armor is +1.
+/// </summary>
+public readonly record struct ResearchBonusTables(
+    IReadOnlyDictionary<EntityKind, int> GroundUnitAttackBonus,
+    IReadOnlyDictionary<EntityKind, int> GroundUnitArmorBonus)
+{
+    public IReadOnlyDictionary<EntityKind, int> GroundUnitAttackBonus
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value);
+    } = ContentFreeze.Dictionary(GroundUnitAttackBonus);
+
+    public IReadOnlyDictionary<EntityKind, int> GroundUnitArmorBonus
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value);
+    } = ContentFreeze.Dictionary(GroundUnitArmorBonus);
+
+    public static ResearchBonusTables Default { get; } = new(
+        new Dictionary<EntityKind, int>(),
+        new Dictionary<EntityKind, int>());
+
+    public int AttackAddBasisPoints(EntityKind kind) =>
+        GroundUnitAttackBonus.GetValueOrDefault(kind) * ModifierResolver.BasisPointsScale;
+
+    public int ArmorAddBasisPoints(EntityKind kind) =>
+        GroundUnitArmorBonus.GetValueOrDefault(kind) * ModifierResolver.BasisPointsScale;
+
+    /// <summary>Starter absolute attack bonus: 10% of base attack, rounded half away from zero.</summary>
+    public static int TenPercentOfAttack(int attackDamage) =>
+        attackDamage <= 0 ? 0 : (attackDamage + 5) / 10;
+
+    public const int DefaultArmorBonus = 1;
+}

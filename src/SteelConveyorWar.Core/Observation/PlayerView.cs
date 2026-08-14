@@ -251,7 +251,8 @@ public sealed class PlayerView : IPlayerView
             entity.QueuedDemolishOrder,
             entity.MoveTarget,
             entity.Order,
-            entity.BastionTemplate);
+            entity.BastionTemplate,
+            entity.InserterLongReach);
     }
 
     private bool IsFairEntityVisible(WorldEntity entity)

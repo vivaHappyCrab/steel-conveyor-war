@@ -284,7 +284,7 @@ public sealed class ConfigContentLoaderTests
         Assert.Equal(buildCosts.Costs.Count, simulation.BuildCostCatalog.Costs.Count);
         Assert.Equal(20, simulation.BuildCostCatalog.Costs[EntityKind.Mine][ItemId.IronPlate]);
         Assert.Equal(gameplayTables.EntityStats.Count, simulation.GameplayTables.EntityStats.Count);
-        Assert.Equal(300, simulation.GameplayTables.GetStats(EntityKind.Commander).MaxHealth);
+        Assert.Equal(600, simulation.GameplayTables.GetStats(EntityKind.Commander).MaxHealth);
     }
 
     [Fact]
@@ -304,7 +304,7 @@ public sealed class ConfigContentLoaderTests
         Assert.Equal(999, commander.MaxHealth);
         Assert.Equal(999, commander.Health);
         // Static MvpDefinitions fallback stays on Embedded (parity for call sites without a match catalog).
-        Assert.Equal(300, MvpDefinitions.GetStats(EntityKind.Commander).MaxHealth);
+        Assert.Equal(600, MvpDefinitions.GetStats(EntityKind.Commander).MaxHealth);
     }
 
     [Fact]

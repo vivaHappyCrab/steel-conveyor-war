@@ -26,8 +26,9 @@ public static class SimulationCommandSerializer
     /// R11/M02: current command wire protocol version. Bump on any breaking envelope/payload change and
     /// widen <see cref="MinSupportedProtocolVersion"/> only when older shapes remain decodable.
     /// v2: <c>SetProjectWeight</c> added; <c>AssignFactoryBastion</c> removed from wire vocabulary.
+    /// v3: <c>SetInserterReach</c> added; build commands carry optional <c>inserterLongReach</c>.
     /// </summary>
-    public const int ProtocolVersion = 2;
+    public const int ProtocolVersion = 3;
 
     /// <summary>
     /// Oldest protocol version this build can still decode. v1 envelopes remain decodable for kinds
@@ -145,6 +146,7 @@ public static class SimulationCommandSerializer
                     Y = c.Position.Y,
                     Direction = c.Direction,
                     SelectedItemRecipe = c.SelectedItemRecipe,
+                    InserterLongReach = c.InserterLongReach ? true : null,
                 }),
             QueueCommanderDemolishCommand c => new CommandEnvelopeDto(
                 c.Kind, actor, tick,
@@ -159,6 +161,7 @@ public static class SimulationCommandSerializer
                     Y = c.Position.Y,
                     Direction = c.Direction,
                     SelectedItemRecipe = c.SelectedItemRecipe,
+                    InserterLongReach = c.InserterLongReach ? true : null,
                 }),
             RotateEntityCommand c => new CommandEnvelopeDto(
                 c.Kind, actor, tick,
@@ -232,6 +235,9 @@ public static class SimulationCommandSerializer
                     Technology = c.Technology.Value,
                     Weight = c.Weight,
                 }),
+            SetInserterReachCommand c => new CommandEnvelopeDto(
+                c.Kind, actor, tick,
+                new CommandPayloadDto { EntityId = c.EntityId, InserterLongReach = c.LongReach }),
             _ => throw new NotSupportedException($"Unknown command type '{command.GetType().Name}'."),
         };
 
@@ -255,13 +261,13 @@ public static class SimulationCommandSerializer
             SimulationCommandKind.QueueCommanderBuild => new QueueCommanderBuildCommand(
                 actor, tick, Require(p.CommanderId, "commanderId"), Require(p.TargetKind, "targetKind"),
                 new TilePosition(Require(p.X, "x"), Require(p.Y, "y")),
-                p.Direction ?? Direction.East, p.SelectedItemRecipe),
+                p.Direction ?? Direction.East, p.SelectedItemRecipe, p.InserterLongReach ?? false),
             SimulationCommandKind.QueueCommanderDemolish => new QueueCommanderDemolishCommand(
                 actor, tick, Require(p.CommanderId, "commanderId"), Require(p.TargetEntityId, "targetEntityId")),
             SimulationCommandKind.PlaceGhostBuildFromCommander => new PlaceGhostBuildFromCommanderCommand(
                 actor, tick, Require(p.CommanderId, "commanderId"), Require(p.TargetKind, "targetKind"),
                 new TilePosition(Require(p.X, "x"), Require(p.Y, "y")),
-                p.Direction ?? Direction.East, p.SelectedItemRecipe),
+                p.Direction ?? Direction.East, p.SelectedItemRecipe, p.InserterLongReach ?? false),
             SimulationCommandKind.RotateEntity => new RotateEntityCommand(
                 actor, tick, Require(p.EntityId, "entityId"), p.Clockwise ?? true),
             SimulationCommandKind.StartResearch => new StartResearchCommand(
@@ -306,6 +312,8 @@ public static class SimulationCommandSerializer
                 actor, tick, Require(p.TrackId, "trackId"),
                 new TechnologyId(Require(p.Technology, "technology")),
                 Require(p.Weight, "weight")),
+            SimulationCommandKind.SetInserterReach => new SetInserterReachCommand(
+                actor, tick, Require(p.EntityId, "entityId"), p.InserterLongReach ?? false),
             _ => throw new NotSupportedException($"Unknown command kind '{dto.Kind}'."),
         };
 
@@ -394,6 +402,7 @@ public static class SimulationCommandSerializer
         public string? Technology { get; set; }
         public string? TrackId { get; set; }
         public int? Weight { get; set; }
+        public bool? InserterLongReach { get; set; }
         public Dictionary<string, int>? Allocations { get; set; }
         public TileDto[]? Waypoints { get; set; }
     }

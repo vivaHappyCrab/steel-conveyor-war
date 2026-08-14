@@ -93,10 +93,10 @@ public sealed partial class GameSimulation
             IssueMoveCommand c => TryIssueMoveCommand(c.EntityId, c.Actor, c.Target),
             StopCommanderCommand c => TryStopCommander(c.CommanderId, c.Actor),
             QueueCommanderBuildCommand c => TryQueueCommanderBuild(
-                c.CommanderId, c.TargetKind, c.Position, c.Direction, c.SelectedItemRecipe, c.Actor),
+                c.CommanderId, c.TargetKind, c.Position, c.Direction, c.SelectedItemRecipe, c.Actor, c.InserterLongReach),
             QueueCommanderDemolishCommand c => TryQueueCommanderDemolish(c.CommanderId, c.TargetEntityId, c.Actor),
             PlaceGhostBuildFromCommanderCommand c => TryPlaceGhostBuildFromCommander(
-                c.CommanderId, c.TargetKind, c.Position, out _, c.Direction, c.SelectedItemRecipe, c.Actor),
+                c.CommanderId, c.TargetKind, c.Position, out _, c.Direction, c.SelectedItemRecipe, c.Actor, c.InserterLongReach),
             RotateEntityCommand c => TryRotateEntity(c.EntityId, c.Actor, c.Clockwise),
             StartResearchCommand c => TryStartResearch(c.Actor, c.Technology, c.Actor),
             CancelResearchCommand c => TryCancelResearch(c.Actor, c.Technology),
@@ -121,6 +121,7 @@ public sealed partial class GameSimulation
                 c.CommanderId, c.TargetEntityId, c.Item, c.Actor),
             WithdrawItemTypeFromHubOrOutputCommand c => TryWithdrawItemTypeFromHubOrOutput(
                 c.CommanderId, c.TargetEntityId, c.Item, c.Actor),
+            SetInserterReachCommand c => TrySetInserterReach(c.EntityId, c.Actor, c.LongReach),
             // R09: unknown/unsupported kinds are rejected (untrusted input must not throw out of the tick loop).
             _ => false,
         };

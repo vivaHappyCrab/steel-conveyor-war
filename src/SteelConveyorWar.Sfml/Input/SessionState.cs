@@ -26,6 +26,7 @@ internal sealed class SessionState
     public EntityKind? PendingBuildKind { get; private set; }
     public Direction PendingDirection { get; private set; } = Direction.East;
     public ItemRecipeId? PendingRecipe { get; private set; }
+    public bool PendingInserterLongReach { get; private set; }
     public int RecipePage { get; private set; }
     public int TemplateUnitIndex { get; private set; }
     public BastionPendingInputMode BastionPendingMode { get; private set; } = BastionPendingInputMode.None;
@@ -103,6 +104,7 @@ internal sealed class SessionState
         PendingBuildKind = null;
         PendingDirection = Direction.East;
         PendingRecipe = null;
+        PendingInserterLongReach = false;
     }
 
     public void CloseResearchOverlay()
@@ -198,6 +200,10 @@ internal sealed class SessionState
 
     public void SetPendingDirection(Direction direction) => PendingDirection = direction;
 
+    public void SetPendingInserterLongReach(bool longReach) => PendingInserterLongReach = longReach;
+
+    public void TogglePendingInserterLongReach() => PendingInserterLongReach = !PendingInserterLongReach;
+
     /// <summary>F1 / focus-commander: keep selection, clear build/demolish/bastion UI.</summary>
     public void ClearTransientUiKeepingSelection()
     {
@@ -218,17 +224,19 @@ internal sealed class SessionState
         PendingBuildKind = IsBuildMenuOpen ? defaultBuildKind : null;
         PendingDirection = Direction.East;
         PendingRecipe = null;
+        PendingInserterLongReach = false;
         RecipePage = 0;
         ClearDemolishHold();
     }
 
-    public void OpenBuildMenuWithCopy(EntityKind kind, Direction direction, ItemRecipeId? recipe)
+    public void OpenBuildMenuWithCopy(EntityKind kind, Direction direction, ItemRecipeId? recipe, bool inserterLongReach = false)
     {
         CloseExclusiveModesExcept(ExclusiveUiMode.Build);
         IsBuildMenuOpen = true;
         PendingBuildKind = kind;
         PendingDirection = direction;
         PendingRecipe = recipe;
+        PendingInserterLongReach = kind == EntityKind.Inserter && inserterLongReach;
         RecipePage = 0;
     }
 
@@ -243,6 +251,11 @@ internal sealed class SessionState
         if (kind != EntityKind.Assembler)
         {
             PendingRecipe = null;
+        }
+
+        if (kind != EntityKind.Inserter)
+        {
+            PendingInserterLongReach = false;
         }
     }
 

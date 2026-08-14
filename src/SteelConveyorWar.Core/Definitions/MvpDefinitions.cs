@@ -18,7 +18,7 @@ public static class MvpDefinitions
     public const int HubStorageStacks = 20;
     public const long MobileMoveWorldUnitsPerTick = WorldUnits.MobileMoveMilliPerTick;
     public const int BaseBastionTemplateCapacity = 10;
-    public const int BaseMaxBastions = 1;
+    public const int BaseMaxBastions = 3;
     public const int MaxBastionsAfterUnlock = 4;
 
     // R05: FrozenSet cannot be mutated by callers (previously a public mutable HashSet).
@@ -115,6 +115,46 @@ public static class MvpDefinitions
 
     public static bool IsGroundUnitForWallCover(EntityKind kind) =>
         IsGroundUnitForWallCover(kind, GameplayTablesCatalog.Embedded.GetStats(kind).MovementType);
+
+    /// <summary>
+    /// Commander and ground army units (not Scout, not buildings/turrets). Used by research selectors
+    /// and combat targeting helpers.
+    /// </summary>
+    public static bool IsGroundCombatUnit(EntityKind kind) =>
+        IsGroundCombatUnit(kind, GameplayTablesCatalog.Embedded.GetStats(kind).MovementType);
+
+    public static bool IsGroundCombatUnit(EntityKind kind, MovementType movementType)
+    {
+        if (movementType != MovementType.Ground)
+        {
+            return false;
+        }
+
+        return kind == EntityKind.Commander || UnitKinds.Contains(kind);
+    }
+
+    public static int InserterReachTiles(bool longReach) => longReach ? 2 : 1;
+
+    public static TilePosition InserterPickupTile(TilePosition position, Direction direction, bool longReach)
+        => position.Offset(OppositeDirection(direction), InserterReachTiles(longReach));
+
+    public static TilePosition InserterDropTile(TilePosition position, Direction direction, bool longReach)
+        => position.Offset(direction, InserterReachTiles(longReach));
+
+    public static Direction OppositeDirection(Direction direction) => direction switch
+    {
+        Direction.North => Direction.South,
+        Direction.East => Direction.West,
+        Direction.South => Direction.North,
+        Direction.West => Direction.East,
+        _ => direction
+    };
+
+    public static bool IsInserterKind(EntityKind kind) => kind == EntityKind.Inserter;
+
+    public static bool IsInserterOrGhost(WorldEntity entity)
+        => entity.Kind == EntityKind.Inserter
+           || (entity.Kind == EntityKind.GhostBuild && entity.BuildTargetKind == EntityKind.Inserter);
 
     public static CombatTargetCategory GetCombatTargetCategory(EntityKind kind)
     {

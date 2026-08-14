@@ -18,14 +18,75 @@ public sealed class ResearchEffectsTests
     }
 
     [Fact]
-    public void LightBot_UnlocksEntityContent()
+    public void LightBot_AppliesGroundUnitAttackBonus()
     {
         var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(42, ResearchProfileIds.MvpB, MvpResearchCatalog.CreateEmbedded()));
         var player = new PlayerId(1);
+        var baseline = MvpDefinitions.GetStats(EntityKind.Commander).AttackDamage;
+        var before = simulation.ResolveStat(player, ResearchStatIds.AttackDamage, baseline, EntityKind.Commander.ToString(), minValue: 0);
+
         ForceComplete(simulation, player, TechnologyId.LightBot);
 
-        Assert.Contains(EntityKind.LightBot.ToString(), simulation.GetPlayer(player).Research.UnlockedEntityKinds);
-        Assert.Contains(TechnologyId.LightBot, simulation.GetPlayer(player).ResearchedTechnologies);
+        var after = simulation.ResolveStat(player, ResearchStatIds.AttackDamage, baseline, EntityKind.Commander.ToString(), minValue: 0);
+        Assert.Equal(before + 1, after);
+
+        var lightBotBaseline = MvpDefinitions.GetStats(EntityKind.LightBot).AttackDamage;
+        var lightBotAfter = simulation.ResolveStat(
+            player, ResearchStatIds.AttackDamage, lightBotBaseline, EntityKind.LightBot.ToString(), minValue: 0);
+        Assert.Equal(lightBotBaseline + 1, lightBotAfter);
+
+        var commanderBonus = simulation.ResearchCatalog.Technologies[TechnologyId.LightBot].Effects
+            .OfType<AddModifierEffect>()
+            .Single(effect => effect.Selector == EntityKind.Commander.ToString());
+        Assert.Equal(ModifierOperation.Add, commanderBonus.Operation);
+        Assert.Equal(
+            GameplayTablesCatalog.Embedded.ResearchBonuses.AttackAddBasisPoints(EntityKind.Commander),
+            commanderBonus.ValueBasisPoints);
+
+        Assert.Equal(1, ResearchBonusTables.TenPercentOfAttack(5));
+        Assert.Equal(1, ResearchBonusTables.TenPercentOfAttack(10));
+        Assert.Equal(1, ResearchBonusTables.TenPercentOfAttack(14));
+        Assert.Equal(2, ResearchBonusTables.TenPercentOfAttack(24));
+        Assert.Equal(3, ResearchBonusTables.TenPercentOfAttack(32));
+
+        var scoutBaseline = MvpDefinitions.GetStats(EntityKind.Scout).AttackDamage;
+        var scoutAfter = simulation.ResolveStat(player, ResearchStatIds.AttackDamage, scoutBaseline, EntityKind.Scout.ToString(), minValue: 0);
+        Assert.Equal(scoutBaseline, scoutAfter);
+    }
+
+    [Fact]
+    public void ScoutResearch_AppliesGroundUnitArmorBonus()
+    {
+        var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(42, ResearchProfileIds.MvpB, MvpResearchCatalog.CreateEmbedded()));
+        var player = new PlayerId(1);
+        var baseline = MvpDefinitions.GetStats(EntityKind.LightBot).Armor;
+        var before = simulation.ResolveStat(player, ResearchStatIds.Armor, baseline, EntityKind.LightBot.ToString(), minValue: 0);
+
+        ForceComplete(simulation, player, TechnologyId.Scout);
+
+        var after = simulation.ResolveStat(player, ResearchStatIds.Armor, baseline, EntityKind.LightBot.ToString(), minValue: 0);
+        Assert.Equal(
+            before + GameplayTablesCatalog.Embedded.ResearchBonuses.GroundUnitArmorBonus[EntityKind.LightBot],
+            after);
+
+        var lightBotArmor = simulation.ResearchCatalog.Technologies[TechnologyId.Scout].Effects
+            .OfType<AddModifierEffect>()
+            .Single(effect => effect.Selector == EntityKind.LightBot.ToString());
+        Assert.Equal(ModifierOperation.Add, lightBotArmor.Operation);
+        Assert.Equal(
+            GameplayTablesCatalog.Embedded.ResearchBonuses.ArmorAddBasisPoints(EntityKind.LightBot),
+            lightBotArmor.ValueBasisPoints);
+
+        var commanderArmor = MvpDefinitions.GetStats(EntityKind.Commander).Armor;
+        Assert.Equal(
+            commanderArmor + 1,
+            simulation.ResolveStat(
+                player, ResearchStatIds.Armor, commanderArmor, EntityKind.Commander.ToString(), minValue: 0));
+
+        var scoutArmor = MvpDefinitions.GetStats(EntityKind.Scout).Armor;
+        Assert.Equal(
+            scoutArmor,
+            simulation.ResolveStat(player, ResearchStatIds.Armor, scoutArmor, EntityKind.Scout.ToString(), minValue: 0));
     }
 
     [Fact]

@@ -41,7 +41,8 @@ public sealed record OwnEntityDetail(
     CommanderDemolishOrder? QueuedDemolishOrder,
     TilePosition? MoveTarget,
     BastionOrder Order,
-    IReadOnlyDictionary<EntityKind, int> BastionTemplate)
+    IReadOnlyDictionary<EntityKind, int> BastionTemplate,
+    bool InserterLongReach)
 {
     public IReadOnlyDictionary<ItemId, int> Inventory
     {

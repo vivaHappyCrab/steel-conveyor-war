@@ -171,7 +171,8 @@ internal sealed class InputCommandMapper
                     simulation.BuildCostCatalog,
                     out var copyKind,
                     out var copyDirection,
-                    out var copyRecipe))
+                    out var copyRecipe,
+                    out var copyLongReach))
             {
                 var selectedId = _state.SelectedEntityId;
                 if (!SfmlInputHelpers.EnsureLocalCommanderSelected(simulation, _localPlayer, ref selectedId))
@@ -180,10 +181,40 @@ internal sealed class InputCommandMapper
                 }
 
                 _state.SetSelectedEntityId(selectedId);
-                _state.OpenBuildMenuWithCopy(copyKind, copyDirection, copyRecipe);
+                _state.OpenBuildMenuWithCopy(copyKind, copyDirection, copyRecipe, copyLongReach);
             }
 
             return InputMapResult.Handled;
+        }
+
+        if (key == "F")
+        {
+            WorldEntity? inserter = null;
+            if (hover.Entity is not null
+                && hover.EntityVisibleToLocalPlayer
+                && hover.Entity.OwnerId == _localPlayer
+                && MvpDefinitions.IsInserterOrGhost(hover.Entity))
+            {
+                inserter = hover.Entity;
+            }
+            else if (selectedEntity is not null
+                     && selectedEntity.OwnerId == _localPlayer
+                     && MvpDefinitions.IsInserterOrGhost(selectedEntity))
+            {
+                inserter = selectedEntity;
+            }
+
+            if (inserter is not null)
+            {
+                _commands.SetInserterReach(inserter.Id, _localPlayer, !inserter.InserterLongReach);
+                return InputMapResult.Handled;
+            }
+
+            if (_state.IsBuildMenuOpen && _state.PendingBuildKind == EntityKind.Inserter)
+            {
+                _state.TogglePendingInserterLongReach();
+                return InputMapResult.Handled;
+            }
         }
 
         if (key == "B" && selectedEntity?.Kind == EntityKind.Commander && selectedEntity.OwnerId == _localPlayer)
@@ -430,7 +461,8 @@ internal sealed class InputCommandMapper
                     _state.PendingBuildKind.Value,
                     tile,
                     _state.PendingDirection,
-                    _state.PendingRecipe);
+                    _state.PendingRecipe,
+                    _state.PendingBuildKind == EntityKind.Inserter && _state.PendingInserterLongReach);
                 return InputMapResult.Handled;
             }
 

@@ -47,7 +47,8 @@ public sealed record QueueCommanderBuildCommand(
     EntityKind TargetKind,
     TilePosition Position,
     Direction Direction = Direction.East,
-    ItemRecipeId? SelectedItemRecipe = null) : SimulationCommandBase(Actor, Tick)
+    ItemRecipeId? SelectedItemRecipe = null,
+    bool InserterLongReach = false) : SimulationCommandBase(Actor, Tick)
 {
     public override SimulationCommandKind Kind => SimulationCommandKind.QueueCommanderBuild;
 }
@@ -65,7 +66,8 @@ public sealed record PlaceGhostBuildFromCommanderCommand(
     EntityKind TargetKind,
     TilePosition Position,
     Direction Direction = Direction.East,
-    ItemRecipeId? SelectedItemRecipe = null) : SimulationCommandBase(Actor, Tick)
+    ItemRecipeId? SelectedItemRecipe = null,
+    bool InserterLongReach = false) : SimulationCommandBase(Actor, Tick)
 {
     public override SimulationCommandKind Kind => SimulationCommandKind.PlaceGhostBuildFromCommander;
 }
@@ -214,4 +216,13 @@ public sealed record SetProjectWeightCommand(
     int Weight) : SimulationCommandBase(Actor, Tick)
 {
     public override SimulationCommandKind Kind => SimulationCommandKind.SetProjectWeight;
+}
+
+public sealed record SetInserterReachCommand(
+    PlayerId Actor,
+    long Tick,
+    int EntityId,
+    bool LongReach) : SimulationCommandBase(Actor, Tick)
+{
+    public override SimulationCommandKind Kind => SimulationCommandKind.SetInserterReach;
 }

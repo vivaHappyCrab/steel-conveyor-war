@@ -88,8 +88,7 @@ public sealed partial record GameplayTablesCatalog
     "LightBot": {
       "inputs": [{ "item": "IronPlate", "amount": 5 }],
       "outputKind": "LightBot",
-      "workTicks": 60,
-      "requiredTechnology": "technology.t1.light-bot"
+      "workTicks": 60
     },
     "BasicTank": {
       "inputs": [
@@ -102,8 +101,7 @@ public sealed partial record GameplayTablesCatalog
     "Scout": {
       "inputs": [{ "item": "Composite", "amount": 4 }],
       "outputKind": "Scout",
-      "workTicks": 60,
-      "requiredTechnology": "technology.t1.scout"
+      "workTicks": 60
     },
     "MediumBot": {
       "inputs": [{ "item": "Steel", "amount": 5 }],
@@ -177,7 +175,7 @@ public sealed partial record GameplayTablesCatalog
   },
   "entityStats": {
     "Commander": {
-      "maxHealth": 300,
+      "maxHealth": 600,
       "attackDamage": 10,
       "attackRange": 3,
       "attackCooldownTicks": 25,
@@ -398,7 +396,27 @@ public sealed partial record GameplayTablesCatalog
     { "projectile": "AirToGround", "category": "Unit", "basisPoints": 11000 },
     { "projectile": "AirToGround", "category": "Building", "basisPoints": 5000 },
     { "projectile": "AirToGround", "category": "Wall", "basisPoints": 4000 }
-  ]
+  ],
+  "researchBonuses": {
+    "groundUnitAttackBonus": {
+      "Commander": 1,
+      "LightBot": 1,
+      "BasicTank": 1,
+      "MediumBot": 1,
+      "MediumTank": 2,
+      "AntiAirBot": 1,
+      "RocketLauncher": 3
+    },
+    "groundUnitArmorBonus": {
+      "Commander": 1,
+      "LightBot": 1,
+      "BasicTank": 1,
+      "MediumBot": 1,
+      "MediumTank": 1,
+      "AntiAirBot": 1,
+      "RocketLauncher": 1
+    }
+  }
 }
 """";
 

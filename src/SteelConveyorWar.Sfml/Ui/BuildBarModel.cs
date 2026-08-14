@@ -101,12 +101,14 @@ public static class BuildBarModel
         BuildCostCatalog buildCosts,
         out EntityKind kind,
         out Direction direction,
-        out ItemRecipeId? recipe)
+        out ItemRecipeId? recipe,
+        out bool inserterLongReach)
     {
         ArgumentNullException.ThrowIfNull(buildCosts);
         kind = ResolveCopyKind(entity);
         direction = Direction.East;
         recipe = null;
+        inserterLongReach = false;
         if (!buildCosts.Costs.ContainsKey(kind))
         {
             return false;
@@ -120,6 +122,11 @@ public static class BuildBarModel
         if (kind == EntityKind.Assembler)
         {
             recipe = entity.SelectedItemRecipe;
+        }
+
+        if (kind == EntityKind.Inserter)
+        {
+            inserterLongReach = entity.InserterLongReach;
         }
 
         return true;
