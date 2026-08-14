@@ -23,7 +23,7 @@ public static class GameplayTablesLoader
         var itemRecipes = ParseItemRecipes(dto.ItemRecipes);
         var entityStats = ParseEntityStats(dto.EntityStats);
         var resistances = ParseResistances(dto.Resistances);
-        var researchBonuses = ParseResearchBonuses(dto.ResearchBonuses);
+        var researchBonuses = ParseResearchBonuses(dto.ResearchBonuses, entityStats);
 
         if (entityStats.Count == 0)
         {
@@ -330,16 +330,13 @@ public static class GameplayTablesLoader
         return result;
     }
 
-    private static ResearchBonusTables ParseResearchBonuses(ResearchBonusesDto? source)
+    private static ResearchBonusTables ParseResearchBonuses(
+        ResearchBonusesDto? source,
+        IReadOnlyDictionary<EntityKind, EntityStats> entityStats)
     {
         if (source is null)
         {
-            return ResearchBonusTables.Default;
-        }
-
-        if (source.GroundUnitAttackBonusPercent < 0)
-        {
-            throw new InvalidOperationException("researchBonuses.groundUnitAttackBonusPercent must be >= 0.");
+            return DeriveDefaultAttackBonuses(entityStats);
         }
 
         if (source.GroundUnitArmorBonus < 0)
@@ -347,7 +344,56 @@ public static class GameplayTablesLoader
             throw new InvalidOperationException("researchBonuses.groundUnitArmorBonus must be >= 0.");
         }
 
-        return new ResearchBonusTables(source.GroundUnitAttackBonusPercent, source.GroundUnitArmorBonus);
+        Dictionary<EntityKind, int> attackBonus;
+        if (source.GroundUnitAttackBonus is null || source.GroundUnitAttackBonus.Count == 0)
+        {
+            attackBonus = DeriveDefaultAttackBonuses(entityStats).GroundUnitAttackBonus
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
+        }
+        else
+        {
+            attackBonus = ParseKindIntMap(source.GroundUnitAttackBonus, "researchBonuses.groundUnitAttackBonus");
+            foreach (var (kind, amount) in attackBonus)
+            {
+                if (amount < 0)
+                {
+                    throw new InvalidOperationException(
+                        $"researchBonuses.groundUnitAttackBonus '{kind}' must be >= 0.");
+                }
+
+                var movement = entityStats.TryGetValue(kind, out var stats)
+                    ? stats.MovementType
+                    : MovementType.Ground;
+                if (!MvpDefinitions.IsGroundCombatUnit(kind, movement))
+                {
+                    throw new InvalidOperationException(
+                        $"researchBonuses.groundUnitAttackBonus '{kind}' is not a ground combat unit.");
+                }
+            }
+        }
+
+        return new ResearchBonusTables(attackBonus, source.GroundUnitArmorBonus);
+    }
+
+    private static ResearchBonusTables DeriveDefaultAttackBonuses(
+        IReadOnlyDictionary<EntityKind, EntityStats> entityStats)
+    {
+        var attackBonus = new Dictionary<EntityKind, int>();
+        foreach (var (kind, stats) in entityStats)
+        {
+            if (!MvpDefinitions.IsGroundCombatUnit(kind, stats.MovementType))
+            {
+                continue;
+            }
+
+            var bonus = ResearchBonusTables.TenPercentOfAttack(stats.AttackDamage);
+            if (bonus > 0)
+            {
+                attackBonus[kind] = bonus;
+            }
+        }
+
+        return new ResearchBonusTables(attackBonus, ResearchBonusTables.Default.GroundUnitArmorBonus);
     }
 
     private static IReadOnlyDictionary<ItemId, int> ParseCostLines(List<CostLineDto>? cost, string label)
@@ -400,7 +446,7 @@ public static class GameplayTablesLoader
 
     private sealed class ResearchBonusesDto
     {
-        public int GroundUnitAttackBonusPercent { get; set; } = 10;
+        public Dictionary<string, int>? GroundUnitAttackBonus { get; set; }
         public int GroundUnitArmorBonus { get; set; } = 1;
     }
 

@@ -266,9 +266,51 @@
         {
           "type": "addModifier",
           "statId": "stat.combat.attack-damage",
-          "operation": "Multiply",
-          "valueBasisPoints": 11000,
-          "selector": "GroundUnit"
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "AntiAirBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "BasicTank"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "Commander"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "LightBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "MediumBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 20000,
+          "selector": "MediumTank"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 30000,
+          "selector": "RocketLauncher"
         }
       ],
       "tags": [

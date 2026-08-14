@@ -398,7 +398,15 @@ public sealed partial record GameplayTablesCatalog
     { "projectile": "AirToGround", "category": "Wall", "basisPoints": 4000 }
   ],
   "researchBonuses": {
-    "groundUnitAttackBonusPercent": 10,
+    "groundUnitAttackBonus": {
+      "Commander": 1,
+      "LightBot": 1,
+      "BasicTank": 1,
+      "MediumBot": 1,
+      "MediumTank": 2,
+      "AntiAirBot": 1,
+      "RocketLauncher": 3
+    },
     "groundUnitArmorBonus": 1
   }
 }

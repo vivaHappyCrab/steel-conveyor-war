@@ -138,19 +138,30 @@ public readonly record struct ResistanceEntry(
     int BasisPoints);
 
 /// <summary>
-/// Tuneable T1 optional combat/bastion bonus magnitudes. Attack percent is applied as a multiply
-/// of (10000 + percent×100) basis points so +10% floors per unit default.
+/// Tuneable T1 optional combat/bastion bonus magnitudes. Attack is an absolute add per
+/// ground combat unit (starter values are 10% of that unit's default attack, rounded half-up).
 /// </summary>
 public readonly record struct ResearchBonusTables(
-    int GroundUnitAttackBonusPercent,
+    IReadOnlyDictionary<EntityKind, int> GroundUnitAttackBonus,
     int GroundUnitArmorBonus)
 {
-    public static ResearchBonusTables Default { get; } = new(10, 1);
+    public IReadOnlyDictionary<EntityKind, int> GroundUnitAttackBonus
+    {
+        get => field!;
+        init => field = ContentFreeze.Dictionary(value);
+    } = ContentFreeze.Dictionary(GroundUnitAttackBonus);
 
-    public int GroundUnitAttackMultiplyBasisPoints =>
-        ModifierResolver.BasisPointsScale
-        + ModifierResolver.BasisPointsScale * GroundUnitAttackBonusPercent / 100;
+    public static ResearchBonusTables Default { get; } = new(
+        new Dictionary<EntityKind, int>(),
+        1);
 
     public int GroundUnitArmorAddBasisPoints =>
         GroundUnitArmorBonus * ModifierResolver.BasisPointsScale;
+
+    public int AttackAddBasisPoints(EntityKind kind) =>
+        GroundUnitAttackBonus.GetValueOrDefault(kind) * ModifierResolver.BasisPointsScale;
+
+    /// <summary>Starter absolute bonus: 10% of base attack, rounded half away from zero.</summary>
+    public static int TenPercentOfAttack(int attackDamage) =>
+        attackDamage <= 0 ? 0 : (attackDamage + 5) / 10;
 }

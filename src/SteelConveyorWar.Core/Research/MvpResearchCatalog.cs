@@ -59,12 +59,20 @@ public static class MvpResearchCatalog
             "optional", "qualification", "infrastructure", "tactical");
 
         var bonuses = GameplayTablesCatalog.Embedded.ResearchBonuses;
-        var groundAttackBp = bonuses.GroundUnitAttackMultiplyBasisPoints;
         var groundArmorBp = bonuses.GroundUnitArmorAddBasisPoints;
+        var groundAttackEffects = bonuses.GroundUnitAttackBonus
+            .Where(pair => pair.Value > 0)
+            .OrderBy(pair => pair.Key.ToString(), StringComparer.Ordinal)
+            .Select(pair => (ResearchEffect)new AddModifierEffect(
+                ResearchStatIds.AttackDamage,
+                ModifierOperation.Add,
+                pair.Value * ModifierResolver.BasisPointsScale,
+                pair.Key.ToString()))
+            .ToArray();
 
         // T1 optional combat/bastion bonuses (LightBot/Scout/Walls are T1 baseline unlocks).
         Tech(TechnologyId.LightBot, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.AttackDamage, ModifierOperation.Multiply, groundAttackBp, ResearchSelectorIds.GroundUnit)],
+            groundAttackEffects,
             "optional", "tactical");
         Tech(TechnologyId.Scout, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.Armor, ModifierOperation.Add, groundArmorBp, ResearchSelectorIds.GroundUnit)],

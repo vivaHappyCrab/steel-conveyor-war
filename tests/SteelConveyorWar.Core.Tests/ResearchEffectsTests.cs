@@ -28,10 +28,26 @@ public sealed class ResearchEffectsTests
         ForceComplete(simulation, player, TechnologyId.LightBot);
 
         var after = simulation.ResolveStat(player, ResearchStatIds.AttackDamage, baseline, EntityKind.Commander.ToString(), minValue: 0);
-        Assert.True(after > before);
+        Assert.Equal(before + 1, after);
+
+        var lightBotBaseline = MvpDefinitions.GetStats(EntityKind.LightBot).AttackDamage;
+        var lightBotAfter = simulation.ResolveStat(
+            player, ResearchStatIds.AttackDamage, lightBotBaseline, EntityKind.LightBot.ToString(), minValue: 0);
+        Assert.Equal(lightBotBaseline + 1, lightBotAfter);
+
+        var commanderBonus = simulation.ResearchCatalog.Technologies[TechnologyId.LightBot].Effects
+            .OfType<AddModifierEffect>()
+            .Single(effect => effect.Selector == EntityKind.Commander.ToString());
+        Assert.Equal(ModifierOperation.Add, commanderBonus.Operation);
         Assert.Equal(
-            GameplayTablesCatalog.Embedded.ResearchBonuses.GroundUnitAttackMultiplyBasisPoints,
-            simulation.ResearchCatalog.Technologies[TechnologyId.LightBot].Effects.OfType<AddModifierEffect>().Single().ValueBasisPoints);
+            GameplayTablesCatalog.Embedded.ResearchBonuses.AttackAddBasisPoints(EntityKind.Commander),
+            commanderBonus.ValueBasisPoints);
+
+        Assert.Equal(1, ResearchBonusTables.TenPercentOfAttack(5));
+        Assert.Equal(1, ResearchBonusTables.TenPercentOfAttack(10));
+        Assert.Equal(1, ResearchBonusTables.TenPercentOfAttack(14));
+        Assert.Equal(2, ResearchBonusTables.TenPercentOfAttack(24));
+        Assert.Equal(3, ResearchBonusTables.TenPercentOfAttack(32));
 
         var scoutBaseline = MvpDefinitions.GetStats(EntityKind.Scout).AttackDamage;
         var scoutAfter = simulation.ResolveStat(player, ResearchStatIds.AttackDamage, scoutBaseline, EntityKind.Scout.ToString(), minValue: 0);
