@@ -62,6 +62,15 @@ public sealed class ExtractedSystemsTests
     }
 
     [Fact]
+    public void CanFireWhileMoving_FlyingArmyUnitsOnly()
+    {
+        Assert.True(MvpDefinitions.CanFireWhileMoving(EntityKind.Scout, MovementType.Flying));
+        Assert.False(MvpDefinitions.CanFireWhileMoving(EntityKind.BasicTank, MovementType.Ground));
+        Assert.False(MvpDefinitions.CanFireWhileMoving(EntityKind.LightBot, MovementType.Ground));
+        Assert.True(MvpDefinitions.CanFireWhileMoving(EntityKind.Commander, MovementType.Ground));
+    }
+
+    [Fact]
     public void CombatSystem_DoesNotDamageAlliedUnit()
     {
         var size = new WorldSize(16, 16);

@@ -17,8 +17,11 @@ public sealed class WorldRendererTests
         Assert.Equal(3, points.Length);
 
         var tip = points[0];
-        var angle = AngleDegrees(points[1] - tip, points[2] - tip);
-        Assert.InRange(angle, 119.0, 121.0);
+        var left = points[2];
+        var right = points[1];
+        Assert.InRange(AngleDegrees(right - tip, left - tip), 119.0, 121.0);
+        Assert.InRange(AngleDegrees(tip - left, right - left), 29.0, 31.0);
+        Assert.InRange(AngleDegrees(tip - right, left - right), 29.0, 31.0);
     }
 
     [Fact]

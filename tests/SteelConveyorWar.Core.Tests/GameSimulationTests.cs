@@ -1594,6 +1594,21 @@ public class GameSimulationTests
     }
 
     [Fact]
+    public void TryWithdrawFromHubOrOutput_SucceedsAtExpandedInteractRadius()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var commander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
+        Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Hub, NearBlue(simulation, 9, 0), out var hubId));
+        AdvanceTicks(simulation, 30);
+        Assert.True(simulation.AddItemToEntity(hubId, ItemId.IronPlate, 3));
+        var initialIron = commander.Inventory.Count(ItemId.IronPlate);
+
+        Assert.True(simulation.TryWithdrawFromHubOrOutput(commander.Id, hubId));
+        Assert.Equal(initialIron + 3, commander.Inventory.Count(ItemId.IronPlate));
+        Assert.Equal(0, simulation.World.GetEntity(hubId)!.Inventory.Count(ItemId.IronPlate));
+    }
+
+    [Fact]
     public void TryWithdrawFromHubOrOutput_RejectsEnemyHub()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
