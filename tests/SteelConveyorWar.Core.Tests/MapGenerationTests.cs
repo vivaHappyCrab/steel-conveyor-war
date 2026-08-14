@@ -59,6 +59,7 @@ public class MapGenerationTests
         var midY = simulation.World.Size.Height / 2;
 
         Assert.Equal(new WorldSize(192, 112), simulation.World.Size);
+        Assert.Equal(6, MvpDefinitions.CommanderInteractRadius);
         Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.IronOre && t.X < half);
         Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.CopperOre && t.X < half);
         Assert.Contains(EnumerateTerrain(simulation), t => t.Type == TerrainType.IronOre && t.X >= half);
@@ -71,11 +72,32 @@ public class MapGenerationTests
         var startX = 4;
         var nearestIron = EnumerateTerrain(simulation)
             .Where(t => t.Type == TerrainType.IronOre && t.X < half)
-            .Min(t => Math.Abs(t.X - startX) + Math.Abs(t.Y - midY));
+            .Min(t => Math.Max(Math.Abs(t.X - startX), Math.Abs(t.Y - midY)));
         var nearestCoal = EnumerateTerrain(simulation)
             .Where(t => t.Type == TerrainType.Coal && t.X < half)
-            .Min(t => Math.Abs(t.X - startX) + Math.Abs(t.Y - midY));
+            .Min(t => Math.Max(Math.Abs(t.X - startX), Math.Abs(t.Y - midY)));
+        Assert.True(nearestIron >= MvpDefinitions.MinStartResourceChebyshevDistance);
         Assert.True(nearestCoal > nearestIron);
+    }
+
+    [Fact]
+    public void StartingResourceTiles_AreAtLeastMinChebyshevFromCommanderStarts()
+    {
+        foreach (var seed in new[] { 1, 42, 99, 12345 })
+        {
+            var simulation = GameSimulation.CreateNewGame(randomSeed: seed);
+            foreach (var playerId in new[] { 1, 2 })
+            {
+                var commander = simulation.World.Entities.Single(
+                    entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(playerId));
+                var nearest = EnumerateTerrain(simulation)
+                    .Where(t => t.Type.IsResource())
+                    .Min(t => Math.Max(Math.Abs(t.X - commander.Position.X), Math.Abs(t.Y - commander.Position.Y)));
+                Assert.True(
+                    nearest >= MvpDefinitions.MinStartResourceChebyshevDistance,
+                    $"seed {seed} player {playerId} nearest resource Chebyshev {nearest}");
+            }
+        }
     }
 
     [Fact]

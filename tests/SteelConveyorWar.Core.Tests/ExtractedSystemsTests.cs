@@ -34,6 +34,34 @@ public sealed class ExtractedSystemsTests
     }
 
     [Fact]
+    public void CombatSystem_GroundTankDoesNotFireWhileMoving()
+    {
+        var size = new WorldSize(16, 16);
+        var terrain = new TerrainType[size.Width, size.Height];
+        var p1 = new PlayerId(1);
+        var p2 = new PlayerId(2);
+        var attacker = new WorldEntity(1, EntityKind.BasicTank, new TilePosition(5, 5), p1)
+        {
+            CurrentWaypoint = new TilePosition(6, 5)
+        };
+        var target = new WorldEntity(2, EntityKind.BasicTank, new TilePosition(6, 5), p2);
+        var world = new GameWorld(size, terrain, new[] { attacker, target });
+        var players = new[]
+        {
+            new PlayerState(p1, "P1", size, teamId: 1),
+            new PlayerState(p2, "P2", size, teamId: 2),
+        };
+        var context = new FakeSystemContext(world, players, tick: 1);
+        var combat = new CombatSystem(context);
+
+        var healthBefore = target.Health;
+        combat.Tick();
+
+        Assert.Equal(healthBefore, target.Health);
+        Assert.Equal(0, attacker.AttackCooldownRemaining);
+    }
+
+    [Fact]
     public void CombatSystem_DoesNotDamageAlliedUnit()
     {
         var size = new WorldSize(16, 16);

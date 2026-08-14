@@ -36,7 +36,8 @@ public static class MvpResearchCatalog
                 effects.ToList(),
                 tags,
                 ResearchDisplayNames.GetDisplayName(id),
-                ResearchDisplayNames.GetDescription(id, tags)));
+                ResearchDisplayNames.GetDescription(id, tags),
+                []));
         }
 
         // T1 mandatory B/C-style pillars (also used by hybrid)
@@ -191,6 +192,15 @@ public static class MvpResearchCatalog
         Tech(new TechnologyId("technology.t2.doctrine.ranged-pressure"), ResearchTierIds.T2, 4, ItemId.SciencePackT2,
             [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 8_500, EntityKind.RocketLauncher.ToString())],
             "doctrine", "tactical", "optional");
+
+        void Require(TechnologyId id, params TechnologyId[] prerequisites)
+        {
+            var index = list.FindIndex(tech => tech.Id == id);
+            list[index] = list[index] with { Prerequisites = prerequisites };
+        }
+
+        Require(TechnologyId.LightBot, TechnologyId.CommandI);
+        Require(TechnologyId.Scout, TechnologyId.CommandI);
 
         return list.ToDictionary(tech => tech.Id);
     }

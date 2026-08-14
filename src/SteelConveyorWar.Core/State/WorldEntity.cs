@@ -122,6 +122,15 @@ public sealed class WorldEntity
 
     public TilePosition? CurrentWaypoint { get; internal set; }
 
+    /// <summary>
+    /// True when the entity has an in-flight path, waypoint, or move target and is not garrisoned.
+    /// </summary>
+    public bool IsActivelyMoving =>
+        !IsGarrisoned
+        && (CurrentWaypoint is not null
+            || MovementPath.Count > 0
+            || (MoveTarget is not null && MoveTarget.Value != Position));
+
     public ItemRecipeId? SelectedItemRecipe { get; internal set; }
 
     public IReadOnlyDictionary<EntityKind, int> BastionTemplate => _bastionTemplate.AsReadOnly();

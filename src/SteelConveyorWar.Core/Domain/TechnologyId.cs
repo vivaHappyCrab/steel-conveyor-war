@@ -2,11 +2,11 @@ namespace SteelConveyorWar.Core;
 
 public readonly record struct TechnologyId(string Value) : IComparable<TechnologyId>
 {
-    public static readonly TechnologyId LightBot = new("technology.t1.light-bot");
+    public static readonly TechnologyId LightBot = new("technology.t1.ground-unit-attack");
     public static readonly TechnologyId ImprovedConveyors = new("technology.t1.improved-conveyors");
     public static readonly TechnologyId MachineGunTurret = new("technology.t1.machine-gun-turret");
-    public static readonly TechnologyId ConcreteWalls = new("technology.t1.concrete-walls");
-    public static readonly TechnologyId Scout = new("technology.t1.scout");
+    public static readonly TechnologyId ConcreteWalls = new("technology.t1.additional-bastion");
+    public static readonly TechnologyId Scout = new("technology.t1.ground-unit-armor");
     public static readonly TechnologyId MediumBot = new("technology.t2.medium-bot");
     public static readonly TechnologyId MediumTank = new("technology.t2.medium-tank");
     public static readonly TechnologyId RocketLauncher = new("technology.t2.rocket-launcher");

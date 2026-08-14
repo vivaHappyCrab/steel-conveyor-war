@@ -270,7 +270,8 @@ internal sealed class ResearchSystem
                     tech.Cost.SciencePacks,
                     tech.Tags,
                     tech.DisplayName,
-                    tech.Description);
+                    tech.Description,
+                    tech.Prerequisites);
             })
             .ToList();
 
@@ -770,6 +771,14 @@ internal sealed class ResearchSystem
         if (!IsTechnologyInProfile(definition.Id))
         {
             return false;
+        }
+
+        for (var i = 0; i < definition.Prerequisites.Count; i++)
+        {
+            if (!research.CompletedTechnologies.Contains(definition.Prerequisites[i]))
+            {
+                return false;
+            }
         }
 
         if (definition.TierId == research.CurrentTierId)

@@ -221,7 +221,10 @@ internal sealed class InputCommandMapper
         {
             if (_buildMenuKinds.Count > 0)
             {
-                _state.ToggleBuildMenu(_buildMenuKinds[0]);
+                var reopen = _state.LastBuildKind is EntityKind last && _buildMenuKinds.Contains(last)
+                    ? last
+                    : _buildMenuKinds[0];
+                _state.ToggleBuildMenu(reopen);
             }
 
             return InputMapResult.Handled;

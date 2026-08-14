@@ -124,6 +124,17 @@ public sealed class ResearchEffectsTests
 
     private static void ForceComplete(GameSimulation simulation, PlayerId playerId, TechnologyId technologyId)
     {
+        if (simulation.ResearchCatalog.Technologies.TryGetValue(technologyId, out var definition))
+        {
+            foreach (var prerequisite in definition.Prerequisites)
+            {
+                if (!simulation.GetPlayer(playerId).Research.CompletedTechnologies.Contains(prerequisite))
+                {
+                    ForceComplete(simulation, playerId, prerequisite);
+                }
+            }
+        }
+
         Assert.True(simulation.TryForceCompleteResearch(playerId, technologyId, confirmExclusive: true));
         simulation.AdvanceTick();
         Assert.Contains(technologyId, simulation.GetPlayer(playerId).Research.CompletedTechnologies);

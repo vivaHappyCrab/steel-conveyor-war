@@ -13,7 +13,8 @@ public sealed record ResearchTechnologySnapshot(
     IReadOnlyList<SciencePackCost> SciencePacks,
     IReadOnlyList<string> Tags,
     string DisplayName,
-    string Description);
+    string Description,
+    IReadOnlyList<TechnologyId> Prerequisites);
 
 public sealed record ResearchTrackSnapshot(
     string Id,

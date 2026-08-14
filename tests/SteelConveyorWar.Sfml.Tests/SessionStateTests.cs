@@ -58,6 +58,23 @@ public sealed class SessionStateTests
     }
 
     [Fact]
+    public void ToggleBuildMenu_ReopensWithLastSelectedKind()
+    {
+        var state = new SessionState(initialSelectedEntityId: 7);
+        state.ToggleBuildMenu(EntityKind.Conveyor);
+        state.SelectPendingBuildKind(EntityKind.Hub);
+        Assert.Equal(EntityKind.Hub, state.PendingBuildKind);
+
+        state.ToggleBuildMenu(EntityKind.Conveyor);
+        Assert.False(state.IsBuildMenuOpen);
+        Assert.Null(state.PendingBuildKind);
+
+        state.ToggleBuildMenu(EntityKind.Mine);
+        Assert.True(state.IsBuildMenuOpen);
+        Assert.Equal(EntityKind.Hub, state.PendingBuildKind);
+    }
+
+    [Fact]
     public void DemolishHold_BeginAdvanceCommit_AndClear()
     {
         var state = new SessionState();

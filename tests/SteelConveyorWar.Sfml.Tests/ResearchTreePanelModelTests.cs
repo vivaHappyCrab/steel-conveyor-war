@@ -38,6 +38,7 @@ public sealed class ResearchTreePanelModelTests
     {
         var simulation = GameSimulation.CreateNewGame(new GameCreationOptions(42, ResearchProfileIds.MvpB, MvpResearchCatalog.CreateEmbedded()));
         var player = new PlayerId(1);
+        Assert.True(simulation.TryForceCompleteResearch(player, TechnologyId.CommandI, confirmExclusive: true));
         Assert.True(simulation.TryStartResearch(player, TechnologyId.LightBot));
 
         var snapshot = simulation.GetResearchSnapshot(player);

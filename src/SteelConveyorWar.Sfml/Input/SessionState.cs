@@ -24,6 +24,7 @@ internal sealed class SessionState
     public int? SelectedEntityId { get; private set; }
     public bool IsBuildMenuOpen { get; private set; }
     public EntityKind? PendingBuildKind { get; private set; }
+    public EntityKind? LastBuildKind { get; private set; }
     public Direction PendingDirection { get; private set; } = Direction.East;
     public ItemRecipeId? PendingRecipe { get; private set; }
     public bool PendingInserterLongReach { get; private set; }
@@ -221,7 +222,15 @@ internal sealed class SessionState
         }
 
         IsBuildMenuOpen = !IsBuildMenuOpen;
-        PendingBuildKind = IsBuildMenuOpen ? defaultBuildKind : null;
+        if (IsBuildMenuOpen)
+        {
+            PendingBuildKind = LastBuildKind ?? defaultBuildKind;
+            LastBuildKind = PendingBuildKind;
+        }
+        else
+        {
+            PendingBuildKind = null;
+        }
         PendingDirection = Direction.East;
         PendingRecipe = null;
         PendingInserterLongReach = false;
@@ -234,6 +243,7 @@ internal sealed class SessionState
         CloseExclusiveModesExcept(ExclusiveUiMode.Build);
         IsBuildMenuOpen = true;
         PendingBuildKind = kind;
+        LastBuildKind = kind;
         PendingDirection = direction;
         PendingRecipe = recipe;
         PendingInserterLongReach = kind == EntityKind.Inserter && inserterLongReach;
@@ -243,6 +253,7 @@ internal sealed class SessionState
     public void SelectPendingBuildKind(EntityKind kind)
     {
         PendingBuildKind = kind;
+        LastBuildKind = kind;
         if (!BuildBarModel.IsDirectedKind(kind))
         {
             PendingDirection = Direction.East;

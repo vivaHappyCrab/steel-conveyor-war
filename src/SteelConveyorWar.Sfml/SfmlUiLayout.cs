@@ -19,5 +19,5 @@ internal static class SfmlUiLayout
     public const float HudTextStartY = 10f;
     public const float ResearchDoubleClickSeconds = 0.35f;
     public const float CombatShotLingerSeconds = 0.12f;
-    public const float DemolishHoldSeconds = 1f;
+    public const float DemolishHoldSeconds = 0.5f;
 }

@@ -641,7 +641,7 @@ public sealed partial class GameSimulation
                 }
             }
 
-            if (attackCount > 0 && allArrived)
+            if (attackCount > 0 && allArrived && !AssignedAttackUnitsHaveEnemyInRange())
             {
                 SwitchBastionToDefend(bastion);
             }
@@ -674,6 +674,32 @@ public sealed partial class GameSimulation
                 SwitchBastionToDefend(bastion);
             }
         }
+    }
+
+    private bool AssignedAttackUnitsHaveEnemyInRange()
+    {
+        var spatial = _spatialQueryIndex;
+        for (var i = 0; i < _scratchBastionUnits.Count; i++)
+        {
+            var unit = _scratchBastionUnits[i];
+            if (unit.Order.Kind != BastionOrderKind.AttackArea)
+            {
+                continue;
+            }
+
+            var stats = GameplayTables.GetStats(unit.Kind);
+            if (stats.AttackDamage <= 0 || stats.AttackRange <= 0)
+            {
+                continue;
+            }
+
+            if (FindNearestEnemyInRange(unit, stats.AttackRange, spatial) is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void SwitchBastionToDefend(WorldEntity bastion)

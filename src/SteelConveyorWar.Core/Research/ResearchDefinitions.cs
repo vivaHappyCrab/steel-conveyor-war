@@ -18,7 +18,8 @@ public sealed record TechnologyDefinition(
     IReadOnlyList<ResearchEffect> Effects,
     IReadOnlyList<string> Tags,
     string DisplayName,
-    string Description)
+    string Description,
+    IReadOnlyList<TechnologyId> Prerequisites)
 {
     public IReadOnlyList<ResearchEffect> Effects
     {
@@ -31,6 +32,12 @@ public sealed record TechnologyDefinition(
         get => field!;
         init => field = ContentFreeze.List(value);
     } = ContentFreeze.List(Tags);
+
+    public IReadOnlyList<TechnologyId> Prerequisites
+    {
+        get => field!;
+        init => field = ContentFreeze.List(value);
+    } = ContentFreeze.List(Prerequisites);
 }
 
 public sealed record TierDefinition(

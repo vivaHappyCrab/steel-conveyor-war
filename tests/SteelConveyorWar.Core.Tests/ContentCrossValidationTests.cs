@@ -116,7 +116,8 @@ public sealed class ContentCrossValidationTests
                     [new UnlockContentEffect("spaceship", "WarpDrive")],
                     ["test"],
                     "Bad Unlock",
-                    "test")
+                    "test",
+                    [])
             }
         };
 
@@ -145,7 +146,8 @@ public sealed class ContentCrossValidationTests
                     [new UnlockContentEffect("entity", "DefinitelyNotAnEntity")],
                     ["test"],
                     "Bad Entity",
-                    "test")
+                    "test",
+                    [])
             }
         };
 
@@ -174,7 +176,8 @@ public sealed class ContentCrossValidationTests
                     [new UnlockContentEffect("item-recipe", "NotARealRecipe")],
                     ["test"],
                     "Bad Item Recipe",
-                    "test")
+                    "test",
+                    [])
             }
         };
 
@@ -203,7 +206,8 @@ public sealed class ContentCrossValidationTests
                     [UnlockContentEffect.Recipe(EntityKind.Wall.ToString())],
                     ["test"],
                     "Missing Recipe",
-                    "test")
+                    "test",
+                    [])
             }
         };
 

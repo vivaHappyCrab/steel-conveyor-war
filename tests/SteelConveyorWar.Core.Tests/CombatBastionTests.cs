@@ -44,6 +44,71 @@ public sealed class CombatBastionTests
     }
 
     [Fact]
+    public void TryIssueBastionOrder_AttackArea_DoesNotCompleteWhileEnemyInRange()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var tank = ProduceTankForBastion(simulation, bastion.Id);
+        var enemy = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        var stand = new TilePosition(20, 20);
+        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, stand));
+        Assert.True(simulation.TryTeleportEntityForTests(enemy.Id, new TilePosition(stand.X + 2, stand.Y)));
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new PlayerId(1), new BastionOrder(BastionOrderKind.AttackArea, stand)));
+
+        AdvanceTicks(simulation, 40);
+
+        Assert.Equal(BastionOrderKind.AttackArea, simulation.World.GetEntity(bastion.Id)!.Order.Kind);
+        Assert.Equal(BastionOrderKind.AttackArea, simulation.World.GetEntity(tank.Id)!.Order.Kind);
+    }
+
+    [Fact]
+    public void GroundTank_HaltsToFireOnAttackMove()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var tank = ProduceTankForBastion(simulation, bastion.Id);
+        var enemy = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, new TilePosition(20, 20)));
+        Assert.True(simulation.TryTeleportEntityForTests(enemy.Id, new TilePosition(22, 20)));
+        var beyond = new TilePosition(40, 20);
+        Assert.True(simulation.TryIssueBastionOrder(bastion.Id, new PlayerId(1), new BastionOrder(BastionOrderKind.AttackArea, beyond)));
+
+        var healthBefore = enemy.Health;
+        AdvanceTicks(simulation, 30);
+        tank = simulation.World.GetEntity(tank.Id)!;
+        enemy = simulation.World.GetEntity(enemy.Id)!;
+
+        Assert.True(tank.Position.X < 30, "tank should halt instead of walking through the enemy");
+        Assert.True(enemy.Health < healthBefore, "halted tank should fire");
+        Assert.True(tank.CurrentWaypoint is null && tank.MovementPath.Count == 0);
+    }
+
+    [Fact]
+    public void Patrol_GroundTankEngagesEnemyInRange()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
+        var bastion = simulation.World.Entities.Single(entity => entity.OwnerId == new PlayerId(1) && entity.Kind == EntityKind.Bastion);
+        var tank = ProduceTankForBastion(simulation, bastion.Id);
+        var enemy = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
+        var a = new TilePosition(20, 20);
+        var b = new TilePosition(24, 20);
+        Assert.True(simulation.TryTeleportEntityForTests(tank.Id, a));
+        Assert.True(simulation.TryTeleportEntityForTests(enemy.Id, new TilePosition(22, 20)));
+        Assert.True(simulation.TryIssueBastionOrder(
+            bastion.Id,
+            new PlayerId(1),
+            new BastionOrder(BastionOrderKind.Patrol, Waypoints: [a, b])));
+
+        var healthBefore = enemy.Health;
+        AdvanceTicks(simulation, 40);
+        enemy = simulation.World.GetEntity(enemy.Id)!;
+        tank = simulation.World.GetEntity(tank.Id)!;
+
+        Assert.True(enemy.Health < healthBefore);
+        Assert.Equal(BastionOrderKind.Patrol, tank.Order.Kind);
+    }
+
+    [Fact]
     public void TryIssueBastionOrder_Scout_OnlyAssignsScoutsAndCompletesToDefend()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
@@ -597,6 +662,7 @@ public sealed class CombatBastionTests
 
     private static WorldEntity ProduceScoutForBastion(GameSimulation simulation, int bastionId)
     {
+        Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.CommandI, confirmExclusive: true));
         Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.Scout));
         var desired = simulation.World.GetEntity(bastionId)!.BastionTemplate.GetValueOrDefault(EntityKind.Scout) + 1;
         Assert.True(simulation.TrySetBastionTemplate(bastionId, new PlayerId(1), EntityKind.Scout, desired));

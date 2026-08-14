@@ -53,6 +53,20 @@ public static class ResearchContentValidator
                         $"Technology '{technology.Id}' declares duplicate science pack item '{pack.Item}'.");
                 }
             }
+
+            foreach (var prerequisite in technology.Prerequisites)
+            {
+                if (prerequisite == technology.Id)
+                {
+                    throw new InvalidOperationException($"Technology '{technology.Id}' cannot require itself.");
+                }
+
+                if (!catalog.Technologies.ContainsKey(prerequisite))
+                {
+                    throw new InvalidOperationException(
+                        $"Technology '{technology.Id}' requires unknown technology '{prerequisite}'.");
+                }
+            }
         }
 
         foreach (var profile in catalog.Profiles.Values)

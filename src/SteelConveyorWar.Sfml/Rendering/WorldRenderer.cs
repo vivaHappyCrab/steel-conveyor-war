@@ -364,16 +364,7 @@ internal static class WorldRenderer
         var center = new Vector2f(
             tile.X * SfmlUiLayout.TileSize + SfmlUiLayout.TileSize / 2f,
             tile.Y * SfmlUiLayout.TileSize + SfmlUiLayout.TileSize / 2f);
-        var half = SfmlUiLayout.TileSize * 0.38f;
-        var blunt = SfmlUiLayout.TileSize * 0.28f;
-        var points = direction switch
-        {
-            Direction.North => new[] { new Vector2f(0, -half), new Vector2f(blunt, half * 0.55f), new Vector2f(-blunt, half * 0.55f) },
-            Direction.East => new[] { new Vector2f(half, 0), new Vector2f(-half * 0.55f, blunt), new Vector2f(-half * 0.55f, -blunt) },
-            Direction.South => new[] { new Vector2f(0, half), new Vector2f(blunt, -half * 0.55f), new Vector2f(-blunt, -half * 0.55f) },
-            Direction.West => new[] { new Vector2f(-half, 0), new Vector2f(half * 0.55f, blunt), new Vector2f(half * 0.55f, -blunt) },
-            _ => Array.Empty<Vector2f>()
-        };
+        var points = DirectionTriangleOffsets(direction, SfmlUiLayout.TileSize);
 
         using var triangle = new ConvexShape(3)
         {
@@ -386,6 +377,31 @@ internal static class WorldRenderer
         }
 
         target.Draw(triangle);
+    }
+
+    /// <summary>
+    /// Isosceles 30°-120°-30° offsets from tile center; the 120° vertex points along
+    /// <paramref name="direction"/> (Y+ is south, matching SFML).
+    /// </summary>
+    internal static Vector2f[] DirectionTriangleOffsets(Direction direction, float tileSize)
+    {
+        var side = tileSize * 0.42f;
+        var halfVertex = MathF.PI / 3f;
+        var height = side * MathF.Cos(halfVertex);
+        var halfBase = side * MathF.Sin(halfVertex);
+        var (fx, fy, rx, ry) = direction switch
+        {
+            Direction.North => (0f, -1f, 1f, 0f),
+            Direction.East => (1f, 0f, 0f, 1f),
+            Direction.South => (0f, 1f, -1f, 0f),
+            Direction.West => (-1f, 0f, 0f, -1f),
+            _ => (0f, 0f, 0f, 0f)
+        };
+
+        var tip = new Vector2f(fx * height * 0.5f, fy * height * 0.5f);
+        var left = new Vector2f(-fx * height * 0.5f - rx * halfBase, -fy * height * 0.5f - ry * halfBase);
+        var right = new Vector2f(-fx * height * 0.5f + rx * halfBase, -fy * height * 0.5f + ry * halfBase);
+        return [tip, right, left];
     }
 
     internal static void DrawGhostPreview(
