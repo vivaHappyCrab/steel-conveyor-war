@@ -80,9 +80,20 @@ public static class ReplayDocumentSerializer
             throw new InvalidOperationException("Replay durationTicks cannot be negative.");
         }
 
+        if (dto.DurationTicks > ReplayDocument.MaxDurationTicks)
+        {
+            throw new InvalidOperationException(
+                $"Replay durationTicks {dto.DurationTicks} exceeds max supported {ReplayDocument.MaxDurationTicks}.");
+        }
+
         if (dto.InputDelayTicks < 1)
         {
             throw new InvalidOperationException("Replay inputDelayTicks must be at least 1.");
+        }
+
+        if (dto.TicksPerSecond < 1)
+        {
+            throw new InvalidOperationException("Replay ticksPerSecond must be at least 1.");
         }
 
         RequireHex(dto.FinalStateHash, "finalStateHash");
