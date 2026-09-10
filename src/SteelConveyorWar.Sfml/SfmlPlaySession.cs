@@ -15,7 +15,11 @@ namespace SteelConveyorWar.Sfml;
 /// </summary>
 internal sealed class SfmlPlaySession
 {
-    public void Run(GameSimulation simulation, int? maxFrames = null, SfmlDisplayOptions? display = null)
+    public PlaySessionResult Run(
+        GameSimulation simulation,
+        int? maxFrames = null,
+        SfmlDisplayOptions? display = null,
+        ReplayWatchSession? replayWatch = null)
     {
         display ??= SfmlDisplayOptions.Default;
         var windowWidth = display.Width;
@@ -46,17 +50,29 @@ internal sealed class SfmlPlaySession
         // R24: fail fast with a domain-friendly message if the requested seat is not on this map
         // (e.g. --local-player 3 on a 2-player map) instead of a raw First() exception below.
         LocalPlayerBinding.EnsureSeatControllable(simulation, localPlayer);
-        // R02: all gameplay mutations flow through the deferred command sink so local input takes the
-        // same tick-scheduled, replayable path as remote input.
-        var commandSink = new BoundPlayerCommandSink(new DeferredCommandSink(simulation), localPlayer);
+        // R02: live play uses the deferred command sink. Replay watch uses a no-op sink so HUD
+        // mappers can stay wired without mutating the recorded match.
+        IPlayerCommandSink innerSink = replayWatch is null
+            ? new DeferredCommandSink(simulation)
+            : new NullPlayerCommandSink();
+        var commandSink = new BoundPlayerCommandSink(innerSink, localPlayer);
         var commands = new SfmlCommandGateway(commandSink);
-        var initialSelectedId = simulation.World.Entities
-            .First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander)
-            .Id;
-        var session = new SessionState(initialSelectedId);
-        // H05: compose once from the match catalog so hotkeys/overlay track runtime costs, not Embedded.
         var buildMenu = BuildMenuCatalog.ComposeFrom(simulation.BuildCostCatalog);
-        var inputMapper = new InputCommandMapper(localPlayer, session, commands, buildMenu);
+        SessionState session;
+        InputCommandMapper inputMapper;
+        SimulationPump simulationPump;
+        BindPlaySession(simulation);
+
+        void BindPlaySession(GameSimulation sim)
+        {
+            simulation = sim;
+            var selectedId = sim.World.Entities
+                .First(entity => entity.OwnerId == localPlayer && entity.Kind == EntityKind.Commander)
+                .Id;
+            session = new SessionState(selectedId);
+            inputMapper = new InputCommandMapper(localPlayer, session, commands, buildMenu);
+            simulationPump = new SimulationPump(sim, localPlayer, inputMapper);
+        }
         var researchClickClock = new Clock();
         var font = SfmlFontLoader.TryLoadFont();
 
@@ -182,8 +198,47 @@ internal sealed class SfmlPlaySession
             }
         }
 
+        var replayPaused = false;
+        var replayRate = ReplayPlaybackClock.Rate1x;
+        bool? replayHashMatch = null;
+
         window.KeyPressed += (_, args) =>
         {
+            if (replayWatch is not null)
+            {
+                var replayKey = args.Code.ToString();
+                if (replayKey == "Space")
+                {
+                    replayPaused = !replayPaused;
+                    return;
+                }
+
+                if (replayKey == "Num1")
+                {
+                    replayRate = ReplayPlaybackClock.Rate1x;
+                    return;
+                }
+
+                if (replayKey == "Num2")
+                {
+                    replayRate = ReplayPlaybackClock.Rate2x;
+                    return;
+                }
+
+                if (replayKey == "Num3")
+                {
+                    replayRate = ReplayPlaybackClock.Rate4x;
+                    return;
+                }
+
+                if (replayKey == "R")
+                {
+                    BindPlaySession(replayWatch.Restart());
+                    replayHashMatch = null;
+                    return;
+                }
+            }
+
             ApplyCameraRequest(
                 inputMapper.HandleKeyPressed(
                     simulation,
@@ -449,7 +504,6 @@ internal sealed class SfmlPlaySession
 
         var clock = new Clock();
         var fixedDelta = 1f / display.TicksPerSecond;
-        var simulationPump = new SimulationPump(simulation, localPlayer, inputMapper);
 
         var renderedFrames = 0;
 
@@ -465,9 +519,25 @@ internal sealed class SfmlPlaySession
                 Mouse.IsButtonPressed(Mouse.Button.Right),
                 hoverTarget?.Id);
 
+            var replayFinished = replayWatch is not null
+                && simulation.Tick >= replayWatch.Document.DurationTicks;
+            var simulationDt = replayWatch is null
+                ? frameDt
+                : ReplayPlaybackClock.SimulationDelta(frameDt, replayPaused, replayRate, replayFinished);
+
             // R23: cap ticks per frame and drop excess backlog (see FixedStepPacer).
-            simulationPump.AdvanceFixedSteps(frameDt, fixedDelta);
-            simulationPump.AgeLingeringShots(frameDt);
+            simulationPump.AdvanceFixedSteps(simulationDt, fixedDelta);
+            simulationPump.AgeLingeringShots(simulationDt);
+
+            if (replayWatch is not null
+                && replayHashMatch is null
+                && simulation.Tick >= replayWatch.Document.DurationTicks)
+            {
+                replayHashMatch = string.Equals(
+                    simulation.ComputeStateHash(),
+                    replayWatch.Document.FinalStateHash,
+                    StringComparison.Ordinal);
+            }
 
             var mousePosition = Mouse.GetPosition(window);
             if (isMiddleDragging)
@@ -548,7 +618,15 @@ internal sealed class SfmlPlaySession
                 mousePosition,
                 simulationPump.VisibleShots(),
                 simulationPump.FrameFogDirtyTiles,
-                CreateWorldView);
+                CreateWorldView,
+                replayWatch is null
+                    ? null
+                    : new ReplayHudStatus(
+                        simulation.Tick,
+                        replayWatch.Document.DurationTicks,
+                        replayRate,
+                        replayPaused,
+                        replayHashMatch));
 
             window.Display();
 
@@ -558,5 +636,7 @@ internal sealed class SfmlPlaySession
                 window.Close();
             }
         }
+
+        return new PlaySessionResult(simulation);
     }
 }

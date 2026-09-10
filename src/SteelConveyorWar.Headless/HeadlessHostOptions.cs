@@ -1,3 +1,5 @@
+using SteelConveyorWar.Hosting;
+
 namespace SteelConveyorWar.Headless;
 
 /// <summary>
@@ -5,14 +7,17 @@ namespace SteelConveyorWar.Headless;
 /// </summary>
 public sealed record HeadlessHostOptions(
     int Ticks,
-    int PlayerId)
+    int PlayerId,
+    ReplayHostOptions Replay)
 {
     public const int DefaultTicks = 90;
 
     public static HeadlessHostOptions Parse(string[] args)
     {
+        ArgumentNullException.ThrowIfNull(args);
         var ticks = DefaultTicks;
         var playerId = 1;
+        var replay = ReplayHostOptions.Parse(args);
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -41,7 +46,7 @@ public sealed record HeadlessHostOptions(
             throw new ArgumentOutOfRangeException(nameof(PlayerId), playerId, "Player id must be at least 1.");
         }
 
-        return new HeadlessHostOptions(ticks, playerId);
+        return new HeadlessHostOptions(ticks, playerId, replay);
     }
 
     private static bool IsFlag(string arg, string flag) =>

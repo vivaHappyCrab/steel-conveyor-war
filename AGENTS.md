@@ -12,7 +12,7 @@
 ## Module boundaries
 
 - `src/SteelConveyorWar.Core` — headless deterministic simulation only (no SFML, no config file I/O)
-- `src/SteelConveyorWar.Hosting` — shared host bootstrap: config path resolution + content file I/O (no SFML)
+- `src/SteelConveyorWar.Hosting` — shared host bootstrap: config path resolution, content file I/O, and durable replay file I/O (no SFML)
 - `src/SteelConveyorWar.Sfml` — window, render, input → core commands
 - `src/SteelConveyorWar.Client` — SFML composition root / executable
 - `src/SteelConveyorWar.Headless` — Core+Hosting bot/CI host (no window)
@@ -20,6 +20,7 @@
 - `tests/SteelConveyorWar.Hosting.Tests` — shared bootstrap I/O tests
 - `tests/SteelConveyorWar.Sfml.Tests` — SFML adapter tests
 - `config/` — runtime content (`game`/`research`/`tiles`/`entities`/`build-costs` JSON); remaining recipes/combat/footprints/stacks/power in `MvpDefinitions.cs`
+- Local command-log replays are `.scwreplay` JSON (Core parse, Hosting I/O); catalogs are not embedded
 - Research catalog ids, `TechnologyId` constant names, and display names stay in sync (no leftover aliases after a rename)
 - `resources/` — presentation assets only
 

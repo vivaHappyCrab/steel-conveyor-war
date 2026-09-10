@@ -62,11 +62,16 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if (-not $SkipSmoke) {
     Write-Host '==> Headless host smoke (no display)'
-    dotnet run --project (Join-Path $repoRoot 'src/SteelConveyorWar.Headless') -c $Configuration --no-build -- --ticks 90
+    $headlessReplay = Join-Path $artifacts 'headless-smoke.scwreplay'
+    dotnet run --project (Join-Path $repoRoot 'src/SteelConveyorWar.Headless') -c $Configuration --no-build -- --ticks 90 --record $headlessReplay
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    Write-Host '==> Headless replay roundtrip'
+    dotnet run --project (Join-Path $repoRoot 'src/SteelConveyorWar.Headless') -c $Configuration --no-build -- --replay $headlessReplay
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Write-Host '==> Client smoke test'
-    dotnet run --project (Join-Path $repoRoot 'src/SteelConveyorWar.Client') -c $Configuration --no-build -- --smoke-test
+    dotnet run --project (Join-Path $repoRoot 'src/SteelConveyorWar.Client') -c $Configuration --no-build -- --smoke-test --no-record
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
