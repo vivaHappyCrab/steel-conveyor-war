@@ -113,6 +113,44 @@ public sealed class ReplayDocumentTests
     }
 
     [Fact]
+    public void Deserialize_RejectsNonPositiveTicksPerSecond()
+    {
+        var (live, _) = RunScriptedSession(seed: 9);
+        var document = ReplayDocument.Capture(live) with { TicksPerSecond = 0 };
+        var json = ReplayDocumentSerializer.Serialize(document);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ReplayDocumentSerializer.Deserialize(json));
+        Assert.Contains("ticksPerSecond", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Deserialize_RejectsDurationAboveMax()
+    {
+        var (live, _) = RunScriptedSession(seed: 9);
+        var document = ReplayDocument.Capture(live) with { DurationTicks = ReplayDocument.MaxDurationTicks + 1 };
+        var json = ReplayDocumentSerializer.Serialize(document);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ReplayDocumentSerializer.Deserialize(json));
+        Assert.Contains("durationTicks", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void PlayToEnd_StopsWhenMatchLeavesInProgress_EvenIfDurationHigher()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 3);
+        var enemy = simulation.World.Entities.First(
+            entity => entity.OwnerId == new PlayerId(2) && entity.Kind == EntityKind.Commander);
+        simulation.DamageEntity(enemy.Id, enemy.Health);
+        Assert.Equal(GameStatus.PlayerWon, simulation.Status);
+
+        var before = simulation.Tick;
+        var hash = ReplayPlayback.PlayToEnd(simulation, durationTicks: before + 50_000);
+
+        Assert.Equal(before, simulation.Tick);
+        Assert.Equal(simulation.ComputeStateHash(), hash);
+    }
+
+    [Fact]
     public void Deserialize_RejectsMissingCommandsArray()
     {
         const string json = """
