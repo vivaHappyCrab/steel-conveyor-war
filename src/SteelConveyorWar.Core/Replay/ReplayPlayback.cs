@@ -101,8 +101,9 @@ public static class ReplayPlayback
     }
 
     /// <summary>
-    /// Advances until <paramref name="durationTicks"/> or until <see cref="GameSimulation.AdvanceTick"/>
-    /// stops progressing (match already over).
+    /// Advances until <paramref name="durationTicks"/>, or until the match leaves
+    /// <see cref="GameStatus.InProgress"/> / <see cref="GameSimulation.AdvanceTick"/> stops
+    /// progressing (so inflated durations cannot hang after victory).
     /// </summary>
     public static string PlayToEnd(GameSimulation simulation, long durationTicks)
     {
@@ -112,7 +113,14 @@ public static class ReplayPlayback
             throw new ArgumentOutOfRangeException(nameof(durationTicks), "Duration ticks cannot be negative.");
         }
 
-        while (simulation.Tick < durationTicks)
+        if (durationTicks > ReplayDocument.MaxDurationTicks)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(durationTicks),
+                $"Duration ticks cannot exceed {ReplayDocument.MaxDurationTicks}.");
+        }
+
+        while (simulation.Tick < durationTicks && simulation.Status == GameStatus.InProgress)
         {
             var tickBefore = simulation.Tick;
             simulation.AdvanceTick();

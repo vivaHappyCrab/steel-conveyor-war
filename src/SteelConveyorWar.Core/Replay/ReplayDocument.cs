@@ -23,6 +23,13 @@ public sealed record ReplayDocument(
 {
     public const int CurrentFormatVersion = 1;
 
+    /// <summary>
+    /// Upper bound for <see cref="DurationTicks"/> on load. Blocks pathological files from
+    /// spinning <see cref="ReplayPlayback.PlayToEnd"/> for effectively forever while still
+    /// InProgress (~92h at 30 TPS).
+    /// </summary>
+    public const long MaxDurationTicks = 10_000_000;
+
     public static ReplayDocument Capture(
         GameSimulation simulation,
         int inputDelayTicks = DeferredCommandSink.DefaultInputDelayTicks)
