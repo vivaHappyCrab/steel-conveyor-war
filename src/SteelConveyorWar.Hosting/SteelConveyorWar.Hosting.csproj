@@ -3,7 +3,7 @@
   <PropertyGroup>
     <RootNamespace>SteelConveyorWar.Hosting</RootNamespace>
     <AssemblyName>SteelConveyorWar.Hosting</AssemblyName>
-    <Description>Shared host bootstrap: config path resolution and content file I/O (no SFML).</Description>
+    <Description>Shared host bootstrap: config path resolution, content file I/O, and replay file I/O (no SFML).</Description>
   </PropertyGroup>
 
   <ItemGroup>

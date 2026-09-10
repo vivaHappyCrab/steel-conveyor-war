@@ -19,9 +19,19 @@ public sealed partial class GameSimulation
     // sequence so production apply never depends on unstable equal-key ordering.
     private readonly Dictionary<int, long> _enqueueSequenceByActor = new();
 
+    // Append-only ledger of every command accepted by EnqueueCommand (already tick/sequence stamped).
+    // Immediate Try* mutators never appear here — they are not replayable.
+    private readonly List<ISimulationCommand> _recordedCommands = new();
+
     /// <summary>Commands waiting for a future tick (FIFO within a tick).</summary>
     // R05: ReadOnlyCollection wrapper so external code cannot mutate the pending buffer via downcast.
     public IReadOnlyList<ISimulationCommand> PendingCommands => _commandBuffer.AsReadOnly();
+
+    /// <summary>
+    /// Every command successfully accepted by <see cref="EnqueueCommand"/> this match, in enqueue order.
+    /// Source of truth for durable replay capture. Immediate <c>Try*</c> calls are not recorded.
+    /// </summary>
+    public IReadOnlyList<ISimulationCommand> RecordedCommands => _recordedCommands.AsReadOnly();
 
     /// <summary>
     /// R11: commands the simulation refused to apply during the most recent tick (handler rejected,
@@ -61,6 +71,7 @@ public sealed partial class GameSimulation
         }
 
         _commandBuffer.Add(command);
+        _recordedCommands.Add(command);
     }
 
     private long NextEnqueueSequence(PlayerId actor)

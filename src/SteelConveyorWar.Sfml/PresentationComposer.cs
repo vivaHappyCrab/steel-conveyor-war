@@ -28,7 +28,8 @@ internal static class PresentationComposer
         Vector2i mousePosition,
         IReadOnlyList<(CombatShotEvent Shot, CombatShotRevealMode Reveal)> combatShots,
         IReadOnlyList<TilePosition> frameFogDirtyTiles,
-        Func<View> createWorldView)
+        Func<View> createWorldView,
+        ReplayHudStatus? replayHud = null)
     {
         window.Clear(new Color(18, 22, 18));
         using (var worldView = createWorldView())
@@ -71,7 +72,7 @@ internal static class PresentationComposer
         }
 
         window.SetView(window.DefaultView);
-        HudOverlay.DrawTopBar(window, simulation, localPlayer, font, playfieldWidth);
+        HudOverlay.DrawTopBar(window, simulation, localPlayer, font, playfieldWidth, replayHud);
         HudOverlay.DrawMinimap(
             window,
             simulation,

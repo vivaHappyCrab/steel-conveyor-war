@@ -22,7 +22,13 @@ internal static class HudOverlay
     private static uint _minimapCachedSize;
     private static int _minimapFramesSinceFull;
 
-    internal static void DrawTopBar(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer, Font? font, float playfieldWidth)
+    internal static void DrawTopBar(
+        IRenderTarget target,
+        GameSimulation simulation,
+        PlayerId localPlayer,
+        Font? font,
+        float playfieldWidth,
+        ReplayHudStatus? replayHud = null)
     {
         using var bar = new RectangleShape(new Vector2f(playfieldWidth, SfmlUiLayout.TopBarHeight))
         {
@@ -58,6 +64,21 @@ internal static class HudOverlay
             Position = new Vector2f(180f, 9f)
         };
         target.Draw(inventory);
+
+        if (replayHud is ReplayHudStatus replay)
+        {
+            var pace = replay.Paused ? "PAUSED" : $"{replay.Rate}x";
+            var hash = replay.HashMatch is null
+                ? ""
+                : replay.HashMatch.Value ? " OK" : " HASH MISMATCH";
+            var label = $"REPLAY {replay.Tick}/{replay.DurationTicks} {pace}{hash}";
+            using var replayText = new Text(font, label, 13)
+            {
+                FillColor = replay.HashMatch is false ? new Color(220, 70, 70) : new Color(255, 210, 90),
+                Position = new Vector2f(Math.Max(360f, playfieldWidth - 420f), 9f)
+            };
+            target.Draw(replayText);
+        }
     }
 
     internal static void DrawMinimap(
