@@ -16,7 +16,8 @@ public sealed partial class GameSimulation
     private void ProcessResearch()
     {
         _researchSystem.ProcessResearch(this, Tick);
-        // MaxHealth modifiers only land on completion; sync caps/HP for living entities.
+        // MaxHealth and energy-buffer modifiers only land on completion; sync living entities.
         SyncAllResolvedMaxHealth();
+        RefreshAllEnergyBufferCapacities();
     }
 }

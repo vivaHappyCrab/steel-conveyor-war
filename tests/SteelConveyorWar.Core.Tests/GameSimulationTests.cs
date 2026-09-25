@@ -625,11 +625,9 @@ public class GameSimulationTests
         Assert.True(simulation.TryPlaceGhostBuild(new PlayerId(1), EntityKind.Laboratory, NearBlue(simulation, 5, -2), out var labId));
         AdvanceTicks(simulation, 30);
 
-        Assert.True(simulation.TrySetEnergyBufferForTests(labId, int.MaxValue));
-        simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 30);
         Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.CommandI, confirmExclusive: true));
         Assert.True(simulation.TryStartResearch(new PlayerId(1), TechnologyId.GroundUnitAttack));
-        AdvanceTicks(simulation, ResearchSystem.LabCycleTicks * 30);
+        FeedLaboratory(simulation, labId, simulation.ResearchCatalog.Technologies[TechnologyId.GroundUnitAttack].Cost.EffortUnits);
 
         Assert.Contains(TechnologyId.GroundUnitAttack, simulation.GetPlayer(new PlayerId(1)).ResearchedTechnologies);
     }
@@ -1088,10 +1086,10 @@ public class GameSimulationTests
         }
 
         var assembler = simulation.World.GetEntity(assemblerId)!;
-        Assert.True(simulation.AddItemToEntity(labId, ItemId.SciencePackT1, 30));
+        Assert.True(assembler.OutputBuffer.Count(ItemId.SciencePackT1) > 0);
         Assert.True(simulation.TryForceCompleteResearch(new PlayerId(1), TechnologyId.CommandI, confirmExclusive: true));
         Assert.True(simulation.TryStartResearch(new PlayerId(1), TechnologyId.GroundUnitAttack));
-        AdvanceTicks(simulation, ResearchSystem.LabCycleTicks * 30);
+        FeedLaboratory(simulation, labId, simulation.ResearchCatalog.Technologies[TechnologyId.GroundUnitAttack].Cost.EffortUnits);
 
         Assert.Contains(TechnologyId.GroundUnitAttack, simulation.GetPlayer(new PlayerId(1)).ResearchedTechnologies);
     }
@@ -1812,6 +1810,17 @@ public class GameSimulationTests
         simulation.AdvanceTick();
         var smelter = simulation.World.GetEntity(smelterId)!;
         Assert.Equal(40, smelter.WorkTicksTotal);
+    }
+
+    private static void FeedLaboratory(GameSimulation simulation, int labId, int packs)
+    {
+        for (var remaining = packs; remaining > 0; remaining -= 30)
+        {
+            var batch = Math.Min(30, remaining);
+            Assert.True(simulation.AddItemToEntity(labId, ItemId.SciencePackT1, batch));
+            Assert.True(simulation.TrySetEnergyBufferForTests(labId, int.MaxValue));
+            AdvanceTicks(simulation, ResearchSystem.LabCycleTicks * batch);
+        }
     }
 
     private static void AdvanceTicks(GameSimulation simulation, int ticks)
