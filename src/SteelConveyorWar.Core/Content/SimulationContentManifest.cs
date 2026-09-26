@@ -194,6 +194,8 @@ public static class SimulationContentManifest
                 .Append(stats.Armor).Append('|')
                 .Append((int)stats.ProjectileKind).Append('|')
                 .Append(stats.SplashRadius).Append('|')
+                .Append(stats.MinimumAttackRange).Append('|')
+                .Append(stats.ProjectileFlightTicks).Append('|')
                 .Append((int)stats.MovementType).Append('\n');
         }
 

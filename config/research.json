@@ -167,6 +167,45 @@
       ]
     },
     {
+      "id": "technology.t1.field-artillery",
+      "tierId": "tier.t1",
+      "displayName": "\u041F\u043E\u043B\u0435\u0432\u0430\u044F \u0430\u0440\u0442\u0438\u043B\u043B\u0435\u0440\u0438\u044F",
+      "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043E\u043B\u0435\u0432\u0443\u044E \u0421\u0410\u0423 \u0438 \u043F\u0443\u0448\u043A\u0443. \u0421\u043D\u0430\u0440\u044F\u0434 \u0421\u0410\u0423 \u043B\u0435\u0442\u0438\u0442 \u0432 \u0442\u043E\u0447\u043A\u0443, \u0433\u0434\u0435 \u0446\u0435\u043B\u044C \u0441\u0442\u043E\u044F\u043B\u0430, \u0438 \u043D\u0430\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043B\u043E\u0449\u0430\u0434\u044C.",
+      "cost": {
+        "effortUnits": 120,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "FieldArtillery",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "recipe",
+          "contentId": "FieldArtillery",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "CannonTurret",
+          "valueBasisPoints": 0
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
       "id": "technology.t1.field-repair",
       "tierId": "tier.t1",
       "displayName": "\u041F\u043E\u043B\u0435\u0432\u043E\u0439 \u0440\u0435\u043C\u043E\u043D\u0442",
@@ -260,6 +299,13 @@
           "statId": "stat.combat.armor",
           "operation": "Add",
           "valueBasisPoints": 10000,
+          "selector": "FieldArtillery"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
           "selector": "LightBot"
         },
         {
@@ -327,6 +373,13 @@
           "operation": "Add",
           "valueBasisPoints": 10000,
           "selector": "Commander"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 20000,
+          "selector": "FieldArtillery"
         },
         {
           "type": "addModifier",
@@ -1177,12 +1230,6 @@
         },
         {
           "type": "unlockContent",
-          "contentKind": "entity",
-          "contentId": "CannonTurret",
-          "valueBasisPoints": 0
-        },
-        {
-          "type": "unlockContent",
           "contentKind": "recipe",
           "contentId": "BasicTank",
           "valueBasisPoints": 0
@@ -1435,6 +1482,7 @@
             "technology.t1.fast-regroup",
             "technology.t1.ground-unit-armor",
             "technology.t1.machine-gun-turret",
+            "technology.t1.field-artillery",
             "technology.t1.additional-bastion",
             "technology.t1.doctrine.mobile-groups",
             "technology.t1.doctrine.fortified-line"

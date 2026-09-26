@@ -58,6 +58,9 @@ internal interface ISimulationSystemContext
     /// </summary>
     void CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate);
 
+    /// <summary>Shells in flight. Authoritative: impacts are applied on <see cref="ArtilleryShot.LandTick"/>.</summary>
+    List<ArtilleryShot> ArtilleryShots { get; }
+
     /// <summary>
     /// M06: shared spatial index rebuilt at most twice per tick (post-commands, post-factory).
     /// Combat/movement share this instance; mid-pass movers use Relocate, spawns use InsertAlive.

@@ -276,11 +276,18 @@ public static class ContentCrossValidator
                 || stats.MoveEveryTicks < 0
                 || stats.VisionRadius < 0
                 || stats.Armor < 0
-                || stats.SplashRadius < 0)
+                || stats.SplashRadius < 0
+                || stats.MinimumAttackRange < 0
+                || stats.ProjectileFlightTicks < 0)
             {
                 errors.Add(
                     $"entityStats '{kind}' has an out-of-range combat/move field " +
-                    "(damage/range/cooldowns/vision/armor/splash must be >= 0).");
+                    "(damage/range/cooldowns/vision/armor/splash/flight must be >= 0).");
+            }
+
+            if (stats.AttackRange > 0 && stats.MinimumAttackRange > stats.AttackRange)
+            {
+                errors.Add($"entityStats '{kind}' minimumAttackRange exceeds attackRange.");
             }
 
             if (!Enum.IsDefined(stats.ProjectileKind))

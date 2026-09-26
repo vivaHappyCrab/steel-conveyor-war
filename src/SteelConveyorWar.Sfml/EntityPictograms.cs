@@ -160,6 +160,10 @@ internal static class EntityPictograms
                 DrawLine(target, center.X - size * 0.1f, center.Y + size * 0.25f, center.X - size * 0.1f, center.Y - size * 0.25f, ink);
                 DrawLine(target, center.X + size * 0.1f, center.Y + size * 0.25f, center.X + size * 0.1f, center.Y - size * 0.25f, ink);
                 break;
+            case EntityKind.FieldArtillery:
+                DrawRectOutline(target, center.X - size * 0.22f, center.Y - size * 0.12f, size * 0.44f, size * 0.28f, ink);
+                DrawLine(target, center.X + size * 0.1f, center.Y, center.X + size * 0.42f, center.Y - size * 0.28f, ink);
+                break;
         }
     }
 

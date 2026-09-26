@@ -96,8 +96,9 @@
     },
     {
       "kind": "CannonTurret",
-      "cost": { "Steel": 15, "CopperPlate": 10 },
-      "buildTicks": 30
+      "cost": { "IronPlate": 25, "CopperPlate": 12 },
+      "buildTicks": 30,
+      "requiredTechnology": "technology.t1.field-artillery"
     },
     {
       "kind": "AntiAirTurret",
