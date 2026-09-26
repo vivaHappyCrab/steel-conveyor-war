@@ -72,6 +72,7 @@ public sealed partial record GameplayTablesCatalog
     "MediumBot": 300,
     "AntiAirBot": 300,
     "RocketLauncher": 300,
+    "FieldArtillery": 350,
     "BasicTank": 400,
     "MediumTank": 400
   },
@@ -135,6 +136,15 @@ public sealed partial record GameplayTablesCatalog
       "outputKind": "RocketLauncher",
       "workTicks": 165,
       "requiredTechnology": "technology.t2.rocket-launcher"
+    },
+    "FieldArtillery": {
+      "inputs": [
+        { "item": "IronPlate", "amount": 16 },
+        { "item": "CopperPlate", "amount": 8 }
+      ],
+      "outputKind": "FieldArtillery",
+      "workTicks": 150,
+      "requiredTechnology": "technology.t1.field-artillery"
     }
   },
   "itemRecipes": {
@@ -271,9 +281,9 @@ public sealed partial record GameplayTablesCatalog
     },
     "CannonTurret": {
       "maxHealth": 170,
-      "attackDamage": 24,
+      "attackDamage": 20,
       "attackRange": 6,
-      "attackCooldownTicks": 25,
+      "attackCooldownTicks": 28,
       "visionRadius": 7,
       "armor": 4,
       "projectileKind": "Ballistic",
@@ -308,6 +318,20 @@ public sealed partial record GameplayTablesCatalog
       "visionRadius": 5,
       "armor": 3,
       "projectileKind": "GroundToGround",
+      "movementType": "Ground"
+    },
+    "FieldArtillery": {
+      "maxHealth": 60,
+      "attackDamage": 22,
+      "attackRange": 8,
+      "minimumAttackRange": 4,
+      "attackCooldownTicks": 42,
+      "moveEveryTicks": 11,
+      "visionRadius": 5,
+      "armor": 1,
+      "projectileKind": "Ballistic",
+      "splashRadius": 3,
+      "projectileFlightTicks": 22,
       "movementType": "Ground"
     },
     "Scout": {
@@ -405,7 +429,8 @@ public sealed partial record GameplayTablesCatalog
       "MediumBot": 1,
       "MediumTank": 2,
       "AntiAirBot": 1,
-      "RocketLauncher": 3
+      "RocketLauncher": 3,
+      "FieldArtillery": 2
     },
     "groundUnitArmorBonus": {
       "Commander": 1,
@@ -414,7 +439,8 @@ public sealed partial record GameplayTablesCatalog
       "MediumBot": 1,
       "MediumTank": 1,
       "AntiAirBot": 1,
-      "RocketLauncher": 1
+      "RocketLauncher": 1,
+      "FieldArtillery": 1
     }
   }
 }

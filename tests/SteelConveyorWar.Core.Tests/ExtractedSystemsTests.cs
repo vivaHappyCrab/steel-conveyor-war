@@ -242,6 +242,8 @@ public sealed class ExtractedSystemsTests
 
         public GameplayTablesCatalog GameplayTables { get; init; } = GameplayTablesCatalog.Embedded;
 
+        public List<ArtilleryShot> ArtilleryShots { get; } = new();
+
         public SpatialQueryIndex SharedSpatialIndex { get; }
 
         public int CascadeBastionDeathsCalls { get; private set; }

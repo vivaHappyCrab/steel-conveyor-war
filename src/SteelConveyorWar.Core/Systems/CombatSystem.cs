@@ -251,6 +251,7 @@ internal sealed class CombatSystem
         // M06: share the post-factory spatial index (movement Relocate keeps it current). Second
         // full rebuild would be redundant when entity set is unchanged after factory.
         var spatial = _context.SharedSpatialIndex;
+        ResolveArtilleryImpacts(spatial);
         var tables = _context.GameplayTables;
         _context.CollectSortedAliveEntities(
             _scratchEntities,
@@ -280,7 +281,7 @@ internal sealed class CombatSystem
             }
 
             var attackRange = stats.AttackRange;
-            var target = FindNearestCombatTarget(attacker, attackRange, spatial);
+            var target = FindNearestCombatTarget(attacker, attackRange, stats.MinimumAttackRange, spatial);
             if (target is null)
             {
                 continue;
@@ -295,6 +296,30 @@ internal sealed class CombatSystem
 
             if (IsGroundToGroundBlockedByAlliedWall(attacker, target, stats.ProjectileKind, spatial))
             {
+                continue;
+            }
+
+            if (stats.ProjectileFlightTicks > 0)
+            {
+                var impact = target.Position;
+                _context.ArtilleryShots.Add(new ArtilleryShot(
+                    attacker.Id,
+                    attacker.OwnerId!.Value.Value,
+                    _context.Tick,
+                    _context.Tick + stats.ProjectileFlightTicks,
+                    attacker.WorldPosition.X,
+                    attacker.WorldPosition.Y,
+                    impact.X,
+                    impact.Y,
+                    ResolveAttackDamage(attacker, stats),
+                    stats.ProjectileKind,
+                    stats.SplashRadius));
+                _context.Presentation.AddCombatShot(new CombatShotEvent(
+                    attacker.Id,
+                    target.Id,
+                    attacker.WorldPosition,
+                    WorldPosition.FromTileCenter(impact),
+                    stats.ProjectileKind));
                 continue;
             }
 
@@ -347,9 +372,108 @@ internal sealed class CombatSystem
         }
     }
 
+    private void ResolveArtilleryImpacts(SpatialQueryIndex spatial)
+    {
+        if (_context.ArtilleryShots.Count == 0)
+        {
+            return;
+        }
+
+        var due = new List<ArtilleryShot>();
+        foreach (var shot in _context.ArtilleryShots)
+        {
+            if (shot.LandTick <= _context.Tick)
+            {
+                due.Add(shot);
+            }
+        }
+
+        due.Sort(static (left, right) =>
+        {
+            var tick = left.LandTick.CompareTo(right.LandTick);
+            if (tick != 0)
+            {
+                return tick;
+            }
+
+            var attacker = left.AttackerId.CompareTo(right.AttackerId);
+            if (attacker != 0)
+            {
+                return attacker;
+            }
+
+            var x = left.ImpactX.CompareTo(right.ImpactX);
+            return x != 0 ? x : left.ImpactY.CompareTo(right.ImpactY);
+        });
+
+        var killed = false;
+        foreach (var shot in due)
+        {
+            _context.ArtilleryShots.Remove(shot);
+            if (ApplyArtilleryImpact(shot, spatial))
+            {
+                killed = true;
+            }
+        }
+
+        if (killed)
+        {
+            _context.CascadeBastionDeaths();
+        }
+    }
+
+    private bool ApplyArtilleryImpact(ArtilleryShot shot, SpatialQueryIndex spatial)
+    {
+        var impact = new TilePosition(shot.ImpactX, shot.ImpactY);
+        _scratchEntitiesSecondary.Clear();
+        foreach (var entity in spatial.QueryByPositionInEuclideanRange(impact, Math.Max(shot.SplashRadius, 0)))
+        {
+            if (!entity.IsAlive || entity.IsGarrisoned || entity.OwnerId is null)
+            {
+                continue;
+            }
+
+            if (_context.AreAllied(new PlayerId(shot.OwnerId), entity.OwnerId))
+            {
+                continue;
+            }
+
+            _scratchEntitiesSecondary.Add(entity);
+        }
+
+        _scratchEntitiesSecondary.Sort(static (left, right) => left.Id.CompareTo(right.Id));
+        var killed = false;
+        var tables = _context.GameplayTables;
+        for (var i = 0; i < _scratchEntitiesSecondary.Count; i++)
+        {
+            var target = _scratchEntitiesSecondary[i];
+            if (!target.IsAlive)
+            {
+                continue;
+            }
+
+            _context.SyncResolvedMaxHealth(target);
+            var targetStats = tables.GetStats(target.Kind);
+            var armor = ResolveArmor(target, targetStats);
+            var resistance = CombatDamage.GetResistanceBasisPoints(
+                shot.ProjectileKind,
+                MvpDefinitions.GetCombatTargetCategory(target.Kind),
+                tables);
+            var damage = CombatDamage.ComputeFinalDamage(shot.AttackDamage, armor, resistance);
+            ApplyCombatDamage(target, damage);
+            if (!target.IsAlive)
+            {
+                killed = true;
+            }
+        }
+
+        return killed;
+    }
+
     private WorldEntity? FindNearestCombatTarget(
         WorldEntity attacker,
         int attackRange,
+        int minimumAttackRange,
         SpatialQueryIndex spatial)
     {
         WorldEntity? best = null;
@@ -371,6 +495,11 @@ internal sealed class CombatSystem
             }
 
             var distanceSquared = attacker.Position.EuclideanDistanceSquared(entity.Position);
+            if (minimumAttackRange > 0 && distanceSquared < minimumAttackRange * minimumAttackRange)
+            {
+                continue;
+            }
+
             if (best is null
                 || distanceSquared < bestDistanceSquared
                 || (distanceSquared == bestDistanceSquared && entity.Id < best.Id))

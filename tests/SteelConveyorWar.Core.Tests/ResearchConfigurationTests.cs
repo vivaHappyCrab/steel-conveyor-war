@@ -11,7 +11,7 @@ public sealed class ResearchConfigurationTests
         Assert.False(string.IsNullOrWhiteSpace(catalog.ContentHash));
         Assert.Contains(ResearchProfileIds.MvpB, catalog.Profiles.Keys);
         Assert.Single(catalog.Profiles);
-        Assert.Equal(34, catalog.Technologies.Count);
+        Assert.Equal(35, catalog.Technologies.Count);
         Assert.True(catalog.Technologies.ContainsKey(TechnologyId.GroundUnitAttack));
         Assert.Equal("technology.t1.ground-unit-attack", TechnologyId.GroundUnitAttack.Value);
         Assert.Equal("technology.t1.ground-unit-armor", TechnologyId.GroundUnitArmor.Value);

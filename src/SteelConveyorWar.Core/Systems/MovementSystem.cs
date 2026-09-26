@@ -126,7 +126,7 @@ public sealed partial class GameSimulation
 
         var waypointPosition = WorldPosition.FromTileCenter(entity.CurrentWaypoint.Value);
         var distanceSq = entity.WorldPosition.DistanceSquaredTo(waypointPosition);
-        var step = MvpDefinitions.MobileMoveWorldUnitsPerTick;
+        var step = ResolveMobileStepMilli(entity);
         if (distanceSq <= step * step)
         {
             if (!CanOccupyWorldPosition(entity, waypointPosition, spatial))
@@ -161,6 +161,18 @@ public sealed partial class GameSimulation
         entity.WorldPosition = nextPosition;
         RelocateMobileEntity(entity, nextPosition.ToTilePosition(), spatial);
         return false;
+    }
+
+    /// <summary>One tile per <c>moveEveryTicks</c>. Commander baseline 8 stays at 125 milli-tiles per tick.</summary>
+    private long ResolveMobileStepMilli(WorldEntity entity)
+    {
+        var moveEvery = GameplayTables.GetStats(entity.Kind).MoveEveryTicks;
+        if (moveEvery <= 0)
+        {
+            moveEvery = 8;
+        }
+
+        return Math.Max(1, WorldUnits.MilliPerTile / moveEvery);
     }
 
     private void RelocateMobileEntity(WorldEntity entity, TilePosition to, SpatialQueryIndex spatial)
@@ -505,7 +517,8 @@ public sealed partial class GameSimulation
             return false;
         }
 
-        return FindNearestEnemyInRange(unit, stats.AttackRange, spatial) is not null;
+        // Only halt for a firable target (inside max range and outside minimum range).
+        return FindNearestEnemyInRange(unit, stats.AttackRange, spatial, stats.MinimumAttackRange) is not null;
     }
 
     /// <summary>

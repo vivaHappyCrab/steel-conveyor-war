@@ -154,6 +154,8 @@ public sealed record EntityStats(
     int Armor = 0,
     ProjectileKind ProjectileKind = ProjectileKind.GroundToGround,
     int SplashRadius = 0,
+    int MinimumAttackRange = 0,
+    int ProjectileFlightTicks = 0,
     MovementType MovementType = MovementType.Ground);
 
 public sealed record ProductionRecipe(IReadOnlyDictionary<ItemId, int> Inputs, EntityKind OutputKind, int WorkTicks, TechnologyId? RequiredTechnology = null)

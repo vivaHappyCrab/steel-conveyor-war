@@ -34,7 +34,8 @@ public static class MvpDefinitions
         EntityKind.MediumBot,
         EntityKind.MediumTank,
         EntityKind.AntiAirBot,
-        EntityKind.RocketLauncher
+        EntityKind.RocketLauncher,
+        EntityKind.FieldArtillery
     }.ToFrozenSet();
 
     public static readonly FrozenSet<EntityKind> FactoryKinds = new[]
