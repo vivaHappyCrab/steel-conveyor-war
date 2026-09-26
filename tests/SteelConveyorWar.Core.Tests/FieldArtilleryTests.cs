@@ -91,6 +91,30 @@ public sealed class FieldArtilleryTests
         Assert.Equal(35, simulation.World.GetEntity(botId)!.Health);
     }
 
+    [Fact]
+    public void FieldArtillery_KeepsMovingWhenOnlyEnemyIsInsideMinimumRange()
+    {
+        var simulation = GameSimulation.CreateNewGame(randomSeed: 11);
+        Assert.True(TryFindClearRow(simulation, 12, out var row));
+        var gunTile = row;
+        var destination = new TilePosition(row.X + 8, row.Y);
+        Assert.True(simulation.TrySpawnEntityForTests(EntityKind.FieldArtillery, gunTile, new PlayerId(1), out var gunId));
+        Assert.True(simulation.TrySpawnEntityForTests(
+            EntityKind.LightBot, new TilePosition(row.X + 2, row.Y), new PlayerId(2), out _));
+
+        var gun = simulation.World.GetEntity(gunId)!;
+        gun.Order = new BastionOrder(BastionOrderKind.AttackArea, destination);
+        gun.IsGarrisoned = false;
+
+        for (var i = 0; i < 40; i++)
+        {
+            simulation.AdvanceTick();
+        }
+
+        Assert.Empty(simulation.ArtilleryShots);
+        Assert.NotEqual(gunTile, simulation.World.GetEntity(gunId)!.Position);
+    }
+
     private static TilePosition GrassNear(GameSimulation simulation, int dx, int dy)
     {
         var commander = simulation.World.Entities.Single(entity =>

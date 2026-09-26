@@ -517,7 +517,8 @@ public sealed partial class GameSimulation
             return false;
         }
 
-        return FindNearestEnemyInRange(unit, stats.AttackRange, spatial) is not null;
+        // Only halt for a firable target (inside max range and outside minimum range).
+        return FindNearestEnemyInRange(unit, stats.AttackRange, spatial, stats.MinimumAttackRange) is not null;
     }
 
     /// <summary>

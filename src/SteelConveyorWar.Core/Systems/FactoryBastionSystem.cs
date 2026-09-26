@@ -659,7 +659,7 @@ public sealed partial class GameSimulation
                 continue;
             }
 
-            if (FindNearestEnemyInRange(unit, stats.AttackRange, spatial) is not null)
+            if (FindNearestEnemyInRange(unit, stats.AttackRange, spatial, stats.MinimumAttackRange) is not null)
             {
                 return true;
             }
@@ -692,7 +692,11 @@ public sealed partial class GameSimulation
         return radius;
     }
 
-    private WorldEntity? FindNearestEnemyInRange(WorldEntity origin, int radius, SpatialQueryIndex spatial)
+    private WorldEntity? FindNearestEnemyInRange(
+        WorldEntity origin,
+        int radius,
+        SpatialQueryIndex spatial,
+        int minimumRange = 0)
     {
         if (origin.OwnerId is null)
         {
@@ -701,6 +705,7 @@ public sealed partial class GameSimulation
 
         WorldEntity? best = null;
         var bestDistanceSquared = 0;
+        var minimumRangeSquared = minimumRange > 0 ? minimumRange * minimumRange : 0;
         foreach (var entity in spatial.QueryByPositionInEuclideanRange(origin.Position, radius))
         {
             if (!entity.IsAlive
@@ -712,6 +717,11 @@ public sealed partial class GameSimulation
             }
 
             var distanceSquared = origin.Position.EuclideanDistanceSquared(entity.Position);
+            if (minimumRangeSquared > 0 && distanceSquared < minimumRangeSquared)
+            {
+                continue;
+            }
+
             if (best is null
                 || distanceSquared < bestDistanceSquared
                 || (distanceSquared == bestDistanceSquared && entity.Id < best.Id))
