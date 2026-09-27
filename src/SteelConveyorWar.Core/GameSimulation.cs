@@ -28,6 +28,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     // R06: Power/Combat are standalone systems now; each owns its own per-tick state and scratch buffers.
     private readonly PowerSystem _powerSystem;
     private readonly CombatSystem _combatSystem;
+    private readonly List<ArtilleryShot> _artilleryShots = new();
     // Reused across ticks to avoid LINQ/ToList allocations on hot simulation paths.
     private readonly List<WorldEntity> _scratchEntities = new();
     private readonly List<WorldEntity> _scratchDeadBastions = new();
@@ -136,6 +137,8 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     internal int NextEntityId => _nextEntityId;
 
     public string ComputeStateHash() => SimulationStateHasher.Compute(this);
+
+    public IReadOnlyList<ArtilleryShot> ArtilleryShots => _artilleryShots;
 
     /// <summary>
     /// R13: fingerprint of the pending (not-yet-applied) command queue, ordered canonically by
@@ -316,6 +319,8 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     void ISimulationSystemContext.SyncResolvedMaxHealth(WorldEntity entity) => SyncResolvedMaxHealth(entity);
 
     void ISimulationSystemContext.CascadeBastionDeaths() => CascadeBastionDeaths();
+
+    List<ArtilleryShot> ISimulationSystemContext.ArtilleryShots => _artilleryShots;
 
     void ISimulationSystemContext.CollectSortedAliveEntities(List<WorldEntity> into, Func<WorldEntity, bool> predicate) =>
         CollectSortedAliveEntities(into, predicate);

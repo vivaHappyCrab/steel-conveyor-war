@@ -245,7 +245,9 @@ public static class GameplayTablesLoader
                 || stats.MoveEveryTicks < 0
                 || stats.VisionRadius < 0
                 || stats.Armor < 0
-                || stats.SplashRadius < 0)
+                || stats.SplashRadius < 0
+                || stats.MinimumAttackRange < 0
+                || stats.ProjectileFlightTicks < 0)
             {
                 throw new InvalidOperationException(
                     $"entityStats '{kind}' combat/move fields must be >= 0 " +
@@ -278,6 +280,8 @@ public static class GameplayTablesLoader
                 stats.Armor,
                 projectile,
                 stats.SplashRadius,
+                stats.MinimumAttackRange,
+                stats.ProjectileFlightTicks,
                 movement);
 
             if (!result.TryAdd(kind, entityStats))
@@ -501,6 +505,8 @@ public static class GameplayTablesLoader
         public int Armor { get; set; }
         public string? ProjectileKind { get; set; }
         public int SplashRadius { get; set; }
+        public int MinimumAttackRange { get; set; }
+        public int ProjectileFlightTicks { get; set; }
         public string? MovementType { get; set; }
     }
 

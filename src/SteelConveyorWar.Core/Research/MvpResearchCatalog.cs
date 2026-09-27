@@ -116,6 +116,13 @@ public static class MvpResearchCatalog
         Tech(TechnologyId.MachineGunTurret, ResearchTierIds.T1, 12, ItemId.SciencePackT1,
             [UnlockContentEffect.Entity(EntityKind.MachineGunTurret)],
             "optional", "tactical");
+        Tech(TechnologyId.FieldArtillery, ResearchTierIds.T1, 12, ItemId.SciencePackT1,
+            [
+                UnlockContentEffect.Entity(EntityKind.FieldArtillery),
+                UnlockContentEffect.Recipe(EntityKind.FieldArtillery.ToString()),
+                UnlockContentEffect.Entity(EntityKind.CannonTurret)
+            ],
+            "optional", "tactical");
         Tech(TechnologyId.AdditionalBastion, ResearchTierIds.T1, 9, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.MaxBastions, ModifierOperation.Add, 10_000)],
             "optional", "tactical");
@@ -262,7 +269,6 @@ public static class MvpResearchCatalog
                     UnlockContentEffect.Entity(EntityKind.LightBot),
                     UnlockContentEffect.Entity(EntityKind.Scout),
                     UnlockContentEffect.Entity(EntityKind.Wall),
-                    UnlockContentEffect.Entity(EntityKind.CannonTurret),
                     UnlockContentEffect.Recipe(EntityKind.BasicTank.ToString()),
                     UnlockContentEffect.Recipe(EntityKind.LightBot.ToString()),
                     UnlockContentEffect.Recipe(EntityKind.Scout.ToString()),
@@ -372,6 +378,7 @@ public static class MvpResearchCatalog
                     new TechnologyId("technology.t1.fast-regroup"),
                     TechnologyId.GroundUnitArmor,
                     TechnologyId.MachineGunTurret,
+                    TechnologyId.FieldArtillery,
                     TechnologyId.AdditionalBastion,
                     new TechnologyId("technology.t1.doctrine.mobile-groups"),
                     new TechnologyId("technology.t1.doctrine.fortified-line")

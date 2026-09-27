@@ -68,6 +68,7 @@ internal static class WorldRenderer
             DrawEntity(target, simulation, localPlayer, entity, selectedEntityId == entity.Id);
         }
 
+        DrawArtilleryImpacts(target, simulation, localPlayer);
         DrawCombatShots(target, combatShots);
 
         foreach (var waypoint in patrolWaypoints)
@@ -122,6 +123,41 @@ internal static class WorldRenderer
                 reachInserter.Position,
                 reachInserter.Direction,
                 reachInserter.InserterLongReach);
+        }
+    }
+
+    internal static void DrawArtilleryImpacts(IRenderTarget target, GameSimulation simulation, PlayerId localPlayer)
+    {
+        var tile = SfmlUiLayout.TileSize;
+        foreach (var shot in simulation.ArtilleryShots)
+        {
+            var impact = new TilePosition(shot.ImpactX, shot.ImpactY);
+            if (simulation.GetVisibility(localPlayer, impact) == VisibilityState.Unknown)
+            {
+                continue;
+            }
+
+            var flight = Math.Max(1, shot.LandTick - shot.LaunchTick);
+            var progress = Math.Clamp((simulation.Tick - shot.LaunchTick) / (float)flight, 0f, 1f);
+            var origin = new Vector2f(shot.OriginXMilli / 1000f * tile, shot.OriginYMilli / 1000f * tile);
+            var end = new Vector2f((shot.ImpactX + 0.5f) * tile, (shot.ImpactY + 0.5f) * tile);
+            var shell = new Vector2f(
+                origin.X + (end.X - origin.X) * progress,
+                origin.Y + (end.Y - origin.Y) * progress);
+            using var marker = new CircleShape(tile * 0.18f)
+            {
+                FillColor = new Color(220, 140, 40, 160),
+                Origin = new Vector2f(tile * 0.18f, tile * 0.18f),
+                Position = end
+            };
+            target.Draw(marker);
+            using var projectile = new CircleShape(tile * 0.08f)
+            {
+                FillColor = new Color(255, 210, 120),
+                Origin = new Vector2f(tile * 0.08f, tile * 0.08f),
+                Position = shell
+            };
+            target.Draw(projectile);
         }
     }
 
@@ -595,6 +631,7 @@ internal static class WorldRenderer
             EntityKind.MachineGunTurret or EntityKind.CannonTurret or EntityKind.AntiAirTurret => new Color(170, 80, 70),
             EntityKind.LightBot or EntityKind.MediumBot => new Color(120, 210, 110),
             EntityKind.BasicTank or EntityKind.MediumTank => new Color(70, 150, 90),
+            EntityKind.FieldArtillery => new Color(170, 120, 55),
             EntityKind.Scout => new Color(230, 220, 90),
             EntityKind.AntiAirBot or EntityKind.RocketLauncher => new Color(90, 180, 170),
             _ => Color.Magenta
