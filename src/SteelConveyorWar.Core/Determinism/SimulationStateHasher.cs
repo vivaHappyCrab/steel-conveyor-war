@@ -22,7 +22,7 @@ namespace SteelConveyorWar.Core;
 /// </remarks>
 public static class SimulationStateHasher
 {
-    public const int AlgorithmVersion = 11;
+    public const int AlgorithmVersion = 12;
 
     public static string Compute(GameSimulation simulation)
     {
