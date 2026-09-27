@@ -376,10 +376,12 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             return false;
         }
 
-        if (!World.IsInside(position) || !BuildCostCatalog.Costs.TryGetValue(targetKind, out var cost))
+        if (!World.IsInside(position) || !BuildCostCatalog.Costs.ContainsKey(targetKind))
         {
             return false;
         }
+
+        var cost = ResolveBuildCost(commander.OwnerId, targetKind);
 
         if (!IsBuildUnlocked(commander.OwnerId.Value, targetKind) || !CanPlaceBuilding(targetKind, position))
         {
@@ -416,7 +418,12 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         var buildTicks = BuildCostCatalog.BuildTicks.GetValueOrDefault(targetKind, TicksPerSecond);
         if (commander.OwnerId is not null)
         {
-            buildTicks = ResolveStat(commander.OwnerId.Value, ResearchStatIds.ConstructionTicks, buildTicks);
+            buildTicks = ResolveStat(
+                commander.OwnerId.Value,
+                ResearchStatIds.ConstructionTicks,
+                buildTicks,
+                targetKind.ToString(),
+                minValue: 1);
         }
 
         ghost.ConstructionTicksRemaining = buildTicks;
@@ -596,10 +603,12 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             return false;
         }
 
-        if (!BuildCostCatalog.Costs.TryGetValue(costKind, out var fullCost))
+        if (!BuildCostCatalog.Costs.ContainsKey(costKind))
         {
             return false;
         }
+
+        var fullCost = ResolveBuildCost(commander!.OwnerId, costKind);
 
         var transfer = new Dictionary<ItemId, int>();
         CollectInventoryInto(transfer, target.Inventory);
@@ -937,6 +946,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         research.ProgressWorkUnitsMutable[technologyId] = definition.Cost.EffortUnits;
         _researchSystem.EvaluatePendingCompletions(research);
         SyncResolvedMaxHealthForPlayer(playerId);
+        RefreshAllEnergyBufferCapacities();
         return research.CompletedTechnologies.Contains(technologyId);
     }
 
@@ -1052,6 +1062,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     {
         GetPlayer(playerId).Research.AppliedModifiersMutable.Add(effect);
         SyncResolvedMaxHealthForPlayer(playerId);
+        RefreshAllEnergyBufferCapacities();
     }
 
     /// <summary>
@@ -1802,7 +1813,7 @@ public sealed partial class GameSimulation : ISimulationSystemContext
 
     private void ConfigureEntityDefaults(WorldEntity entity)
     {
-        entity.EnergyBufferCapacity = GameplayTables.GetEnergyBufferCapacity(entity.Kind);
+        RefreshEnergyBufferCapacity(entity);
         entity.EnergyBuffer = 0;
         // Assembler / factory default recipe is none until the player (or autofill) selects one.
     }
@@ -1856,6 +1867,46 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             SyncResolvedMaxHealthForPlayer(player.Id);
         }
     }
+
+    private void RefreshEnergyBufferCapacity(WorldEntity entity)
+    {
+        var demand = GameplayTables.GetPowerDemand(entity.Kind);
+        if (demand <= 0)
+        {
+            entity.EnergyBufferCapacity = 0;
+            return;
+        }
+
+        var factor = entity.OwnerId is null
+            ? MvpDefinitions.EnergyBufferCapacityFactor
+            : ResolveStat(
+                entity.OwnerId.Value,
+                ResearchStatIds.EnergyBufferFactor,
+                MvpDefinitions.EnergyBufferCapacityFactor,
+                entity.Kind.ToString(),
+                minValue: 1);
+        var capacity = demand * factor;
+        if (entity.EnergyBuffer > capacity)
+        {
+            entity.EnergyBuffer = capacity;
+        }
+
+        entity.EnergyBufferCapacity = capacity;
+    }
+
+    private void RefreshAllEnergyBufferCapacities()
+    {
+        foreach (var entity in World.Entities)
+        {
+            if (entity.IsAlive)
+            {
+                RefreshEnergyBufferCapacity(entity);
+            }
+        }
+    }
+
+    public int GetCommanderBuildRadius(PlayerId playerId) =>
+        ResolveStat(playerId, ResearchStatIds.BuildRadius, MvpDefinitions.CommanderBuildRadius, minValue: 1);
 
 
     private static TerrainType[,] CreateStartingTerrain(
@@ -2431,10 +2482,41 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         return kind is EntityKind.Mine or EntityKind.CoalMine or EntityKind.OilWell;
     }
 
+    private Dictionary<ItemId, int> ResolveBuildCost(PlayerId? ownerId, EntityKind kind)
+    {
+        if (!BuildCostCatalog.Costs.TryGetValue(kind, out var catalogCost))
+        {
+            return new Dictionary<ItemId, int>();
+        }
+
+        var ironDiscount = ownerId is null
+            ? 0
+            : ResolveStat(ownerId.Value, ResearchStatIds.BuildIronDiscount, 0, kind.ToString(), minValue: 0);
+        var resolved = new Dictionary<ItemId, int>();
+        foreach (var pair in catalogCost)
+        {
+            var amount = pair.Value;
+            if (pair.Key == ItemId.IronPlate)
+            {
+                amount = Math.Max(0, amount - ironDiscount);
+            }
+
+            if (amount > 0)
+            {
+                resolved[pair.Key] = amount;
+            }
+        }
+
+        return resolved;
+    }
+
     private bool IsWithinBuildRadius(WorldEntity commander, EntityKind targetKind, TilePosition anchor)
     {
+        var radius = commander.OwnerId is null
+            ? MvpDefinitions.CommanderBuildRadius
+            : GetCommanderBuildRadius(commander.OwnerId.Value);
         return DistanceSquaredToFootprint(commander.WorldPosition, targetKind, anchor)
-            <= Square(MvpDefinitions.CommanderBuildRadius * WorldUnits.MilliPerTile);
+            <= Square(radius * WorldUnits.MilliPerTile);
     }
 
     /// <summary>
@@ -2550,10 +2632,12 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     public int GetAffordableBuildCount(WorldEntity commander, EntityKind kind)
     {
         ArgumentNullException.ThrowIfNull(commander);
-        if (!BuildCostCatalog.Costs.TryGetValue(kind, out var cost))
+        if (!BuildCostCatalog.Costs.ContainsKey(kind))
         {
             return 0;
         }
+
+        var cost = ResolveBuildCost(commander.OwnerId, kind);
 
         if (cost.Count == 0)
         {

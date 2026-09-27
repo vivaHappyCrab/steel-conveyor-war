@@ -163,13 +163,27 @@ public sealed partial class GameSimulation
         return false;
     }
 
-    /// <summary>One tile per <c>moveEveryTicks</c>. Commander baseline 8 stays at 125 milli-tiles per tick.</summary>
+    /// <summary>
+    /// One tile per <c>moveEveryTicks</c>. Army units resolve the research stat; the commander keeps
+    /// the baseline so build-radius research does not also speed the БМК.
+    /// </summary>
     private long ResolveMobileStepMilli(WorldEntity entity)
     {
-        var moveEvery = GameplayTables.GetStats(entity.Kind).MoveEveryTicks;
-        if (moveEvery <= 0)
+        var baseline = GameplayTables.GetStats(entity.Kind).MoveEveryTicks;
+        if (baseline <= 0)
         {
-            moveEvery = 8;
+            baseline = 8;
+        }
+
+        var moveEvery = baseline;
+        if (entity.OwnerId is not null && MvpDefinitions.UnitKinds.Contains(entity.Kind))
+        {
+            moveEvery = ResolveStat(
+                entity.OwnerId.Value,
+                ResearchStatIds.MoveEveryTicks,
+                baseline,
+                entity.Kind.ToString(),
+                minValue: 3);
         }
 
         return Math.Max(1, WorldUnits.MilliPerTile / moveEvery);

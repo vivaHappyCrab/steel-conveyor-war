@@ -40,23 +40,50 @@ public static class MvpResearchCatalog
                 []));
         }
 
-        // T1 mandatory B/C-style pillars (also used by hybrid)
-        Tech(TechnologyId.ProductionI, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 9_000)],
+        EntityKind[] fortifications =
+        [
+            EntityKind.Wall,
+            EntityKind.SteelWall,
+            EntityKind.MachineGunTurret,
+            EntityKind.CannonTurret,
+            EntityKind.AntiAirTurret
+        ];
+        EntityKind[] powerReserveBuildings =
+        [
+            EntityKind.Laboratory,
+            EntityKind.Assembler,
+            EntityKind.TankFactory,
+            EntityKind.DroneCenter
+        ];
+
+        // T1 mandatory pillars. The effort argument is multiplied by 10 inside Tech:
+        // 18 → 180 lab cycles ≈ 3 minutes at 30 TPS with one primary laboratory.
+        Tech(TechnologyId.ProductionI, ResearchTierIds.T1, 18, ItemId.SciencePackT1,
+            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 7_500)],
             "mandatory", "cycle");
-        Tech(TechnologyId.EnergyI, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.EnergyShortagePenalty, ModifierOperation.Multiply, 8_000)],
+        Tech(TechnologyId.EnergyI, ResearchTierIds.T1, 18, ItemId.SciencePackT1,
+            [
+                new AddModifierEffect(ResearchStatIds.PowerProduction, ModifierOperation.Multiply, 16_000, EntityKind.SolarPanel.ToString()),
+                new AddModifierEffect(ResearchStatIds.EnergyBufferFactor, ModifierOperation.Multiply, 15_000)
+            ],
             "mandatory", "cycle");
-        Tech(TechnologyId.CommandI, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 9_000)],
+        Tech(TechnologyId.CommandI, ResearchTierIds.T1, 18, ItemId.SciencePackT1,
+            [
+                new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 8_000),
+                new AddModifierEffect(ResearchStatIds.BuildRadius, ModifierOperation.Add, 40_000)
+            ],
             "mandatory", "cycle");
 
         // Variant A T1 qualification projects (also used by B's optional pool)
-        Tech(TechnologyId.ImprovedConveyors, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
+        Tech(TechnologyId.ImprovedConveyors, ResearchTierIds.T1, 12, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.ConveyorMoveTicks, ModifierOperation.Multiply, 7_000)],
             "optional", "qualification", "production", "tactical");
-        Tech(new TechnologyId("technology.t1.power-reserve"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.EnergyShortagePenalty, ModifierOperation.Multiply, 7_000)],
+        Tech(new TechnologyId("technology.t1.power-reserve"), ResearchTierIds.T1, 9, ItemId.SciencePackT1,
+            powerReserveBuildings.Select(kind => (ResearchEffect)new AddModifierEffect(
+                ResearchStatIds.EnergyBufferFactor,
+                ModifierOperation.Multiply,
+                20_000,
+                kind.ToString())),
             "optional", "qualification", "infrastructure", "tactical");
 
         var bonuses = GameplayTablesCatalog.Embedded.ResearchBonuses;
@@ -80,17 +107,14 @@ public static class MvpResearchCatalog
             .ToArray();
 
         // T1 optional combat/bastion bonuses (LightBot/Scout/Wall remain T1 baseline unlocks).
-        Tech(TechnologyId.GroundUnitAttack, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
+        Tech(TechnologyId.GroundUnitAttack, ResearchTierIds.T1, 12, ItemId.SciencePackT1,
             groundAttackEffects,
             "optional", "tactical");
-        Tech(TechnologyId.GroundUnitArmor, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
+        Tech(TechnologyId.GroundUnitArmor, ResearchTierIds.T1, 12, ItemId.SciencePackT1,
             groundArmorEffects,
             "optional", "tactical");
-        Tech(TechnologyId.MachineGunTurret, ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [
-                UnlockContentEffect.Entity(EntityKind.MachineGunTurret),
-                new AddModifierEffect(ResearchStatIds.AttackDamage, ModifierOperation.Multiply, 11_000)
-            ],
+        Tech(TechnologyId.MachineGunTurret, ResearchTierIds.T1, 12, ItemId.SciencePackT1,
+            [UnlockContentEffect.Entity(EntityKind.MachineGunTurret)],
             "optional", "tactical");
         Tech(TechnologyId.FieldArtillery, ResearchTierIds.T1, 12, ItemId.SciencePackT1,
             [
@@ -99,34 +123,44 @@ public static class MvpResearchCatalog
                 UnlockContentEffect.Entity(EntityKind.CannonTurret)
             ],
             "optional", "tactical");
-        Tech(TechnologyId.AdditionalBastion, ResearchTierIds.T1, 2, ItemId.SciencePackT1,
+        Tech(TechnologyId.AdditionalBastion, ResearchTierIds.T1, 9, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.MaxBastions, ModifierOperation.Add, 10_000)],
             "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.forward-observer"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
+        Tech(new TechnologyId("technology.t1.forward-observer"), ResearchTierIds.T1, 9, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.VisionRadius, ModifierOperation.Add, 10_000)],
             "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.field-repair"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
+        Tech(new TechnologyId("technology.t1.field-repair"), ResearchTierIds.T1, 9, ItemId.SciencePackT1,
             [new GrantCapabilityEffect(ResearchCapabilityIds.RepairOutOfCombat)],
             "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.prefab-fortifications"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [
-                new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 8_000),
-                new AddModifierEffect(ResearchStatIds.AttackCooldownTicks, ModifierOperation.Multiply, 9_000)
-            ],
+        Tech(new TechnologyId("technology.t1.prefab-fortifications"), ResearchTierIds.T1, 9, ItemId.SciencePackT1,
+            fortifications.SelectMany(kind => new ResearchEffect[]
+            {
+                new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 4_000, kind.ToString()),
+                new AddModifierEffect(ResearchStatIds.BuildIronDiscount, ModifierOperation.Add, 10_000, kind.ToString())
+            }),
             "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.production-reserve"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
+        Tech(new TechnologyId("technology.t1.production-reserve"), ResearchTierIds.T1, 9, ItemId.SciencePackT1,
             [new AddModifierEffect(ResearchStatIds.HubStorageStacks, ModifierOperation.Add, 20_000)],
             "optional", "tactical");
-        Tech(new TechnologyId("technology.t1.fast-regroup"), ResearchTierIds.T1, 2, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 9_000)],
+        Tech(new TechnologyId("technology.t1.fast-regroup"), ResearchTierIds.T1, 9, ItemId.SciencePackT1,
+            [new AddModifierEffect(ResearchStatIds.MoveEveryTicks, ModifierOperation.Add, -20_000)],
             "optional", "tactical");
 
-        // T1 doctrines
-        Tech(new TechnologyId("technology.t1.doctrine.mobile-groups"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.FactoryWorkTicks, ModifierOperation.Multiply, 9_000, EntityKind.LightBot.ToString())],
+        // T1 doctrines change how the army fights. They do not speed factories.
+        Tech(new TechnologyId("technology.t1.doctrine.mobile-groups"), ResearchTierIds.T1, 12, ItemId.SciencePackT1,
+            [
+                new AddModifierEffect(ResearchStatIds.MoveEveryTicks, ModifierOperation.Add, -20_000, EntityKind.LightBot.ToString()),
+                new AddModifierEffect(ResearchStatIds.MoveEveryTicks, ModifierOperation.Add, -20_000, EntityKind.MediumBot.ToString()),
+                new AddModifierEffect(ResearchStatIds.AttackDamage, ModifierOperation.Add, 10_000, EntityKind.LightBot.ToString()),
+                new AddModifierEffect(ResearchStatIds.AttackDamage, ModifierOperation.Add, 10_000, EntityKind.MediumBot.ToString())
+            ],
             "doctrine", "tactical", "optional");
-        Tech(new TechnologyId("technology.t1.doctrine.fortified-line"), ResearchTierIds.T1, 3, ItemId.SciencePackT1,
-            [new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 8_000)],
+        Tech(new TechnologyId("technology.t1.doctrine.fortified-line"), ResearchTierIds.T1, 12, ItemId.SciencePackT1,
+            fortifications.SelectMany(kind => new ResearchEffect[]
+            {
+                new AddModifierEffect(ResearchStatIds.MaxHealth, ModifierOperation.Multiply, 14_000, kind.ToString()),
+                new AddModifierEffect(ResearchStatIds.ConstructionTicks, ModifierOperation.Multiply, 5_000, kind.ToString())
+            }),
             "doctrine", "tactical", "optional");
 
         // T2 mandatory B

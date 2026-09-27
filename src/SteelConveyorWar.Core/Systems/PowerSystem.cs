@@ -119,8 +119,8 @@ internal sealed class PowerSystem
             var player = _context.GetPlayer(entity.OwnerId!.Value);
             var produced = entity.Kind switch
             {
-                EntityKind.SolarPanel => tables.PowerProduction.GetValueOrDefault(EntityKind.SolarPanel),
-                EntityKind.CoalPlant when entity.InputBuffer.TryRemove(ItemId.Coal, 1) => tables.PowerProduction.GetValueOrDefault(EntityKind.CoalPlant),
+                EntityKind.SolarPanel => ResolvePowerProduction(entity, EntityKind.SolarPanel),
+                EntityKind.CoalPlant when entity.InputBuffer.TryRemove(ItemId.Coal, 1) => ResolvePowerProduction(entity, EntityKind.CoalPlant),
                 _ => 0
             };
             if (produced > 0)
@@ -139,6 +139,22 @@ internal sealed class PowerSystem
         {
             FillEnergyBuffersEmptiestFirst(player);
         }
+    }
+
+    private int ResolvePowerProduction(WorldEntity entity, EntityKind kind)
+    {
+        var baseline = _context.GameplayTables.PowerProduction.GetValueOrDefault(kind);
+        if (baseline <= 0 || entity.OwnerId is null)
+        {
+            return baseline;
+        }
+
+        return _context.ResolveStat(
+            entity.OwnerId.Value,
+            ResearchStatIds.PowerProduction,
+            baseline,
+            kind.ToString(),
+            minValue: 0);
     }
 
     private void ResetEnergyTickAccumulators()

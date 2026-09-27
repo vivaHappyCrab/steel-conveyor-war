@@ -22,7 +22,7 @@ namespace SteelConveyorWar.Core;
 /// </remarks>
 public static class SimulationStateHasher
 {
-    public const int AlgorithmVersion = 11;
+    public const int AlgorithmVersion = 12;
 
     public static string Compute(GameSimulation simulation)
     {
@@ -275,6 +275,13 @@ public static class SimulationStateHasher
 
         writer.Write(research.ProgressWorkUnits.Count);
         foreach (var pair in research.ProgressWorkUnits.OrderBy(pair => pair.Key.Value, StringComparer.Ordinal))
+        {
+            writer.Write(pair.Key.Value);
+            writer.Write(pair.Value);
+        }
+
+        writer.Write(research.ProgressRemainderBasisPoints.Count);
+        foreach (var pair in research.ProgressRemainderBasisPoints.OrderBy(pair => pair.Key.Value, StringComparer.Ordinal))
         {
             writer.Write(pair.Key.Value);
             writer.Write(pair.Value);

@@ -328,8 +328,9 @@ internal sealed class ResearchSystem
 
         var activeProjects = CollectActiveProjects(research);
 
-        foreach (var lab in labs)
+        for (var labIndex = 0; labIndex < labs.Count; labIndex++)
         {
+            var lab = labs[labIndex];
             if (activeProjects.Count == 0)
             {
                 lab.WorkTicksRemaining = 0;
@@ -364,7 +365,8 @@ internal sealed class ResearchSystem
 
             // R29: pick the project this pack advances (identity-preserving) using the persistent
             // largest-remainder accumulators, then award the work directly to that project.
-            ConsumeAndAwardForCycle(lab, research, activeProjects);
+            // Rank is the lab's place among living labs of this player (lowest entity id is full speed).
+            ConsumeAndAwardForCycle(lab, research, activeProjects, labIndex);
 
             lab.WorkTicksTotal = 0;
         }
@@ -429,7 +431,8 @@ internal sealed class ResearchSystem
     private void ConsumeAndAwardForCycle(
         WorldEntity lab,
         PlayerResearchState research,
-        List<(string TrackId, TechnologyId TechnologyId, TechnologyDefinition Definition)> activeProjects)
+        List<(string TrackId, TechnologyId TechnologyId, TechnologyDefinition Definition)> activeProjects,
+        int labRank)
     {
         var affordable = activeProjects
             .Where(project => CanAfford(lab, project.Definition))
@@ -476,7 +479,17 @@ internal sealed class ResearchSystem
             return;
         }
 
-        AwardWork(research, target.TechnologyId, target.Definition, 1);
+        AwardWork(research, target.TechnologyId, target.Definition, LabContributionBasisPoints(labRank));
+    }
+
+    /// <summary>
+    /// Lowest-id laboratory contributes a full point. Each later lab contributes half of the previous one.
+    /// The shift stops at 13 so a packed base still grants at least one basis point instead of zero.
+    /// </summary>
+    private static int LabContributionBasisPoints(int labRank)
+    {
+        var shift = Math.Min(Math.Max(labRank, 0), 13);
+        return AllocationScale >> shift;
     }
 
     // Stride / largest-remainder rotation: add each candidate's weight to its persistent
@@ -548,17 +561,34 @@ internal sealed class ResearchSystem
         PlayerResearchState research,
         TechnologyId technologyId,
         TechnologyDefinition definition,
-        int workUnits)
+        int contributionBasisPoints)
     {
         var multiplier = BasisPointsForTechnology(research, definition);
-        var awarded = (int)((long)workUnits * multiplier / AllocationScale);
+        var awarded = (int)((long)contributionBasisPoints * multiplier / AllocationScale);
         if (awarded <= 0)
         {
-            awarded = workUnits;
+            awarded = contributionBasisPoints;
+        }
+
+        var remainder = research.ProgressRemainderBasisPoints.GetValueOrDefault(technologyId) + awarded;
+        var wholeUnits = remainder / AllocationScale;
+        remainder %= AllocationScale;
+        if (remainder == 0)
+        {
+            research.ProgressRemainderBasisPoints.Remove(technologyId);
+        }
+        else
+        {
+            research.ProgressRemainderBasisPoints[technologyId] = remainder;
+        }
+
+        if (wholeUnits <= 0)
+        {
+            return;
         }
 
         research.ProgressWorkUnits.TryGetValue(technologyId, out var current);
-        research.ProgressWorkUnitsMutable[technologyId] = current + awarded;
+        research.ProgressWorkUnitsMutable[technologyId] = current + wholeUnits;
     }
 
     private int BasisPointsForTechnology(PlayerResearchState research, TechnologyDefinition definition)
@@ -632,6 +662,7 @@ internal sealed class ResearchSystem
     {
         research.CompletedTechnologiesMutable.Add(definition.Id);
         research.ProgressWorkUnitsMutable.Remove(definition.Id);
+        research.ProgressRemainderBasisPoints.Remove(definition.Id);
 
         foreach (var track in research.Tracks.Values)
         {
