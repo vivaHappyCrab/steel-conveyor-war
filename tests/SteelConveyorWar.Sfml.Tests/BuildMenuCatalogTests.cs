@@ -52,7 +52,6 @@ public class BuildMenuCatalogTests
     [Theory]
     [InlineData(EntityKind.UndergroundConveyor)]
     [InlineData(EntityKind.SteelWall)]
-    [InlineData(EntityKind.CannonTurret)]
     [InlineData(EntityKind.AntiAirTurret)]
     public void ComposeFrom_IncludesPreviouslyMissingEntities(EntityKind kind)
     {

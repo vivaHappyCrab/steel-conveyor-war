@@ -18,7 +18,6 @@ public sealed partial record GameplayTablesCatalog
     "DroneCenter": 4,
     "Laboratory": 4,
     "MachineGunTurret": 1,
-    "CannonTurret": 2,
     "AntiAirTurret": 2
   },
   "powerProduction": {
@@ -62,7 +61,6 @@ public sealed partial record GameplayTablesCatalog
     "Wall": { "width": 1, "height": 1 },
     "SteelWall": { "width": 1, "height": 1 },
     "MachineGunTurret": { "width": 1, "height": 1 },
-    "CannonTurret": { "width": 1, "height": 1 },
     "AntiAirTurret": { "width": 1, "height": 1 }
   },
   "collisionRadius": {
@@ -278,16 +276,6 @@ public sealed partial record GameplayTablesCatalog
       "visionRadius": 6,
       "armor": 2,
       "projectileKind": "GroundToGround"
-    },
-    "CannonTurret": {
-      "maxHealth": 170,
-      "attackDamage": 20,
-      "attackRange": 6,
-      "attackCooldownTicks": 28,
-      "visionRadius": 7,
-      "armor": 4,
-      "projectileKind": "Ballistic",
-      "splashRadius": 1
     },
     "AntiAirTurret": {
       "maxHealth": 140,

@@ -5,17 +5,15 @@ namespace SteelConveyorWar.Core.Tests;
 public sealed class FieldArtilleryTests
 {
     [Fact]
-    public void Cannon_RequiresFieldArtilleryResearch()
+    public void FieldArtilleryResearch_UnlocksTheUnitAndNotACannon()
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
-        var player = new PlayerId(1);
-        var tile = GrassNear(simulation, 3, 1);
-        Assert.False(simulation.TryPlaceGhostBuild(player, EntityKind.CannonTurret, tile, out _));
-
-        Assert.True(simulation.TryForceCompleteResearch(player, TechnologyId.FieldArtillery, confirmExclusive: true));
-        Assert.True(simulation.TryPlaceGhostBuild(player, EntityKind.CannonTurret, tile, out _));
-        Assert.Equal(20, simulation.GameplayTables.GetStats(EntityKind.CannonTurret).AttackDamage);
-        Assert.Equal(28, simulation.GameplayTables.GetStats(EntityKind.CannonTurret).AttackCooldownTicks);
+        var effects = simulation.ResearchCatalog.Technologies[TechnologyId.FieldArtillery].Effects;
+        Assert.Contains(effects, effect => effect is UnlockContentEffect unlock
+            && unlock.ContentKind == "entity"
+            && unlock.ContentId == EntityKind.FieldArtillery.ToString());
+        Assert.DoesNotContain(effects, effect => effect is UnlockContentEffect unlock
+            && unlock.ContentId.Contains("Cannon", StringComparison.Ordinal));
     }
 
     [Fact]

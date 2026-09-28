@@ -4,7 +4,7 @@ namespace SteelConveyorWar.Sfml;
 
 // H05/R30: The buildable set is composed from the match BuildCostCatalog rather than a hardcoded
 // list, so every entity configured in build-costs.json (e.g. UndergroundConveyor/SteelWall/
-// CannonTurret/AntiAirTurret) appears in the menu without editing SFML code. The only thing kept
+// AntiAirTurret) appears in the menu without editing SFML code. The only thing kept
 // here is a preferred display ordering; any catalog kind not listed is appended deterministically.
 // Production path: ComposeFrom(simulation.BuildCostCatalog) at session start — never Embedded.
 public static class BuildMenuCatalog
@@ -32,7 +32,6 @@ public static class BuildMenuCatalog
         // Previously missing from the hardcoded menu; appended so composition matches the catalog.
         EntityKind.UndergroundConveyor,
         EntityKind.SteelWall,
-        EntityKind.CannonTurret,
         EntityKind.AntiAirTurret
     ];
 
