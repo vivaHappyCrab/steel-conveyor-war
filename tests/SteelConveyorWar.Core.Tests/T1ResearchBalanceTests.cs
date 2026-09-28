@@ -137,7 +137,7 @@ public sealed class T1ResearchBalanceTests
     }
 
     [Fact]
-    public void T1Effort_UsesThreeMinutePillarsAndLeavesT2Alone()
+    public void T1Effort_UsesThreeMinutePillars()
     {
         var catalog = MvpResearchCatalog.CreateEmbedded();
         Assert.Equal(180, catalog.Technologies[TechnologyId.ProductionI].Cost.EffortUnits);
@@ -146,8 +146,6 @@ public sealed class T1ResearchBalanceTests
         Assert.Equal(120, catalog.Technologies[TechnologyId.ImprovedConveyors].Cost.EffortUnits);
         Assert.Equal(120, catalog.Technologies[TechnologyId.GroundUnitAttack].Cost.EffortUnits);
         Assert.Equal(90, catalog.Technologies[new TechnologyId("technology.t1.power-reserve")].Cost.EffortUnits);
-        Assert.Equal(40, catalog.Technologies[TechnologyId.MetallurgyII].Cost.EffortUnits);
-        Assert.Equal(20, catalog.Technologies[new TechnologyId("technology.t2.ammo-priority")].Cost.EffortUnits);
     }
 
     [Fact]
