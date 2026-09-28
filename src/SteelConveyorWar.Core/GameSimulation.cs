@@ -1523,9 +1523,6 @@ public sealed partial class GameSimulation : ISimulationSystemContext
             case EntityKind.MachineGunTurret:
                 return AmmoOnly;
 
-            case EntityKind.CannonTurret:
-                return ShellOnly;
-
             case EntityKind.AntiAirTurret:
                 return AntiAirShellOnly;
 
@@ -1542,7 +1539,6 @@ public sealed partial class GameSimulation : ISimulationSystemContext
     private static readonly HashSet<ItemId> SciencePackInputs = new() { ItemId.SciencePackT1, ItemId.SciencePackT2 };
     private static readonly HashSet<ItemId> CoalOnly = new() { ItemId.Coal };
     private static readonly HashSet<ItemId> AmmoOnly = new() { ItemId.Ammo };
-    private static readonly HashSet<ItemId> ShellOnly = new() { ItemId.Shell };
     private static readonly HashSet<ItemId> AntiAirShellOnly = new() { ItemId.AntiAirShell };
 
     private void DepositAllMatching(

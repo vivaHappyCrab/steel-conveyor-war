@@ -123,20 +123,6 @@
           "statId": "stat.combat.max-health",
           "operation": "Multiply",
           "valueBasisPoints": 14000,
-          "selector": "CannonTurret"
-        },
-        {
-          "type": "addModifier",
-          "statId": "stat.construction.ticks",
-          "operation": "Multiply",
-          "valueBasisPoints": 5000,
-          "selector": "CannonTurret"
-        },
-        {
-          "type": "addModifier",
-          "statId": "stat.combat.max-health",
-          "operation": "Multiply",
-          "valueBasisPoints": 14000,
           "selector": "AntiAirTurret"
         },
         {
@@ -268,7 +254,7 @@
       "id": "technology.t1.field-artillery",
       "tierId": "tier.t1",
       "displayName": "\u041F\u043E\u043B\u0435\u0432\u0430\u044F \u0430\u0440\u0442\u0438\u043B\u043B\u0435\u0440\u0438\u044F",
-      "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043E\u043B\u0435\u0432\u0443\u044E \u0421\u0410\u0423 \u0438 \u043F\u0443\u0448\u043A\u0443. \u0421\u043D\u0430\u0440\u044F\u0434 \u0421\u0410\u0423 \u043B\u0435\u0442\u0438\u0442 \u0432 \u0442\u043E\u0447\u043A\u0443, \u0433\u0434\u0435 \u0446\u0435\u043B\u044C \u0441\u0442\u043E\u044F\u043B\u0430, \u0438 \u043D\u0430\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043B\u043E\u0449\u0430\u0434\u044C.",
+      "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043E\u043B\u0435\u0432\u0443\u044E \u0421\u0410\u0423. \u0421\u043D\u0430\u0440\u044F\u0434 \u043B\u0435\u0442\u0438\u0442 \u0432 \u0442\u043E\u0447\u043A\u0443, \u0433\u0434\u0435 \u0446\u0435\u043B\u044C \u0441\u0442\u043E\u044F\u043B\u0430, \u0438 \u043D\u0430\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043B\u043E\u0449\u0430\u0434\u044C.",
       "cost": {
         "effortUnits": 120,
         "sciencePacks": [
@@ -289,12 +275,6 @@
           "type": "unlockContent",
           "contentKind": "recipe",
           "contentId": "FieldArtillery",
-          "valueBasisPoints": 0
-        },
-        {
-          "type": "unlockContent",
-          "contentKind": "entity",
-          "contentId": "CannonTurret",
           "valueBasisPoints": 0
         }
       ],
@@ -679,20 +659,6 @@
           "operation": "Add",
           "valueBasisPoints": 10000,
           "selector": "MachineGunTurret"
-        },
-        {
-          "type": "addModifier",
-          "statId": "stat.construction.ticks",
-          "operation": "Multiply",
-          "valueBasisPoints": 4000,
-          "selector": "CannonTurret"
-        },
-        {
-          "type": "addModifier",
-          "statId": "stat.build.iron-discount",
-          "operation": "Add",
-          "valueBasisPoints": 10000,
-          "selector": "CannonTurret"
         },
         {
           "type": "addModifier",

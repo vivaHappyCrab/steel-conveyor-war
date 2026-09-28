@@ -47,7 +47,6 @@ public enum EntityKind
     Wall,
     SteelWall,
     MachineGunTurret,
-    CannonTurret,
     AntiAirTurret,
     LightBot,
     BasicTank,

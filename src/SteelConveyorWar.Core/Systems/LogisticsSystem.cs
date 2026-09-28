@@ -216,7 +216,6 @@ public sealed partial class GameSimulation
             or EntityKind.DroneCenter
             or EntityKind.Laboratory
             or EntityKind.MachineGunTurret
-            or EntityKind.CannonTurret
             or EntityKind.AntiAirTurret;
     }
 

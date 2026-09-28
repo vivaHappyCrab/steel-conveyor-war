@@ -628,7 +628,7 @@ internal static class WorldRenderer
             EntityKind.TankFactory or EntityKind.DroneCenter => new Color(120, 120, 150),
             EntityKind.Laboratory => new Color(110, 80, 170),
             EntityKind.Wall or EntityKind.SteelWall => new Color(100, 105, 110),
-            EntityKind.MachineGunTurret or EntityKind.CannonTurret or EntityKind.AntiAirTurret => new Color(170, 80, 70),
+            EntityKind.MachineGunTurret or EntityKind.AntiAirTurret => new Color(170, 80, 70),
             EntityKind.LightBot or EntityKind.MediumBot => new Color(120, 210, 110),
             EntityKind.BasicTank or EntityKind.MediumTank => new Color(70, 150, 90),
             EntityKind.FieldArtillery => new Color(170, 120, 55),

@@ -1093,7 +1093,6 @@ internal static class HudOverlay
             or EntityKind.Laboratory
             or EntityKind.CoalPlant
             or EntityKind.MachineGunTurret
-            or EntityKind.CannonTurret
             or EntityKind.AntiAirTurret;
     }
 
@@ -1157,7 +1156,7 @@ internal static class HudOverlay
     {
         return kind == EntityKind.Commander
             || MvpDefinitions.UnitKinds.Contains(kind)
-            || kind is EntityKind.MachineGunTurret or EntityKind.CannonTurret or EntityKind.AntiAirTurret;
+            || kind is EntityKind.MachineGunTurret or EntityKind.AntiAirTurret;
     }
 
     internal static IEnumerable<ProductionRecipe> GetFactoryRecipes(EntityKind factoryKind, GameplayTablesCatalog tables)

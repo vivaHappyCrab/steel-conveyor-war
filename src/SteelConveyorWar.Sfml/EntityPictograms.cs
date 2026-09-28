@@ -101,12 +101,6 @@ internal static class EntityPictograms
                 DrawCircleOutline(target, cx, cy + s * 0.05f, s * 0.12f, ink);
                 DrawLine(target, cx, cy + s * 0.05f, cx, cy - s * 0.22f, ink);
                 break;
-            case EntityKind.CannonTurret:
-                // Longer thick barrel (double line)
-                DrawCircleOutline(target, cx, cy + s * 0.05f, s * 0.12f, ink);
-                DrawLine(target, cx - 1.5f, cy + s * 0.05f, cx - 1.5f, cy - s * 0.32f, ink);
-                DrawLine(target, cx + 1.5f, cy + s * 0.05f, cx + 1.5f, cy - s * 0.32f, ink);
-                break;
             case EntityKind.AntiAirTurret:
                 // Diagonal AA barrels
                 DrawCircleOutline(target, cx, cy + s * 0.05f, s * 0.12f, ink);

@@ -45,7 +45,6 @@ public static class MvpResearchCatalog
             EntityKind.Wall,
             EntityKind.SteelWall,
             EntityKind.MachineGunTurret,
-            EntityKind.CannonTurret,
             EntityKind.AntiAirTurret
         ];
         EntityKind[] powerReserveBuildings =
@@ -119,8 +118,7 @@ public static class MvpResearchCatalog
         Tech(TechnologyId.FieldArtillery, ResearchTierIds.T1, 12, ItemId.SciencePackT1,
             [
                 UnlockContentEffect.Entity(EntityKind.FieldArtillery),
-                UnlockContentEffect.Recipe(EntityKind.FieldArtillery.ToString()),
-                UnlockContentEffect.Entity(EntityKind.CannonTurret)
+                UnlockContentEffect.Recipe(EntityKind.FieldArtillery.ToString())
             ],
             "optional", "tactical");
         Tech(TechnologyId.AdditionalBastion, ResearchTierIds.T1, 9, ItemId.SciencePackT1,
