@@ -90,7 +90,12 @@ internal static class WorldRenderer
 
         if (pendingBuildKind is not null && hoverTile is not null && world.IsInside(hoverTile.Value))
         {
-            DrawGhostPreview(target, simulation, pendingBuildKind.Value, hoverTile.Value, pendingDirection);
+            var commander = world.Entities.FirstOrDefault(entity =>
+                entity.IsAlive && entity.Kind == EntityKind.Commander && entity.OwnerId == localPlayer);
+            var report = commander is null
+                ? new BuildPlacementReport(false, false, BuildPlacementBlock.UnknownKind)
+                : simulation.ExplainBuildPlacement(commander.Id, pendingBuildKind.Value, hoverTile.Value, localPlayer);
+            DrawGhostPreview(target, simulation, pendingBuildKind.Value, hoverTile.Value, pendingDirection, report);
             if (pendingBuildKind == EntityKind.Inserter)
             {
                 DrawInserterReachMarkers(target, hoverTile.Value, pendingDirection, pendingInserterLongReach);
@@ -445,14 +450,16 @@ internal static class WorldRenderer
         GameSimulation simulation,
         EntityKind kind,
         TilePosition anchor,
-        Direction pendingDirection)
+        Direction pendingDirection,
+        BuildPlacementReport report)
     {
+        var tone = GhostPreviewStyle.From(report);
         var footprint = simulation.GameplayTables.GetFootprint(kind);
         using var preview = new RectangleShape(new Vector2f(SfmlUiLayout.TileSize * footprint.Width - 2f, SfmlUiLayout.TileSize * footprint.Height - 2f))
         {
             Position = new Vector2f(anchor.X * SfmlUiLayout.TileSize + 1f, anchor.Y * SfmlUiLayout.TileSize + 1f),
-            FillColor = new Color(80, 150, 220, 80),
-            OutlineColor = new Color(160, 220, 255),
+            FillColor = GhostPreviewStyle.Fill(tone),
+            OutlineColor = GhostPreviewStyle.Outline(tone),
             OutlineThickness = 2f
         };
         target.Draw(preview);

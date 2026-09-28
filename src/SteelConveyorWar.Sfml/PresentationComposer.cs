@@ -32,10 +32,10 @@ internal static class PresentationComposer
         ReplayHudStatus? replayHud = null)
     {
         window.Clear(new Color(18, 22, 18));
+        TilePosition? hoverTile = null;
         using (var worldView = createWorldView())
         {
             window.SetView(worldView);
-            TilePosition? hoverTile = null;
             var world = window.MapPixelToCoords(mousePosition, worldView);
             var candidate = new TilePosition((int)(world.X / SfmlUiLayout.TileSize), (int)(world.Y / SfmlUiLayout.TileSize));
             if (simulation.World.IsInside(candidate)
@@ -103,6 +103,7 @@ internal static class PresentationComposer
             panelTop,
             session.IsResearchOverlayOpen,
             session.ResearchSelectedId,
+            hoverTile,
             session.SidebarStorageHits);
 
         if (session.IsEnergyOverlayOpen)
@@ -184,6 +185,15 @@ internal static class PresentationComposer
             {
                 session.CloseBastionComposition();
             }
+        }
+
+        var outcome = MatchOutcome.Label(
+            simulation.Status,
+            simulation.WinnerTeamId,
+            simulation.GetPlayer(localPlayer).TeamId);
+        if (outcome is not null)
+        {
+            HudOverlay.DrawMatchOutcome(window, font, outcome, windowWidth, windowHeight);
         }
     }
 }

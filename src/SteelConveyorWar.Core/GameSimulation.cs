@@ -475,6 +475,56 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         return true;
     }
 
+    /// <summary>
+    /// Read-only placement classification. Does not spend resources or queue an order.
+    /// Check order matches <see cref="TryQueueCommanderBuild"/>: unknown kind, lock, footprint,
+    /// then range, then payment. Out of range is still queueable. Unaffordable inside the radius is not.
+    /// </summary>
+    public BuildPlacementReport ExplainBuildPlacement(
+        int commanderId,
+        EntityKind targetKind,
+        TilePosition position,
+        PlayerId? actor = null)
+    {
+        var commander = World.GetEntity(commanderId);
+        if (commander is null
+            || commander.Kind != EntityKind.Commander
+            || commander.OwnerId is null
+            || !commander.IsAlive
+            || !IsAuthorizedCommander(commander, actor))
+        {
+            return new BuildPlacementReport(false, false, BuildPlacementBlock.UnknownKind);
+        }
+
+        if (!BuildCostCatalog.Costs.ContainsKey(targetKind))
+        {
+            return new BuildPlacementReport(false, false, BuildPlacementBlock.UnknownKind);
+        }
+
+        if (!IsBuildUnlocked(commander.OwnerId.Value, targetKind))
+        {
+            return new BuildPlacementReport(false, false, BuildPlacementBlock.Locked);
+        }
+
+        var footprint = ClassifyFootprint(targetKind, position);
+        if (footprint != BuildPlacementBlock.None)
+        {
+            return new BuildPlacementReport(false, false, footprint);
+        }
+
+        if (!IsWithinBuildRadius(commander, targetKind, position))
+        {
+            return new BuildPlacementReport(false, true, BuildPlacementBlock.OutOfRange);
+        }
+
+        if (GetAffordableBuildCount(commander, targetKind) < 1)
+        {
+            return new BuildPlacementReport(false, false, BuildPlacementBlock.Unaffordable);
+        }
+
+        return new BuildPlacementReport(true, false, BuildPlacementBlock.None);
+    }
+
     private static bool IsDirectedBuildKind(EntityKind kind)
     {
         return kind is EntityKind.Conveyor or EntityKind.UndergroundConveyor or EntityKind.Inserter;
@@ -2435,30 +2485,33 @@ public sealed partial class GameSimulation : ISimulationSystemContext
         }
     }
 
-    private bool CanPlaceBuilding(EntityKind targetKind, TilePosition anchor)
+    private bool CanPlaceBuilding(EntityKind targetKind, TilePosition anchor) =>
+        ClassifyFootprint(targetKind, anchor) == BuildPlacementBlock.None;
+
+    private BuildPlacementBlock ClassifyFootprint(EntityKind targetKind, TilePosition anchor)
     {
         var tiles = GameWorld.GetFootprintTiles(targetKind, anchor, GameplayTables).ToList();
         if (tiles.Any(tile => !World.IsInside(tile)))
         {
-            return false;
+            return BuildPlacementBlock.OutsideMap;
         }
 
         if (tiles.Any(tile => !World.GetTerrain(tile).IsWalkable()))
         {
-            return false;
+            return BuildPlacementBlock.Unwalkable;
         }
 
         if (RequiresResourceTerrain(targetKind) && !IsValidResourceAnchor(targetKind, anchor))
         {
-            return false;
+            return BuildPlacementBlock.WrongResource;
         }
 
-        if (!BlocksPlacement(targetKind))
+        if (BlocksPlacement(targetKind) && tiles.Any(tile => World.AnyAliveAt(tile, static entity => true)))
         {
-            return true;
+            return BuildPlacementBlock.Occupied;
         }
 
-        return tiles.All(tile => !World.AnyAliveAt(tile, static entity => true));
+        return BuildPlacementBlock.None;
     }
 
     private bool IsValidResourceAnchor(EntityKind kind, TilePosition anchor)
