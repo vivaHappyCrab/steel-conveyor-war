@@ -239,6 +239,11 @@ internal sealed class SfmlPlaySession
                 }
             }
 
+            if (simulation.Status != GameStatus.InProgress)
+            {
+                return;
+            }
+
             ApplyCameraRequest(
                 inputMapper.HandleKeyPressed(
                     simulation,
@@ -254,6 +259,11 @@ internal sealed class SfmlPlaySession
             {
                 isMiddleDragging = true;
                 lastDragMouse = mousePosition;
+                return;
+            }
+
+            if (simulation.Status != GameStatus.InProgress)
+            {
                 return;
             }
 
@@ -516,7 +526,7 @@ internal sealed class SfmlPlaySession
             var hoverTarget = mouseTile is null ? null : simulation.World.GetTopEntityAt(mouseTile.Value);
             simulationPump.TickDemolishHold(
                 frameDt,
-                Mouse.IsButtonPressed(Mouse.Button.Right),
+                simulation.Status == GameStatus.InProgress && Mouse.IsButtonPressed(Mouse.Button.Right),
                 hoverTarget?.Id);
 
             var replayFinished = replayWatch is not null
@@ -556,7 +566,8 @@ internal sealed class SfmlPlaySession
                         CenterCameraOnTile(minimapTile.Value);
                     }
                 }
-                else if (isBuildDragging
+                else if (simulation.Status == GameStatus.InProgress
+                         && isBuildDragging
                          && Mouse.IsButtonPressed(Mouse.Button.Left)
                          && session.IsBuildMenuOpen
                          && session.PendingBuildKind is not null)

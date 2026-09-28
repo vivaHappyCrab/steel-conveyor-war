@@ -453,6 +453,7 @@ internal static class HudOverlay
         float panelTop,
         bool isResearchOverlayOpen,
         TechnologyId? researchSelectedId,
+        TilePosition? buildHoverTile,
         List<SidebarStorageHit> sidebarStorageHits)
     {
         DrawPanel(target, windowWidth, windowHeight, panelX, panelTop);
@@ -678,6 +679,11 @@ internal static class HudOverlay
                 lines.Add("Output:");
                 AddInventoryLinesWithHits(lines, lineItemTags, selected.OutputBuffer, SidebarStorageKind.Output, simulation.GameplayTables);
             }
+
+            foreach (var stall in ProductionStallLines(selected, simulation, localPlayer))
+            {
+                lines.Add(stall);
+            }
         }
 
         if (isBuildMenuOpen)
@@ -697,6 +703,15 @@ internal static class HudOverlay
 
             lines.Add("Bottom bar: pick building");
             lines.Add("LMB: place/queue build");
+            if (pendingBuildKind is EntityKind pendingKind && buildHoverTile is TilePosition hoverTile)
+            {
+                var commander = simulation.World.Entities.FirstOrDefault(entity =>
+                    entity.IsAlive && entity.Kind == EntityKind.Commander && entity.OwnerId == localPlayer);
+                var report = commander is null
+                    ? new BuildPlacementReport(false, false, BuildPlacementBlock.UnknownKind)
+                    : simulation.ExplainBuildPlacement(commander.Id, pendingKind, hoverTile, localPlayer);
+                lines.Add(GhostPreviewStyle.PlaceLabel(report));
+            }
             lines.Add("RMB hold 1s: demolish");
             lines.Add("S: stop build/demolish/move");
         }
@@ -1134,6 +1149,61 @@ internal static class HudOverlay
         }
     }
 
+    internal static IEnumerable<string> ProductionStallLines(
+        WorldEntity entity,
+        GameSimulation simulation,
+        PlayerId localPlayer)
+    {
+        if (simulation.GameplayTables.GetPowerDemand(entity.Kind) > 0 && entity.EnergyBuffer == 0)
+        {
+            yield return "No power";
+        }
+
+        if (IsOutputFull(entity, simulation))
+        {
+            yield return "Output full";
+        }
+        else if (IsInputEmpty(entity, simulation, localPlayer))
+        {
+            yield return "Input empty";
+        }
+    }
+
+    private static bool IsOutputFull(WorldEntity entity, GameSimulation simulation)
+    {
+        if (entity.PendingOutputItem is not null && entity.WorkTicksRemaining == 0)
+        {
+            return true;
+        }
+
+        if (entity.WorkTicksRemaining != 0)
+        {
+            return false;
+        }
+
+        var product = entity.Kind switch
+        {
+            EntityKind.Mine when simulation.World.GetTerrain(entity.Position) == TerrainType.IronOre => ItemId.IronOre,
+            EntityKind.Mine when simulation.World.GetTerrain(entity.Position) == TerrainType.CopperOre => ItemId.CopperOre,
+            EntityKind.CoalMine => ItemId.Coal,
+            EntityKind.OilWell => ItemId.CrudeOil,
+            _ => (ItemId?)null
+        };
+        return product is ItemId item
+            && entity.OutputBuffer.Count(item) >= simulation.GameplayTables.GetMaxStackSize(item);
+    }
+
+    private static bool IsInputEmpty(WorldEntity entity, GameSimulation simulation, PlayerId localPlayer)
+    {
+        if (entity.WorkTicksRemaining != 0 || entity.PendingOutputItem is not null)
+        {
+            return false;
+        }
+
+        return TryGetRecipeInputNeeds(entity, simulation, localPlayer, out var needs)
+            && needs.Any(need => entity.InputBuffer.Count(need.Key) < need.Value);
+    }
+
     internal static string FormatCost(IReadOnlyDictionary<ItemId, int> cost)
     {
         return string.Join(", ", cost.Select(pair => $"{pair.Value} {pair.Key}"));
@@ -1150,6 +1220,45 @@ internal static class HudOverlay
             };
             target.Draw(text);
         }
+    }
+
+    internal static void DrawMatchOutcome(
+        IRenderTarget target,
+        Font? font,
+        string label,
+        uint windowWidth,
+        uint windowHeight)
+    {
+        using var shade = new RectangleShape(new Vector2f(windowWidth, windowHeight))
+        {
+            FillColor = new Color(8, 10, 14, 140)
+        };
+        target.Draw(shade);
+
+        const float panelWidth = 280f;
+        const float panelHeight = 72f;
+        using var panel = new RectangleShape(new Vector2f(panelWidth, panelHeight))
+        {
+            Position = new Vector2f((windowWidth - panelWidth) / 2f, (windowHeight - panelHeight) / 2f),
+            FillColor = new Color(16, 20, 28, 235),
+            OutlineColor = new Color(180, 190, 205),
+            OutlineThickness = 2f
+        };
+        target.Draw(panel);
+        if (font is null)
+        {
+            return;
+        }
+
+        using var text = new Text(font, label, 28)
+        {
+            FillColor = Color.White
+        };
+        var bounds = text.GetLocalBounds();
+        text.Position = new Vector2f(
+            panel.Position.X + (panelWidth - bounds.Width) / 2f,
+            panel.Position.Y + (panelHeight - bounds.Height) / 2f - bounds.Top);
+        target.Draw(text);
     }
 
     internal static bool IsCombatHudKind(EntityKind kind)
