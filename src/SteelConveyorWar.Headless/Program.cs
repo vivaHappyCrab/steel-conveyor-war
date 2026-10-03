@@ -13,6 +13,13 @@ if (options.Replay.ReplayPath is not null)
     var document = ReplayFileStore.Load(options.Replay.ReplayPath);
     var simulation = ReplayPlayback.CreateReady(content.CreationOptions, document);
     var hash = ReplayPlayback.PlayToEnd(simulation, document.DurationTicks);
+    if (simulation.Tick != document.DurationTicks)
+    {
+        Console.Error.WriteLine(
+            $"headless replay truncated ticks={simulation.Tick} expectedDuration={document.DurationTicks} status={simulation.Status}");
+        return 1;
+    }
+
     if (!string.Equals(hash, document.FinalStateHash, StringComparison.Ordinal))
     {
         Console.Error.WriteLine(

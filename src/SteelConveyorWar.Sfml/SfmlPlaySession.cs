@@ -519,8 +519,11 @@ internal sealed class SfmlPlaySession
                 Mouse.IsButtonPressed(Mouse.Button.Right),
                 hoverTarget?.Id);
 
+            // Finish when duration is reached or the match leaves InProgress (AdvanceTick no-ops),
+            // so an inflated durationTicks cannot stall spectator hash reporting forever.
             var replayFinished = replayWatch is not null
-                && simulation.Tick >= replayWatch.Document.DurationTicks;
+                && (simulation.Tick >= replayWatch.Document.DurationTicks
+                    || simulation.Status != GameStatus.InProgress);
             var simulationDt = replayWatch is null
                 ? frameDt
                 : ReplayPlaybackClock.SimulationDelta(frameDt, replayPaused, replayRate, replayFinished);
@@ -531,7 +534,7 @@ internal sealed class SfmlPlaySession
 
             if (replayWatch is not null
                 && replayHashMatch is null
-                && simulation.Tick >= replayWatch.Document.DurationTicks)
+                && replayFinished)
             {
                 replayHashMatch = string.Equals(
                     simulation.ComputeStateHash(),
