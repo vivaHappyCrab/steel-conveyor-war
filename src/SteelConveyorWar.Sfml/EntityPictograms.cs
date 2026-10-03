@@ -101,12 +101,6 @@ internal static class EntityPictograms
                 DrawCircleOutline(target, cx, cy + s * 0.05f, s * 0.12f, ink);
                 DrawLine(target, cx, cy + s * 0.05f, cx, cy - s * 0.22f, ink);
                 break;
-            case EntityKind.CannonTurret:
-                // Longer thick barrel (double line)
-                DrawCircleOutline(target, cx, cy + s * 0.05f, s * 0.12f, ink);
-                DrawLine(target, cx - 1.5f, cy + s * 0.05f, cx - 1.5f, cy - s * 0.32f, ink);
-                DrawLine(target, cx + 1.5f, cy + s * 0.05f, cx + 1.5f, cy - s * 0.32f, ink);
-                break;
             case EntityKind.AntiAirTurret:
                 // Diagonal AA barrels
                 DrawCircleOutline(target, cx, cy + s * 0.05f, s * 0.12f, ink);
@@ -159,6 +153,10 @@ internal static class EntityPictograms
             case EntityKind.RocketLauncher:
                 DrawLine(target, center.X - size * 0.1f, center.Y + size * 0.25f, center.X - size * 0.1f, center.Y - size * 0.25f, ink);
                 DrawLine(target, center.X + size * 0.1f, center.Y + size * 0.25f, center.X + size * 0.1f, center.Y - size * 0.25f, ink);
+                break;
+            case EntityKind.FieldArtillery:
+                DrawRectOutline(target, center.X - size * 0.22f, center.Y - size * 0.12f, size * 0.44f, size * 0.28f, ink);
+                DrawLine(target, center.X + size * 0.1f, center.Y, center.X + size * 0.42f, center.Y - size * 0.28f, ink);
                 break;
         }
     }

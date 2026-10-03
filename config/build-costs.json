@@ -95,11 +95,6 @@
       "requiredTechnology": "technology.t1.machine-gun-turret"
     },
     {
-      "kind": "CannonTurret",
-      "cost": { "Steel": 15, "CopperPlate": 10 },
-      "buildTicks": 30
-    },
-    {
       "kind": "AntiAirTurret",
       "cost": { "Steel": 12, "CopperPlate": 15 },
       "buildTicks": 30,

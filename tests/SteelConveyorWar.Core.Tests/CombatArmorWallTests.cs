@@ -55,21 +55,21 @@ public sealed class CombatArmorWallTests
     {
         var simulation = GameSimulation.CreateNewGame(randomSeed: 42);
         var defender = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(1));
-        // Keep the enemy commander far so the cannon is the only in-range attacker.
+        // Keep the enemy commander far so the tank is the only in-range attacker.
         var enemyCommander = simulation.World.Entities.Single(entity => entity.Kind == EntityKind.Commander && entity.OwnerId == new PlayerId(2));
         Assert.True(simulation.TryTeleportEntityForTests(enemyCommander.Id, new TilePosition(2, 2)));
 
         Assert.True(simulation.TryTeleportEntityForTests(defender.Id, new TilePosition(40, 40)));
         Assert.True(simulation.TrySpawnEntityForTests(EntityKind.Wall, new TilePosition(39, 40), new PlayerId(1), out _));
         Assert.True(simulation.TrySpawnEntityForTests(
-            EntityKind.CannonTurret,
+            EntityKind.MediumTank,
             new TilePosition(38, 40),
             new PlayerId(2),
-            out var cannonId));
+            out var tankId));
 
-        var cannon = simulation.World.GetEntity(cannonId)!;
-        Assert.Equal(ProjectileKind.Ballistic, MvpDefinitions.GetStats(cannon.Kind).ProjectileKind);
-        var expected = simulation.ComputeCombatDamageForTests(cannonId, defender.Id);
+        var tank = simulation.World.GetEntity(tankId)!;
+        Assert.Equal(ProjectileKind.Ballistic, MvpDefinitions.GetStats(tank.Kind).ProjectileKind);
+        var expected = simulation.ComputeCombatDamageForTests(tankId, defender.Id);
         Assert.True(expected > 0);
         var healthBefore = defender.Health;
 
@@ -140,7 +140,7 @@ public sealed class CombatArmorWallTests
     public void GetStats_CombatUnitsHaveProjectileKindsAndArmor()
     {
         Assert.Equal(ProjectileKind.GroundToGround, MvpDefinitions.GetStats(EntityKind.MachineGunTurret).ProjectileKind);
-        Assert.Equal(ProjectileKind.Ballistic, MvpDefinitions.GetStats(EntityKind.CannonTurret).ProjectileKind);
+        Assert.Equal(ProjectileKind.Ballistic, MvpDefinitions.GetStats(EntityKind.FieldArtillery).ProjectileKind);
         Assert.Equal(ProjectileKind.AirToGround, MvpDefinitions.GetStats(EntityKind.AntiAirTurret).ProjectileKind);
         Assert.Equal(ProjectileKind.Ballistic, MvpDefinitions.GetStats(EntityKind.RocketLauncher).ProjectileKind);
         Assert.True(MvpDefinitions.GetStats(EntityKind.MediumTank).SplashRadius > 0);

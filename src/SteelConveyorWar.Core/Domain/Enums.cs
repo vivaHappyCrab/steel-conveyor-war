@@ -47,7 +47,6 @@ public enum EntityKind
     Wall,
     SteelWall,
     MachineGunTurret,
-    CannonTurret,
     AntiAirTurret,
     LightBot,
     BasicTank,
@@ -55,7 +54,8 @@ public enum EntityKind
     MediumBot,
     MediumTank,
     AntiAirBot,
-    RocketLauncher
+    RocketLauncher,
+    FieldArtillery
 }
 
 public enum ItemId

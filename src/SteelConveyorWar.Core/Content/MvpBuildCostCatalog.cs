@@ -30,7 +30,6 @@ public static class MvpBuildCostCatalog
             [EntityKind.Wall] = Cost((ItemId.IronPlate, 2)),
             [EntityKind.SteelWall] = Cost((ItemId.Steel, 2)),
             [EntityKind.MachineGunTurret] = Cost((ItemId.IronPlate, 20), (ItemId.CopperPlate, 10)),
-            [EntityKind.CannonTurret] = Cost((ItemId.Steel, 15), (ItemId.CopperPlate, 10)),
             [EntityKind.AntiAirTurret] = Cost((ItemId.Steel, 12), (ItemId.CopperPlate, 15)),
             [EntityKind.Bastion] = Cost((ItemId.IronPlate, 60), (ItemId.CopperPlate, 30))
         };

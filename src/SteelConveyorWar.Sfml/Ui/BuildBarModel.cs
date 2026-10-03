@@ -34,7 +34,6 @@ public static class BuildBarModel
             EntityKind.Wall => "#",
             EntityKind.SteelWall => "W",
             EntityKind.MachineGunTurret => "T",
-            EntityKind.CannonTurret => "K",
             EntityKind.AntiAirTurret => "Y",
             _ => "?"
         };

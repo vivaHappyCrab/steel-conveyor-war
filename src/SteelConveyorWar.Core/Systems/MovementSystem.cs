@@ -126,7 +126,7 @@ public sealed partial class GameSimulation
 
         var waypointPosition = WorldPosition.FromTileCenter(entity.CurrentWaypoint.Value);
         var distanceSq = entity.WorldPosition.DistanceSquaredTo(waypointPosition);
-        var step = MvpDefinitions.MobileMoveWorldUnitsPerTick;
+        var step = ResolveMobileStepMilli(entity);
         if (distanceSq <= step * step)
         {
             if (!CanOccupyWorldPosition(entity, waypointPosition, spatial))
@@ -161,6 +161,32 @@ public sealed partial class GameSimulation
         entity.WorldPosition = nextPosition;
         RelocateMobileEntity(entity, nextPosition.ToTilePosition(), spatial);
         return false;
+    }
+
+    /// <summary>
+    /// One tile per <c>moveEveryTicks</c>. Army units resolve the research stat; the commander keeps
+    /// the baseline so build-radius research does not also speed the БМК.
+    /// </summary>
+    private long ResolveMobileStepMilli(WorldEntity entity)
+    {
+        var baseline = GameplayTables.GetStats(entity.Kind).MoveEveryTicks;
+        if (baseline <= 0)
+        {
+            baseline = 8;
+        }
+
+        var moveEvery = baseline;
+        if (entity.OwnerId is not null && MvpDefinitions.UnitKinds.Contains(entity.Kind))
+        {
+            moveEvery = ResolveStat(
+                entity.OwnerId.Value,
+                ResearchStatIds.MoveEveryTicks,
+                baseline,
+                entity.Kind.ToString(),
+                minValue: 3);
+        }
+
+        return Math.Max(1, WorldUnits.MilliPerTile / moveEvery);
     }
 
     private void RelocateMobileEntity(WorldEntity entity, TilePosition to, SpatialQueryIndex spatial)
@@ -505,7 +531,8 @@ public sealed partial class GameSimulation
             return false;
         }
 
-        return FindNearestEnemyInRange(unit, stats.AttackRange, spatial) is not null;
+        // Only halt for a firable target (inside max range and outside minimum range).
+        return FindNearestEnemyInRange(unit, stats.AttackRange, spatial, stats.MinimumAttackRange) is not null;
     }
 
     /// <summary>

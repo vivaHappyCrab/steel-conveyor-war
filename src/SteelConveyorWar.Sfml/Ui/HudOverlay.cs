@@ -507,6 +507,15 @@ internal static class HudOverlay
 
             var demand = simulation.GameplayTables.PowerDemand.GetValueOrDefault(selected.Kind);
             var production = simulation.GameplayTables.PowerProduction.GetValueOrDefault(selected.Kind);
+            if (selected.OwnerId is not null && production > 0)
+            {
+                production = simulation.ResolveStat(
+                    selected.OwnerId.Value,
+                    ResearchStatIds.PowerProduction,
+                    production,
+                    selected.Kind.ToString(),
+                    minValue: 0);
+            }
             if (demand > 0)
             {
                 lines.Add($"Power demand: {demand}");
@@ -538,7 +547,7 @@ internal static class HudOverlay
 
             if (selected.Kind == EntityKind.Commander)
             {
-                lines.Add($"Build radius: {MvpDefinitions.CommanderBuildRadius}");
+                lines.Add($"Build radius: {(selected.OwnerId is null ? MvpDefinitions.CommanderBuildRadius : simulation.GetCommanderBuildRadius(selected.OwnerId.Value))}");
                 lines.Add($"World: {selected.WorldPosition.ToTileSpaceX():0.00},{selected.WorldPosition.ToTileSpaceY():0.00}");
                 lines.Add($"Move target: {(selected.MoveTarget is null ? "-" : $"{selected.MoveTarget.Value.X},{selected.MoveTarget.Value.Y}")}");
                 lines.Add($"Queued: {(selected.QueuedBuildOrder is null ? "-" : $"{selected.QueuedBuildOrder.TargetKind}@{selected.QueuedBuildOrder.TargetPosition.X},{selected.QueuedBuildOrder.TargetPosition.Y}")}");
@@ -1084,7 +1093,6 @@ internal static class HudOverlay
             or EntityKind.Laboratory
             or EntityKind.CoalPlant
             or EntityKind.MachineGunTurret
-            or EntityKind.CannonTurret
             or EntityKind.AntiAirTurret;
     }
 
@@ -1148,7 +1156,7 @@ internal static class HudOverlay
     {
         return kind == EntityKind.Commander
             || MvpDefinitions.UnitKinds.Contains(kind)
-            || kind is EntityKind.MachineGunTurret or EntityKind.CannonTurret or EntityKind.AntiAirTurret;
+            || kind is EntityKind.MachineGunTurret or EntityKind.AntiAirTurret;
     }
 
     internal static IEnumerable<ProductionRecipe> GetFactoryRecipes(EntityKind factoryKind, GameplayTablesCatalog tables)

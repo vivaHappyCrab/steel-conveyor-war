@@ -18,7 +18,6 @@ public sealed partial record GameplayTablesCatalog
     "DroneCenter": 4,
     "Laboratory": 4,
     "MachineGunTurret": 1,
-    "CannonTurret": 2,
     "AntiAirTurret": 2
   },
   "powerProduction": {
@@ -62,7 +61,6 @@ public sealed partial record GameplayTablesCatalog
     "Wall": { "width": 1, "height": 1 },
     "SteelWall": { "width": 1, "height": 1 },
     "MachineGunTurret": { "width": 1, "height": 1 },
-    "CannonTurret": { "width": 1, "height": 1 },
     "AntiAirTurret": { "width": 1, "height": 1 }
   },
   "collisionRadius": {
@@ -72,6 +70,7 @@ public sealed partial record GameplayTablesCatalog
     "MediumBot": 300,
     "AntiAirBot": 300,
     "RocketLauncher": 300,
+    "FieldArtillery": 350,
     "BasicTank": 400,
     "MediumTank": 400
   },
@@ -135,6 +134,15 @@ public sealed partial record GameplayTablesCatalog
       "outputKind": "RocketLauncher",
       "workTicks": 165,
       "requiredTechnology": "technology.t2.rocket-launcher"
+    },
+    "FieldArtillery": {
+      "inputs": [
+        { "item": "IronPlate", "amount": 16 },
+        { "item": "CopperPlate", "amount": 8 }
+      ],
+      "outputKind": "FieldArtillery",
+      "workTicks": 150,
+      "requiredTechnology": "technology.t1.field-artillery"
     }
   },
   "itemRecipes": {
@@ -269,16 +277,6 @@ public sealed partial record GameplayTablesCatalog
       "armor": 2,
       "projectileKind": "GroundToGround"
     },
-    "CannonTurret": {
-      "maxHealth": 170,
-      "attackDamage": 24,
-      "attackRange": 6,
-      "attackCooldownTicks": 25,
-      "visionRadius": 7,
-      "armor": 4,
-      "projectileKind": "Ballistic",
-      "splashRadius": 1
-    },
     "AntiAirTurret": {
       "maxHealth": 140,
       "attackDamage": 14,
@@ -308,6 +306,20 @@ public sealed partial record GameplayTablesCatalog
       "visionRadius": 5,
       "armor": 3,
       "projectileKind": "GroundToGround",
+      "movementType": "Ground"
+    },
+    "FieldArtillery": {
+      "maxHealth": 60,
+      "attackDamage": 22,
+      "attackRange": 8,
+      "minimumAttackRange": 4,
+      "attackCooldownTicks": 42,
+      "moveEveryTicks": 11,
+      "visionRadius": 5,
+      "armor": 1,
+      "projectileKind": "Ballistic",
+      "splashRadius": 3,
+      "projectileFlightTicks": 22,
       "movementType": "Ground"
     },
     "Scout": {
@@ -405,7 +417,8 @@ public sealed partial record GameplayTablesCatalog
       "MediumBot": 1,
       "MediumTank": 2,
       "AntiAirBot": 1,
-      "RocketLauncher": 3
+      "RocketLauncher": 3,
+      "FieldArtillery": 2
     },
     "groundUnitArmorBonus": {
       "Commander": 1,
@@ -414,7 +427,8 @@ public sealed partial record GameplayTablesCatalog
       "MediumBot": 1,
       "MediumTank": 1,
       "AntiAirBot": 1,
-      "RocketLauncher": 1
+      "RocketLauncher": 1,
+      "FieldArtillery": 1
     }
   }
 }

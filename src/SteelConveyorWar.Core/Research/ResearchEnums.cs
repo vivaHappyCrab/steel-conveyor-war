@@ -47,6 +47,11 @@ public static class ResearchStatIds
     public const string Armor = "stat.combat.armor";
     public const string AttackCooldownTicks = "stat.combat.attack-cooldown-ticks";
     public const string MaxHealth = "stat.combat.max-health";
+    public const string PowerProduction = "stat.power.production";
+    public const string EnergyBufferFactor = "stat.energy.buffer-factor";
+    public const string BuildRadius = "stat.construction.radius";
+    public const string BuildIronDiscount = "stat.build.iron-discount";
+    public const string MoveEveryTicks = "stat.movement.move-ticks";
 }
 
 public static class ResearchCapabilityIds

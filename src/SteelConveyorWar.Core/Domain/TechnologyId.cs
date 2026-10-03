@@ -5,6 +5,7 @@ public readonly record struct TechnologyId(string Value) : IComparable<Technolog
     public static readonly TechnologyId GroundUnitAttack = new("technology.t1.ground-unit-attack");
     public static readonly TechnologyId ImprovedConveyors = new("technology.t1.improved-conveyors");
     public static readonly TechnologyId MachineGunTurret = new("technology.t1.machine-gun-turret");
+    public static readonly TechnologyId FieldArtillery = new("technology.t1.field-artillery");
     public static readonly TechnologyId AdditionalBastion = new("technology.t1.additional-bastion");
     public static readonly TechnologyId GroundUnitArmor = new("technology.t1.ground-unit-armor");
     public static readonly TechnologyId MediumBot = new("technology.t2.medium-bot");

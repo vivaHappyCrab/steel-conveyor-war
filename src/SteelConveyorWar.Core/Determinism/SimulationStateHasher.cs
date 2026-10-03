@@ -22,7 +22,7 @@ namespace SteelConveyorWar.Core;
 /// </remarks>
 public static class SimulationStateHasher
 {
-    public const int AlgorithmVersion = 10;
+    public const int AlgorithmVersion = 13;
 
     public static string Compute(GameSimulation simulation)
     {
@@ -64,6 +64,28 @@ public static class SimulationStateHasher
             foreach (var entity in world.Entities.OrderBy(entity => entity.Id))
             {
                 WriteEntity(writer, entity);
+            }
+
+            var artillery = simulation.ArtilleryShots
+                .OrderBy(shot => shot.LandTick)
+                .ThenBy(shot => shot.AttackerId)
+                .ThenBy(shot => shot.ImpactX)
+                .ThenBy(shot => shot.ImpactY)
+                .ToList();
+            writer.Write(artillery.Count);
+            foreach (var shot in artillery)
+            {
+                writer.Write(shot.AttackerId);
+                writer.Write(shot.OwnerId);
+                writer.Write(shot.LaunchTick);
+                writer.Write(shot.LandTick);
+                writer.Write(shot.OriginXMilli);
+                writer.Write(shot.OriginYMilli);
+                writer.Write(shot.ImpactX);
+                writer.Write(shot.ImpactY);
+                writer.Write(shot.AttackDamage);
+                writer.Write((int)shot.ProjectileKind);
+                writer.Write(shot.SplashRadius);
             }
 
             // Presentation-only SimulationPresentationSink / CombatShotsThisTick intentionally omitted.
@@ -253,6 +275,13 @@ public static class SimulationStateHasher
 
         writer.Write(research.ProgressWorkUnits.Count);
         foreach (var pair in research.ProgressWorkUnits.OrderBy(pair => pair.Key.Value, StringComparer.Ordinal))
+        {
+            writer.Write(pair.Key.Value);
+            writer.Write(pair.Value);
+        }
+
+        writer.Write(research.ProgressRemainderBasisPoints.Count);
+        foreach (var pair in research.ProgressRemainderBasisPoints.OrderBy(pair => pair.Key.Value, StringComparer.Ordinal))
         {
             writer.Write(pair.Key.Value);
             writer.Write(pair.Value);

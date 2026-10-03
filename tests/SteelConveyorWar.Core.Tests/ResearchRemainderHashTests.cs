@@ -6,9 +6,9 @@ namespace SteelConveyorWar.Core.Tests;
 public sealed class ResearchRemainderHashTests
 {
     [Fact]
-    public void AlgorithmVersion_IsTen()
+    public void AlgorithmVersion_IsThirteen()
     {
-        Assert.Equal(10, SimulationStateHasher.AlgorithmVersion);
+        Assert.Equal(13, SimulationStateHasher.AlgorithmVersion);
     }
 
     [Fact]

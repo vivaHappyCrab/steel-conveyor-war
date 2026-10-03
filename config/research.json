@@ -7,7 +7,7 @@
       "displayName": "\u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0431\u0430\u0441\u0442\u0438\u043E\u043D",
       "description": "\u0423\u0432\u0435\u043B\u0438\u0447\u0438\u0432\u0430\u0435\u0442 \u043B\u0438\u043C\u0438\u0442 \u0431\u0430\u0441\u0442\u0438\u043E\u043D\u043E\u0432 \u043D\u0430 1.",
       "cost": {
-        "effortUnits": 20,
+        "effortUnits": 90,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -32,36 +32,9 @@
       "id": "technology.t1.command-i",
       "tierId": "tier.t1",
       "displayName": "\u041A\u043E\u043C\u0430\u043D\u0434\u043E\u0432\u0430\u043D\u0438\u0435 I",
-      "description": "\u0423\u0441\u043A\u043E\u0440\u044F\u0435\u0442 \u0441\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u043E \u0411\u041C\u041A. \u041E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0441\u0442\u043E\u043B\u043F \u0434\u043B\u044F T2.",
+      "description": "\u0420\u0430\u0434\u0438\u0443\u0441 \u0441\u0442\u0440\u043E\u0439\u043A\u0438 16 \u043A\u043B\u0435\u0442\u043E\u043A, \u0441\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u043E \u043D\u0430 20% \u0431\u044B\u0441\u0442\u0440\u0435\u0435. \u041E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0441\u0442\u043E\u043B\u043F \u0434\u043B\u044F T2.",
       "cost": {
-        "effortUnits": 30,
-        "sciencePacks": [
-          {
-            "item": "SciencePackT1",
-            "amount": 1
-          }
-        ]
-      },
-      "effects": [
-        {
-          "type": "addModifier",
-          "statId": "stat.construction.ticks",
-          "operation": "Multiply",
-          "valueBasisPoints": 9000
-        }
-      ],
-      "tags": [
-        "mandatory",
-        "cycle"
-      ]
-    },
-    {
-      "id": "technology.t1.doctrine.fortified-line",
-      "tierId": "tier.t1",
-      "displayName": "\u0414\u043E\u043A\u0442\u0440\u0438\u043D\u0430: \u0443\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u0430\u044F \u043B\u0438\u043D\u0438\u044F",
-      "description": "\u0421\u043F\u0435\u0446\u0438\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F \u043D\u0430 \u043E\u0431\u043E\u0440\u043E\u043D\u0435. \u0412\u0437\u0430\u0438\u043C\u043E\u0438\u0441\u043A\u043B\u044E\u0447\u0430\u044E\u0449\u0430\u044F.",
-      "cost": {
-        "effortUnits": 30,
+        "effortUnits": 180,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -75,6 +48,89 @@
           "statId": "stat.construction.ticks",
           "operation": "Multiply",
           "valueBasisPoints": 8000
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.radius",
+          "operation": "Add",
+          "valueBasisPoints": 40000
+        }
+      ],
+      "tags": [
+        "mandatory",
+        "cycle"
+      ]
+    },
+    {
+      "id": "technology.t1.doctrine.fortified-line",
+      "tierId": "tier.t1",
+      "displayName": "\u0414\u043E\u043A\u0442\u0440\u0438\u043D\u0430: \u0443\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u0430\u044F \u043B\u0438\u043D\u0438\u044F",
+      "description": "\u0421\u0442\u0435\u043D\u044B \u0438 \u0442\u0443\u0440\u0435\u043B\u0438 \u043F\u0440\u043E\u0447\u043D\u0435\u0435 \u0438 \u0441\u0442\u0430\u0432\u044F\u0442\u0441\u044F \u0431\u044B\u0441\u0442\u0440\u0435\u0435. \u0412\u0437\u0430\u0438\u043C\u043E\u0438\u0441\u043A\u043B\u044E\u0447\u0430\u044E\u0449\u0430\u044F.",
+      "cost": {
+        "effortUnits": 120,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.max-health",
+          "operation": "Multiply",
+          "valueBasisPoints": 14000,
+          "selector": "Wall"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 5000,
+          "selector": "Wall"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.max-health",
+          "operation": "Multiply",
+          "valueBasisPoints": 14000,
+          "selector": "SteelWall"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 5000,
+          "selector": "SteelWall"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.max-health",
+          "operation": "Multiply",
+          "valueBasisPoints": 14000,
+          "selector": "MachineGunTurret"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 5000,
+          "selector": "MachineGunTurret"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.max-health",
+          "operation": "Multiply",
+          "valueBasisPoints": 14000,
+          "selector": "AntiAirTurret"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 5000,
+          "selector": "AntiAirTurret"
         }
       ],
       "tags": [
@@ -87,9 +143,9 @@
       "id": "technology.t1.doctrine.mobile-groups",
       "tierId": "tier.t1",
       "displayName": "\u0414\u043E\u043A\u0442\u0440\u0438\u043D\u0430: \u043C\u043E\u0431\u0438\u043B\u044C\u043D\u044B\u0435 \u0433\u0440\u0443\u043F\u043F\u044B",
-      "description": "\u0421\u043F\u0435\u0446\u0438\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F \u043D\u0430 \u043C\u0430\u043D\u0451\u0432\u0440\u0435. \u0412\u0437\u0430\u0438\u043C\u043E\u0438\u0441\u043A\u043B\u044E\u0447\u0430\u044E\u0449\u0430\u044F.",
+      "description": "\u041B\u0451\u0433\u043A\u0438\u0435 \u0438 \u0441\u0440\u0435\u0434\u043D\u0438\u0435 \u0431\u043E\u0442\u044B \u0431\u044B\u0441\u0442\u0440\u0435\u0435 \u0438 \u0431\u044C\u044E\u0442 \u0441\u0438\u043B\u044C\u043D\u0435\u0435. \u0412\u0437\u0430\u0438\u043C\u043E\u0438\u0441\u043A\u043B\u044E\u0447\u0430\u044E\u0449\u0430\u044F.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -100,10 +156,31 @@
       "effects": [
         {
           "type": "addModifier",
-          "statId": "stat.factory.work-ticks",
-          "operation": "Multiply",
-          "valueBasisPoints": 9000,
+          "statId": "stat.movement.move-ticks",
+          "operation": "Add",
+          "valueBasisPoints": -20000,
           "selector": "LightBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.movement.move-ticks",
+          "operation": "Add",
+          "valueBasisPoints": -20000,
+          "selector": "MediumBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "LightBot"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "MediumBot"
         }
       ],
       "tags": [
@@ -116,9 +193,9 @@
       "id": "technology.t1.energy-i",
       "tierId": "tier.t1",
       "displayName": "\u042D\u043D\u0435\u0440\u0433\u0438\u044F I",
-      "description": "\u0421\u043C\u044F\u0433\u0447\u0430\u0435\u0442 \u0448\u0442\u0440\u0430\u0444 \u043E\u0442 \u043D\u0435\u0445\u0432\u0430\u0442\u043A\u0438 \u044D\u043D\u0435\u0440\u0433\u0438\u0438. \u041E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0441\u0442\u043E\u043B\u043F \u0434\u043B\u044F T2.",
+      "description": "\u0421\u043E\u043B\u043D\u0435\u0447\u043D\u044B\u0435 \u043F\u0430\u043D\u0435\u043B\u0438 \u0434\u0430\u044E\u0442 8 \u044D\u043D\u0435\u0440\u0433\u0438\u0438, \u0431\u0443\u0444\u0435\u0440\u044B \u0437\u0434\u0430\u043D\u0438\u0439 \u0432\u043C\u0435\u0449\u0430\u044E\u0442 \u0441\u043F\u0440\u043E\u0441 \u00D7 150. \u041E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0441\u0442\u043E\u043B\u043F \u0434\u043B\u044F T2.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 180,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -129,9 +206,16 @@
       "effects": [
         {
           "type": "addModifier",
-          "statId": "stat.energy.shortage-penalty",
+          "statId": "stat.power.production",
           "operation": "Multiply",
-          "valueBasisPoints": 8000
+          "valueBasisPoints": 16000,
+          "selector": "SolarPanel"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.energy.buffer-factor",
+          "operation": "Multiply",
+          "valueBasisPoints": 15000
         }
       ],
       "tags": [
@@ -143,9 +227,9 @@
       "id": "technology.t1.fast-regroup",
       "tierId": "tier.t1",
       "displayName": "\u0411\u044B\u0441\u0442\u0440\u044B\u0439 \u0441\u0431\u043E\u0440",
-      "description": "\u042E\u043D\u0438\u0442\u044B \u0431\u044B\u0441\u0442\u0440\u0435\u0435 \u0440\u0435\u0430\u0433\u0438\u0440\u0443\u044E\u0442 \u043D\u0430 \u043F\u0440\u0438\u043A\u0430\u0437\u044B \u0431\u0430\u0441\u0442\u0438\u043E\u043D\u0430.",
+      "description": "\u042E\u043D\u0438\u0442\u044B \u0431\u044B\u0441\u0442\u0440\u0435\u0435 \u0432\u044B\u0445\u043E\u0434\u044F\u0442 \u043D\u0430 \u043F\u0440\u0438\u043A\u0430\u0437.",
       "cost": {
-        "effortUnits": 20,
+        "effortUnits": 90,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -156,9 +240,42 @@
       "effects": [
         {
           "type": "addModifier",
-          "statId": "stat.factory.work-ticks",
-          "operation": "Multiply",
-          "valueBasisPoints": 9000
+          "statId": "stat.movement.move-ticks",
+          "operation": "Add",
+          "valueBasisPoints": -20000
+        }
+      ],
+      "tags": [
+        "optional",
+        "tactical"
+      ]
+    },
+    {
+      "id": "technology.t1.field-artillery",
+      "tierId": "tier.t1",
+      "displayName": "\u041F\u043E\u043B\u0435\u0432\u0430\u044F \u0430\u0440\u0442\u0438\u043B\u043B\u0435\u0440\u0438\u044F",
+      "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043E\u043B\u0435\u0432\u0443\u044E \u0421\u0410\u0423. \u0421\u043D\u0430\u0440\u044F\u0434 \u043B\u0435\u0442\u0438\u0442 \u0432 \u0442\u043E\u0447\u043A\u0443, \u0433\u0434\u0435 \u0446\u0435\u043B\u044C \u0441\u0442\u043E\u044F\u043B\u0430, \u0438 \u043D\u0430\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043B\u043E\u0449\u0430\u0434\u044C.",
+      "cost": {
+        "effortUnits": 120,
+        "sciencePacks": [
+          {
+            "item": "SciencePackT1",
+            "amount": 1
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "unlockContent",
+          "contentKind": "entity",
+          "contentId": "FieldArtillery",
+          "valueBasisPoints": 0
+        },
+        {
+          "type": "unlockContent",
+          "contentKind": "recipe",
+          "contentId": "FieldArtillery",
+          "valueBasisPoints": 0
         }
       ],
       "tags": [
@@ -172,7 +289,7 @@
       "displayName": "\u041F\u043E\u043B\u0435\u0432\u043E\u0439 \u0440\u0435\u043C\u043E\u043D\u0442",
       "description": "\u042E\u043D\u0438\u0442\u044B \u043C\u0435\u0434\u043B\u0435\u043D\u043D\u043E \u0447\u0438\u043D\u044F\u0442\u0441\u044F \u0432\u043D\u0435 \u0431\u043E\u044F.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 90,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -198,7 +315,7 @@
       "displayName": "\u041F\u0435\u0440\u0435\u0434\u043E\u0432\u043E\u0439 \u043D\u0430\u0431\u043B\u044E\u0434\u0430\u0442\u0435\u043B\u044C",
       "description": "\u0423\u043B\u0443\u0447\u0448\u0430\u0435\u0442 \u0440\u0430\u0437\u0432\u0435\u0434\u043A\u0443 \u0438 \u043D\u0430\u0432\u0435\u0434\u0435\u043D\u0438\u0435.",
       "cost": {
-        "effortUnits": 20,
+        "effortUnits": 90,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -225,7 +342,7 @@
       "displayName": "\u0411\u0440\u043E\u043D\u044F \u043D\u0430\u0437\u0435\u043C\u043D\u044B\u0445 \u044E\u043D\u0438\u0442\u043E\u0432",
       "description": "\u0423\u0432\u0435\u043B\u0438\u0447\u0438\u0432\u0430\u0435\u0442 \u0431\u0440\u043E\u043D\u044E \u0432\u0441\u0435\u0445 \u043D\u0430\u0437\u0435\u043C\u043D\u044B\u0445 \u044E\u043D\u0438\u0442\u043E\u0432.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -254,6 +371,13 @@
           "operation": "Add",
           "valueBasisPoints": 10000,
           "selector": "Commander"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.armor",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "FieldArtillery"
         },
         {
           "type": "addModifier",
@@ -298,7 +422,7 @@
       "displayName": "\u0410\u0442\u0430\u043A\u0430 \u043D\u0430\u0437\u0435\u043C\u043D\u044B\u0445 \u044E\u043D\u0438\u0442\u043E\u0432",
       "description": "\u0423\u0432\u0435\u043B\u0438\u0447\u0438\u0432\u0430\u0435\u0442 \u0430\u0442\u0430\u043A\u0443 \u0432\u0441\u0435\u0445 \u043D\u0430\u0437\u0435\u043C\u043D\u044B\u0445 \u044E\u043D\u0438\u0442\u043E\u0432.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -327,6 +451,13 @@
           "operation": "Add",
           "valueBasisPoints": 10000,
           "selector": "Commander"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.combat.attack-damage",
+          "operation": "Add",
+          "valueBasisPoints": 20000,
+          "selector": "FieldArtillery"
         },
         {
           "type": "addModifier",
@@ -371,7 +502,7 @@
       "displayName": "\u0423\u043B\u0443\u0447\u0448\u0435\u043D\u043D\u044B\u0435 \u043A\u043E\u043D\u0432\u0435\u0439\u0435\u0440\u044B",
       "description": "\u041A\u043E\u043D\u0432\u0435\u0439\u0435\u0440\u044B \u043F\u0435\u0440\u0435\u043C\u0435\u0449\u0430\u044E\u0442 \u043F\u0440\u0435\u0434\u043C\u0435\u0442\u044B \u0431\u044B\u0441\u0442\u0440\u0435\u0435.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -400,7 +531,7 @@
       "displayName": "\u041F\u0443\u043B\u0435\u043C\u0451\u0442\u043D\u0430\u044F \u0442\u0443\u0440\u0435\u043B\u044C",
       "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0441\u0442\u0430\u0446\u0438\u043E\u043D\u0430\u0440\u043D\u0443\u044E \u043F\u0443\u043B\u0435\u043C\u0451\u0442\u043D\u0443\u044E \u043E\u0431\u043E\u0440\u043E\u043D\u0443.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -414,12 +545,6 @@
           "contentKind": "entity",
           "contentId": "MachineGunTurret",
           "valueBasisPoints": 0
-        },
-        {
-          "type": "addModifier",
-          "statId": "stat.combat.attack-damage",
-          "operation": "Multiply",
-          "valueBasisPoints": 11000
         }
       ],
       "tags": [
@@ -431,9 +556,9 @@
       "id": "technology.t1.power-reserve",
       "tierId": "tier.t1",
       "displayName": "\u042D\u043D\u0435\u0440\u0433\u043E\u0440\u0435\u0437\u0435\u0440\u0432",
-      "description": "\u0423\u043B\u0443\u0447\u0448\u0430\u0435\u0442 \u0443\u0441\u0442\u043E\u0439\u0447\u0438\u0432\u043E\u0441\u0442\u044C \u044D\u043D\u0435\u0440\u0433\u043E\u0441\u0435\u0442\u0438.",
+      "description": "\u041B\u0430\u0431\u043E\u0440\u0430\u0442\u043E\u0440\u0438\u0438, \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0437\u0430\u0432\u043E\u0434\u044B \u0434\u0435\u0440\u0436\u0430\u0442 \u0432\u0434\u0432\u043E\u0435 \u0431\u043E\u043B\u044C\u0448\u0438\u0439 \u0437\u0430\u043F\u0430\u0441 \u044D\u043D\u0435\u0440\u0433\u0438\u0438.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 90,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -444,9 +569,31 @@
       "effects": [
         {
           "type": "addModifier",
-          "statId": "stat.energy.shortage-penalty",
+          "statId": "stat.energy.buffer-factor",
           "operation": "Multiply",
-          "valueBasisPoints": 7000
+          "valueBasisPoints": 20000,
+          "selector": "Laboratory"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.energy.buffer-factor",
+          "operation": "Multiply",
+          "valueBasisPoints": 20000,
+          "selector": "Assembler"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.energy.buffer-factor",
+          "operation": "Multiply",
+          "valueBasisPoints": 20000,
+          "selector": "TankFactory"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.energy.buffer-factor",
+          "operation": "Multiply",
+          "valueBasisPoints": 20000,
+          "selector": "DroneCenter"
         }
       ],
       "tags": [
@@ -460,9 +607,9 @@
       "id": "technology.t1.prefab-fortifications",
       "tierId": "tier.t1",
       "displayName": "\u0421\u0431\u043E\u0440\u043D\u044B\u0435 \u0443\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u0438\u044F",
-      "description": "\u0414\u0435\u0448\u0435\u0432\u043B\u0435 \u0438 \u0431\u044B\u0441\u0442\u0440\u0435\u0435 \u0441\u0442\u0430\u0432\u0438\u0442\u044C \u043E\u0431\u043E\u0440\u043E\u043D\u0443.",
+      "description": "\u0421\u0442\u0435\u043D\u044B \u0438 \u0442\u0443\u0440\u0435\u043B\u0438 \u0441\u0442\u0430\u0432\u044F\u0442\u0441\u044F \u0431\u044B\u0441\u0442\u0440\u0435\u0435 \u0438 \u043D\u0430 \u043E\u0434\u043D\u0443 \u0436\u0435\u043B\u0435\u0437\u043D\u0443\u044E \u043F\u043B\u0430\u0441\u0442\u0438\u043D\u0443 \u0434\u0435\u0448\u0435\u0432\u043B\u0435.",
       "cost": {
-        "effortUnits": 20,
+        "effortUnits": 90,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -475,13 +622,57 @@
           "type": "addModifier",
           "statId": "stat.construction.ticks",
           "operation": "Multiply",
-          "valueBasisPoints": 8000
+          "valueBasisPoints": 4000,
+          "selector": "Wall"
         },
         {
           "type": "addModifier",
-          "statId": "stat.combat.attack-cooldown-ticks",
+          "statId": "stat.build.iron-discount",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "Wall"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
           "operation": "Multiply",
-          "valueBasisPoints": 9000
+          "valueBasisPoints": 4000,
+          "selector": "SteelWall"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.build.iron-discount",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "SteelWall"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 4000,
+          "selector": "MachineGunTurret"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.build.iron-discount",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "MachineGunTurret"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.construction.ticks",
+          "operation": "Multiply",
+          "valueBasisPoints": 4000,
+          "selector": "AntiAirTurret"
+        },
+        {
+          "type": "addModifier",
+          "statId": "stat.build.iron-discount",
+          "operation": "Add",
+          "valueBasisPoints": 10000,
+          "selector": "AntiAirTurret"
         }
       ],
       "tags": [
@@ -493,9 +684,9 @@
       "id": "technology.t1.production-i",
       "tierId": "tier.t1",
       "displayName": "\u041F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0441\u0442\u0432\u043E I",
-      "description": "\u0423\u0441\u043A\u043E\u0440\u044F\u0435\u0442 \u0440\u0430\u0431\u043E\u0442\u0443 \u0437\u0430\u0432\u043E\u0434\u043E\u0432. \u041E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0441\u0442\u043E\u043B\u043F \u0434\u043B\u044F \u043F\u0435\u0440\u0435\u0445\u043E\u0434\u0430 \u043D\u0430 T2.",
+      "description": "\u0417\u0430\u0432\u043E\u0434\u044B \u0440\u0430\u0431\u043E\u0442\u0430\u044E\u0442 \u043D\u0430 25% \u0431\u044B\u0441\u0442\u0440\u0435\u0435. \u041E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0441\u0442\u043E\u043B\u043F \u0434\u043B\u044F \u043F\u0435\u0440\u0435\u0445\u043E\u0434\u0430 \u043D\u0430 T2.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 180,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -508,7 +699,7 @@
           "type": "addModifier",
           "statId": "stat.factory.work-ticks",
           "operation": "Multiply",
-          "valueBasisPoints": 9000
+          "valueBasisPoints": 7500
         }
       ],
       "tags": [
@@ -522,7 +713,7 @@
       "displayName": "\u041F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0439 \u0440\u0435\u0437\u0435\u0440\u0432",
       "description": "\u0417\u0430\u043F\u0430\u0441 \u043C\u043E\u0449\u043D\u043E\u0441\u0442\u0438 \u043F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0441\u0442\u0432\u0430.",
       "cost": {
-        "effortUnits": 20,
+        "effortUnits": 90,
         "sciencePacks": [
           {
             "item": "SciencePackT1",
@@ -549,7 +740,7 @@
       "displayName": "\u0414\u043E\u043F. \u0431\u0430\u0441\u0442\u0438\u043E\u043D\u044B",
       "description": "\u0420\u0430\u0441\u0448\u0438\u0440\u044F\u0435\u0442 \u0448\u0430\u0431\u043B\u043E\u043D \u0430\u0440\u043C\u0438\u0438 \u0431\u0430\u0441\u0442\u0438\u043E\u043D\u043E\u0432.",
       "cost": {
-        "effortUnits": 40,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -583,7 +774,7 @@
       "displayName": "\u041F\u0440\u0438\u043E\u0440\u0438\u0442\u0435\u0442 \u0431\u043E\u0435\u043F\u0440\u0438\u043F\u0430\u0441\u043E\u0432",
       "description": "\u0411\u043E\u0435\u0432\u044B\u0435 \u044E\u043D\u0438\u0442\u044B \u043B\u0443\u0447\u0448\u0435 \u043E\u0431\u0435\u0441\u043F\u0435\u0447\u0435\u043D\u044B.",
       "cost": {
-        "effortUnits": 20,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -610,7 +801,7 @@
       "displayName": "\u0417\u0435\u043D\u0438\u0442\u043D\u0430\u044F \u0442\u0443\u0440\u0435\u043B\u044C",
       "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u041F\u0412\u041E-\u0442\u0443\u0440\u0435\u043B\u0438.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -649,7 +840,7 @@
       "displayName": "\u041A\u043E\u043C\u0430\u043D\u0434\u043E\u0432\u0430\u043D\u0438\u0435 II",
       "description": "\u0420\u0430\u0441\u0448\u0438\u0440\u044F\u0435\u0442 \u0443\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u0431\u0430\u0441\u0442\u0438\u043E\u043D\u0430\u043C\u0438 \u0438 \u0441\u0442\u0440\u043E\u0439\u043A\u043E\u0439.",
       "cost": {
-        "effortUnits": 40,
+        "effortUnits": 180,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -682,7 +873,7 @@
       "displayName": "\u0421\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0434\u0440\u043E\u043D",
       "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0441\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0445 \u0434\u0440\u043E\u043D\u043E\u0432.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -711,7 +902,7 @@
       "displayName": "\u0414\u043E\u043A\u0442\u0440\u0438\u043D\u0430: \u0431\u0440\u043E\u043D\u0435\u043F\u0440\u043E\u0440\u044B\u0432",
       "description": "\u0421\u043F\u0435\u0446\u0438\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F \u043D\u0430 \u043F\u0440\u043E\u0440\u044B\u0432\u0435. \u0412\u0437\u0430\u0438\u043C\u043E\u0438\u0441\u043A\u043B\u044E\u0447\u0430\u044E\u0449\u0430\u044F.",
       "cost": {
-        "effortUnits": 40,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -740,7 +931,7 @@
       "displayName": "\u0414\u043E\u043A\u0442\u0440\u0438\u043D\u0430: \u0434\u0430\u043B\u044C\u043D\u0438\u0439 \u043D\u0430\u0436\u0438\u043C",
       "description": "\u0421\u043F\u0435\u0446\u0438\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F \u043D\u0430 \u0434\u0438\u0441\u0442\u0430\u043D\u0446\u0438\u0438. \u0412\u0437\u0430\u0438\u043C\u043E\u0438\u0441\u043A\u043B\u044E\u0447\u0430\u044E\u0449\u0430\u044F.",
       "cost": {
-        "effortUnits": 40,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -769,7 +960,7 @@
       "displayName": "\u041A\u043E\u043E\u0440\u0434\u0438\u043D\u0430\u0446\u0438\u044F \u0434\u0440\u043E\u043D\u043E\u0432",
       "description": "\u0414\u0440\u043E\u043D\u044B \u0434\u0435\u0439\u0441\u0442\u0432\u0443\u044E\u0442 \u044D\u0444\u0444\u0435\u043A\u0442\u0438\u0432\u043D\u0435\u0435.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -796,7 +987,7 @@
       "displayName": "\u0421\u0440\u0435\u0434\u043D\u0438\u0439 \u0431\u043E\u0442",
       "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0441\u0440\u0435\u0434\u043D\u0438\u0445 \u0431\u043E\u0435\u0432\u044B\u0445 \u0431\u043E\u0442\u043E\u0432.",
       "cost": {
-        "effortUnits": 40,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -829,7 +1020,7 @@
       "displayName": "\u0421\u0440\u0435\u0434\u043D\u0438\u0439 \u0442\u0430\u043D\u043A",
       "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0441\u0440\u0435\u0434\u043D\u0438\u0435 \u0442\u0430\u043D\u043A\u0438.",
       "cost": {
-        "effortUnits": 40,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -862,7 +1053,7 @@
       "displayName": "\u041C\u0435\u0442\u0430\u043B\u043B\u0443\u0440\u0433\u0438\u044F II",
       "description": "\u041F\u0440\u043E\u0434\u0432\u0438\u043D\u0443\u0442\u0430\u044F \u043C\u0435\u0442\u0430\u043B\u043B\u0443\u0440\u0433\u0438\u044F. \u041E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0441\u0442\u043E\u043B\u043F \u0434\u043B\u044F T3.",
       "cost": {
-        "effortUnits": 40,
+        "effortUnits": 180,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -889,7 +1080,7 @@
       "displayName": "\u041C\u043E\u0431\u0438\u043B\u044C\u043D\u044B\u0439 \u0440\u0435\u043C\u043E\u043D\u0442",
       "description": "\u0423\u0441\u0438\u043B\u0438\u0432\u0430\u0435\u0442 \u0440\u0435\u043C\u043E\u043D\u0442 \u0432 \u043F\u043E\u043B\u0435.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -915,7 +1106,7 @@
       "displayName": "\u041F\u0440\u0435\u0434\u0438\u043A\u0442\u0438\u0432\u043D\u043E\u0435 \u041F\u0412\u041E",
       "description": "\u0423\u043B\u0443\u0447\u0448\u0430\u0435\u0442 \u044D\u0444\u0444\u0435\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C \u0437\u0435\u043D\u0438\u0442\u043A\u0438.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -942,7 +1133,7 @@
       "displayName": "\u0423\u0441\u0438\u043B\u0435\u043D\u043D\u044B\u0435 \u0445\u0430\u0431\u044B",
       "description": "\u0425\u0430\u0431\u044B \u043A\u0440\u0435\u043F\u0447\u0435 \u0438 \u0432\u043C\u0435\u0441\u0442\u0438\u0442\u0435\u043B\u044C\u043D\u0435\u0435.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -969,7 +1160,7 @@
       "displayName": "\u0420\u0430\u043A\u0435\u0442\u043D\u0438\u0446\u0430",
       "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0440\u0430\u043A\u0435\u0442\u043D\u044B\u0435 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0438.",
       "cost": {
-        "effortUnits": 40,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -1002,7 +1193,7 @@
       "displayName": "\u0421\u0442\u0430\u043B\u044C\u043D\u044B\u0435 \u0441\u0442\u0435\u043D\u044B",
       "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0443\u0441\u0438\u043B\u0435\u043D\u043D\u044B\u0435 \u0441\u0442\u0430\u043B\u044C\u043D\u044B\u0435 \u0441\u0442\u0435\u043D\u044B.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -1029,7 +1220,7 @@
       "displayName": "\u0421\u043D\u0430\u0431\u0436\u0435\u043D\u0438\u0435 II",
       "description": "\u0423\u043B\u0443\u0447\u0448\u0435\u043D\u043D\u0430\u044F \u043B\u043E\u0433\u0438\u0441\u0442\u0438\u043A\u0430 \u0441\u043D\u0430\u0431\u0436\u0435\u043D\u0438\u044F \u0430\u0440\u043C\u0438\u0438.",
       "cost": {
-        "effortUnits": 40,
+        "effortUnits": 180,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -1056,7 +1247,7 @@
       "displayName": "\u041F\u043E\u0434\u0437\u0435\u043C\u043D\u044B\u0435 \u043A\u043E\u043D\u0432\u0435\u0439\u0435\u0440\u044B",
       "description": "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043E\u0434\u0437\u0435\u043C\u043D\u044B\u0435 \u0443\u0447\u0430\u0441\u0442\u043A\u0438 \u043B\u0435\u043D\u0442.",
       "cost": {
-        "effortUnits": 30,
+        "effortUnits": 120,
         "sciencePacks": [
           {
             "item": "SciencePackT2",
@@ -1173,12 +1364,6 @@
           "type": "unlockContent",
           "contentKind": "entity",
           "contentId": "Wall",
-          "valueBasisPoints": 0
-        },
-        {
-          "type": "unlockContent",
-          "contentKind": "entity",
-          "contentId": "CannonTurret",
           "valueBasisPoints": 0
         },
         {
@@ -1435,6 +1620,7 @@
             "technology.t1.fast-regroup",
             "technology.t1.ground-unit-armor",
             "technology.t1.machine-gun-turret",
+            "technology.t1.field-artillery",
             "technology.t1.additional-bastion",
             "technology.t1.doctrine.mobile-groups",
             "technology.t1.doctrine.fortified-line"

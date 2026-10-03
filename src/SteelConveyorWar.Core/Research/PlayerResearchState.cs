@@ -42,6 +42,10 @@ public sealed class PlayerResearchState
     private readonly Dictionary<string, int> _trackSelectionRemainder = new();
     private readonly Dictionary<TechnologyId, int> _projectSelectionRemainder = new();
 
+    // Fractional lab progress (10_000 basis points = 1 work unit). Kept so a half-speed
+    // laboratory does not truncate to zero. Hashed with the rest of research state.
+    private readonly Dictionary<TechnologyId, int> _progressRemainderBasisPoints = new();
+
     /// <summary>
     /// H04: bumps when unlocks/capabilities/modifiers/locks change so factory idle-skip cannot
     /// freeze past a research outcome change. Derived caches compare this; it is not hashed.
@@ -101,6 +105,8 @@ public sealed class PlayerResearchState
     internal Dictionary<string, int> TrackSelectionRemainder => _trackSelectionRemainder;
 
     internal Dictionary<TechnologyId, int> ProjectSelectionRemainder => _projectSelectionRemainder;
+
+    internal Dictionary<TechnologyId, int> ProgressRemainderBasisPoints => _progressRemainderBasisPoints;
 
     internal void BumpCapabilityEpoch() => CapabilityEpoch++;
 
